@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BG3 CMTY Studio</title>
+    <!-- Prevent white flash: apply background immediately before CSS loads -->
+    <style>
+      html, body { background: #09090b; margin: 0; padding: 0; overflow: hidden; height: 100%; }
+      #app { height: 100%; }
+    </style>
+    <!-- Apply persisted theme class before first paint to avoid FOUC -->
+    <script>
+      try {
+        const raw = localStorage.getItem("bg3-cmty-studio-settings");
+        if (raw) {
+          const s = JSON.parse(raw);
+          const valid = ["dark","light","solarized-dark","solarized-light","high-contrast","aubergine","balance","prototype","gruvbox-dark","gruvbox-light","custom"];
+          if (s.theme && valid.includes(s.theme)) document.documentElement.classList.add(s.theme);
+        }
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

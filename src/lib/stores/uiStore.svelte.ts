@@ -1,0 +1,204 @@
+/**
+ * UI navigation state for the activity bar, file explorer, and editor tabs.
+ * Manages which view is active, which files/tabs are open, and the active tab.
+ */
+import { m } from "../../paraglide/messages.js";
+
+export type ActivityView = "explorer" | "editor" | "search" | "settings" | "loaded-data" | "help";
+
+const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
+const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["explorer", "search", "loaded-data", "settings", "help"];
+
+export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "notifications";
+
+export interface EditorTab {
+  /** Unique key for the tab — file path or special key like "cf-config" */
+  id: string;
+  /** Display label for the tab */
+  label: string;
+  /** Icon hint (emoji or lucide icon name) */
+  icon?: string;
+  /** The BG3 folder category this tab represents (e.g., "Progressions", "Races") */
+  category?: string;
+  /** Whether this tab has unsaved changes */
+  dirty?: boolean;
+  /** Tab type — determines which editor component to render */
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "cf-config" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings";
+  /** For group tabs: CF sections to render together */
+  groupSections?: string[];
+  /** For filteredSection tabs: filter entries by this field/value pair */
+  entryFilter?: { field: string; value: string };
+  /** For file-preview tabs: the relative path within the mod directory */
+  filePath?: string;
+  /** When true, this tab is a temporary preview (italic label, replaced by next preview) */
+  preview?: boolean;
+}
+
+class UiStore {
+  /** The currently active activity bar view */
+  activeView: ActivityView = $state("explorer");
+
+  /** The currently active settings section (when activeView === "settings") */
+  settingsSection: SettingsSection = $state("");
+
+  /** Whether the sidebar (explorer/search/settings) is visible */
+  sidebarVisible: boolean = $state(true);
+
+  /** Whether the output preview panel (right side) is collapsed */
+  previewCollapsed: boolean = $state(true);
+
+  /** All open editor tabs */
+  openTabs: EditorTab[] = $state([
+    { id: "welcome", label: m.ui_welcome_tab(), type: "welcome", icon: "🏠" },
+  ]);
+
+  /** ID of the currently active tab */
+  activeTabId: string = $state("welcome");
+
+  /** Whether the file explorer tree nodes are expanded (keyed by path) */
+  expandedNodes: Record<string, boolean> = $state({});
+
+  /** Whether the Create New Mod modal is visible */
+  showCreateModModal: boolean = $state(false);
+
+  /** Section accordion expansion state (keyed by section name, session-only) */
+  expandedSections: Record<string, boolean> = $state({});
+
+  /** Persisted activity bar icon order */
+  activityBarOrder: ActivityView[] = $state(UiStore.#loadActivityBarOrder());
+
+  static #loadActivityBarOrder(): ActivityView[] {
+    try {
+      const raw = localStorage.getItem(ACTIVITY_BAR_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        const known = new Set<string>(DEFAULT_ACTIVITY_BAR_ORDER);
+        const valid = parsed.filter(id => known.has(id)) as ActivityView[];
+        const missing = DEFAULT_ACTIVITY_BAR_ORDER.filter(id => !valid.includes(id));
+        return [...valid, ...missing];
+      }
+    } catch { /* fallback to defaults */ }
+    return [...DEFAULT_ACTIVITY_BAR_ORDER];
+  }
+
+  setActivityBarOrder(order: ActivityView[]): void {
+    this.activityBarOrder = order;
+    localStorage.setItem(ACTIVITY_BAR_STORAGE_KEY, JSON.stringify(order));
+  }
+
+  /** Toggle sidebar visibility. If switching to same view, hide; otherwise show new view. */
+  toggleSidebar(view?: ActivityView): void {
+    if (view && view !== this.activeView) {
+      this.activeView = view;
+      this.sidebarVisible = true;
+    } else {
+      this.sidebarVisible = !this.sidebarVisible;
+    }
+  }
+
+  /** Open a new tab or focus an existing one. Preview tabs replace the current preview. */
+  openTab(tab: EditorTab): void {
+    const existing = this.openTabs.find(t => t.id === tab.id);
+    if (existing) {
+      // If opening the same tab as permanent, promote it
+      if (existing.preview && !tab.preview) {
+        existing.preview = false;
+      }
+      this.activeTabId = tab.id;
+      return;
+    }
+
+    if (tab.preview) {
+      // Replace the current preview tab if one exists
+      const previewIdx = this.openTabs.findIndex(t => t.preview);
+      if (previewIdx >= 0) {
+        this.openTabs = [
+          ...this.openTabs.slice(0, previewIdx),
+          tab,
+          ...this.openTabs.slice(previewIdx + 1),
+        ];
+        this.activeTabId = tab.id;
+        return;
+      }
+    }
+
+    this.openTabs = [...this.openTabs, tab];
+    this.activeTabId = tab.id;
+  }
+
+  /** Promote a preview tab to a permanent tab */
+  pinTab(tabId: string): void {
+    const tab = this.openTabs.find(t => t.id === tabId);
+    if (tab) tab.preview = false;
+  }
+
+  /** Close a tab by ID. If it was active, activate an adjacent tab. */
+  closeTab(tabId: string): void {
+    const idx = this.openTabs.findIndex(t => t.id === tabId);
+    if (idx === -1) return;
+
+    const wasActive = this.activeTabId === tabId;
+    this.openTabs = this.openTabs.filter(t => t.id !== tabId);
+
+    if (wasActive && this.openTabs.length > 0) {
+      // Activate the tab to the left, or the first tab
+      const newIdx = Math.min(idx, this.openTabs.length - 1);
+      this.activeTabId = this.openTabs[newIdx].id;
+    } else if (this.openTabs.length === 0) {
+      this.openTabs = [{ id: "welcome", label: m.ui_welcome_tab(), type: "welcome", icon: "🏠" }];
+      this.activeTabId = "welcome";
+    }
+
+    // If settings tab was closed, reset settings view
+    if (tabId === "settings" && this.activeView === "settings") {
+      this.activeView = "explorer";
+      this.settingsSection = "";
+    }
+  }
+
+  /** Move a tab from one position to another (drag-to-reorder). */
+  moveTab(fromIndex: number, toIndex: number): void {
+    if (fromIndex === toIndex) return;
+    if (fromIndex < 0 || toIndex < 0) return;
+    if (fromIndex >= this.openTabs.length || toIndex >= this.openTabs.length) return;
+    const tabs = [...this.openTabs];
+    const [moved] = tabs.splice(fromIndex, 1);
+    tabs.splice(toIndex, 0, moved);
+    this.openTabs = tabs;
+  }
+
+  /** Get the currently active tab object */
+  get activeTab(): EditorTab | undefined {
+    return this.openTabs.find(t => t.id === this.activeTabId);
+  }
+
+  /** Toggle a file explorer node's expanded state */
+  toggleNode(path: string): void {
+    this.expandedNodes = {
+      ...this.expandedNodes,
+      [path]: !this.expandedNodes[path],
+    };
+  }
+
+  /** Expand a file explorer node (no-op if already expanded) */
+  expandNode(path: string): void {
+    if (!this.expandedNodes[path]) {
+      this.expandedNodes = { ...this.expandedNodes, [path]: true };
+    }
+  }
+
+  /** Reset UI state (e.g., when closing a mod) */
+  reset(): void {
+    this.openTabs = [
+      { id: "welcome", label: m.ui_welcome_tab(), type: "welcome", icon: "🏠" },
+    ];
+    this.activeTabId = "welcome";
+    this.expandedNodes = {};
+    this.expandedSections = {};
+    this.activeView = "explorer";
+    this.settingsSection = "";
+    this.sidebarVisible = true;
+  }
+}
+
+export const uiStore = new UiStore();

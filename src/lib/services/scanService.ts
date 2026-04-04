@@ -1,0 +1,304 @@
+import { modStore } from "../stores/modStore.svelte.js";
+import { configStore } from "../stores/configStore.svelte.js";
+import { settingsStore } from "../stores/settingsStore.svelte.js";
+import { toastStore } from "../stores/toastStore.svelte.js";
+import { schemaStore } from "../stores/schemaStore.svelte.js";
+import { undoStore } from "../stores/undoStore.svelte.js";
+import { m } from "../../paraglide/messages.js";
+import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
+import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
+import { parseExistingConfig } from "../utils/configParser.js";
+
+/**
+ * Rehydrate the staging database from a mod's on-disk files.
+ * Recreates a fresh staging DB, populates it from the mod folder,
+ * and runs an integrity check. Non-fatal: surfaces warnings via toasts.
+ */
+export async function rehydrateStaging(modPath: string, modName: string): Promise<void> {
+  try {
+    const stagingDbPath = await recreateStaging();
+    try {
+      const summary = await populateStagingFromMod(modPath, modName, stagingDbPath);
+      if (summary.file_errors > 0 || summary.row_errors > 0) {
+        toastStore.warning(
+          m.scan_staging_warnings_title(),
+          m.scan_staging_warnings_detail({ file_errors: String(summary.file_errors), row_errors: String(summary.row_errors) }),
+        );
+      }
+    } catch (populateErr) {
+      console.warn("[Staging] Failed to populate staging from mod:", populateErr);
+      toastStore.warning(m.scan_staging_population_failed_title(), m.scan_staging_population_failed_detail({ error: String(populateErr) }));
+      return;
+    }
+
+    // Integrity check (non-blocking diagnostic)
+    try {
+      const issues = await checkStagingIntegrity();
+      if (issues) {
+        console.warn("[Staging] Integrity check issues:", issues);
+        toastStore.warning(m.scan_staging_integrity(), issues);
+      }
+    } catch (intErr) {
+      console.warn("[Staging] Integrity check failed:", intErr);
+    }
+  } catch (recreateErr) {
+    console.warn("[Staging] Failed to recreate staging DB:", recreateErr);
+    toastStore.warning(m.scan_staging_recreation_failed(), String(recreateErr));
+  }
+}
+
+/**
+ * Load all vanilla data sources into modStore.
+ * Uses per-category generation stamps to prevent interleaved writes from concurrent calls (DSM-001).
+ */
+const categoryGeneration = new Map<string, number>();
+let vanillaLoadGeneration = 0;
+
+function guardedWrite(category: string, gen: number, setter: () => void): void {
+  if (gen >= (categoryGeneration.get(category) ?? 0)) {
+    setter();
+  }
+}
+
+// ── Lazy loading ────────────────────────────────────────────────────────────
+
+/** Set of lazy section keys, populated after first loadVanillaData call discovers DB sections. */
+let lazySectionKeys: ReadonlySet<string> = new Set();
+
+/** Whether the given category is lazily loaded (Tier D). */
+export function isLazyCategory(category: VanillaCategory): boolean {
+  // A category is lazy if it exists in the DB but is NOT in the eager set and NOT synthetic
+  return lazySectionKeys.has(category);
+}
+
+// Track in-flight lazy loads to avoid duplicate concurrent requests
+const lazyLoadInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Load a single vanilla category on demand (for lazy Tier D sections).
+ * Returns immediately if already loaded. Deduplicates concurrent calls.
+ */
+export async function loadCategory(category: VanillaCategory): Promise<void> {
+  if ((modStore.vanilla[category]?.length ?? 0) > 0) return;
+
+  const existing = lazyLoadInFlight.get(category);
+  if (existing) return existing;
+
+  const gen = ++vanillaLoadGeneration;
+  categoryGeneration.set(category, gen);
+
+  const promise = querySectionEntries(category)
+    .then(entries => {
+      guardedWrite(category, gen, () => { modStore.vanilla[category] = entries; });
+    })
+    .catch(e => {
+      console.error(`[Vanilla] Failed to lazy-load ${category}:`, e);
+    })
+    .finally(() => {
+      lazyLoadInFlight.delete(category);
+    });
+
+  lazyLoadInFlight.set(category, promise);
+  return promise;
+}
+
+export async function loadVanillaData(): Promise<void> {
+  const gen = ++vanillaLoadGeneration;
+
+  function tracked<T>(name: string, p: Promise<T>): Promise<T> {
+    categoryGeneration.set(name, gen);
+    return p;
+  }
+
+  // 1. Discover available sections from the reference DB
+  let loaderDefs;
+  try {
+    const sections = await listAvailableSections();
+    loaderDefs = buildVanillaLoaders(sections);
+
+    // Populate the lazy section key set for on-demand loading
+    const lsxSections = sections.filter(s => s.source_type === "lsx");
+    lazySectionKeys = new Set(
+      lsxSections
+        .filter(s => !EAGER_REGION_IDS.has(s.region_id))
+        .map(s => s.region_id),
+    );
+  } catch (e) {
+    console.error("[Vanilla] Failed to discover sections from DB:", e);
+    modStore.vanillaLoadFailures = ["SectionDiscovery"];
+    return;
+  }
+
+  // 2. Fire eager loaders in parallel — lazy (Tier D) sections load on first access
+  const eagerDefs = loaderDefs.filter(d => d.eager);
+
+  const namedLoads: { name: string; promise: Promise<void> }[] = [
+    // DB-driven loaders (dynamically built from section list)
+    ...eagerDefs.map(d => ({
+      name: d.key,
+      promise: tracked(d.key, d.loader()).then(entries => {
+        guardedWrite(d.key, gen, () => { modStore.vanilla[d.key] = entries; });
+      }),
+    })),
+    // Non-registry loaders: these don't produce VanillaEntryInfo[] and write to separate store properties
+    { name: "StatEntries", promise: tracked("StatEntries", getStatEntries("")).then(entries => { guardedWrite("StatEntries", gen, () => { modStore.vanillaStatEntries = entries; }); }) },
+    { name: "StatFieldNames", promise: tracked("StatFieldNames", getStatFieldNames("")).then(names => { guardedWrite("StatFieldNames", gen, () => { modStore.vanillaStatFieldNames = names; }); }) },
+    { name: "ValueLists", promise: tracked("ValueLists", getValueLists("")).then(lists => { guardedWrite("ValueLists", gen, () => { modStore.vanillaValueLists = lists; }); }) },
+    { name: "Equipment", promise: tracked("Equipment", getEquipmentNames()).then(names => { guardedWrite("Equipment", gen, () => { modStore.vanillaEquipment = names; }); }) },
+    { name: "Localization", promise: tracked("Localization", getLocalizationMap()).then(result => {
+      guardedWrite("Localization", gen, () => {
+        const map = new Map<string, string>(modStore.localizationMap);
+        for (const e of result.entries) {
+          map.set(e.handle.toLowerCase(), e.text);
+        }
+        modStore.localizationMap = map;
+        if (result.entries.length === 0) {
+          console.warn("[Vanilla] Localization map is empty — loca comboboxes will have no vanilla suggestions. Ensure vanilla data has been unpacked (english.pak → localization.yaml).");
+        }
+        if (result.warnings.length > 0) {
+          for (const w of result.warnings) console.warn("[Vanilla Loca]", w);
+          toastStore.warning(m.scan_loca_parse_issues_title(), m.scan_loca_parse_issues_detail({ count: String(result.warnings.length) }));
+        }
+      });
+    }) },
+  ];
+
+  // Await all, logging failures with source names
+  const results = await Promise.allSettled(namedLoads.map(l => l.promise));
+  const failedNames: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "rejected") {
+      failedNames.push(namedLoads[i].name);
+      console.error(`[Vanilla] Failed to load ${namedLoads[i].name}:`, r.reason);
+    }
+  });
+  if (failedNames.length > 0) {
+    console.warn(`${failedNames.length} vanilla data source(s) failed to load: ${failedNames.join(", ")}`);
+  }
+  modStore.vanillaLoadFailures = failedNames;
+
+  // P3: Load LSX schemas in parallel (doesn't block vanilla data display)
+  const vanillaPath = settingsStore.vanillaPath || "";
+  if (vanillaPath) {
+    schemaStore.load();
+  }
+
+  // Invalidate the display name map so it rebuilds with the new data (P3)
+  modStore.invalidateDisplayNameMap();
+}
+
+/**
+ * Scan a mod folder, import existing config, and load vanilla data.
+ * Centralizes the scan workflow used by both Header and HamburgerMenu.
+ * `extraScanPaths` allows scanning additional directories (e.g. unpacked data dir)
+ * alongside the primary mod path.
+ */
+export async function scanAndImport(modPath: string, extraScanPaths?: string[]): Promise<void> {
+  modStore.isScanning = true;
+  modStore.error = "";
+  modStore.selectedModPath = modPath;
+
+  try {
+    const result = await scanMod(modPath, extraScanPaths, true);
+    modStore.scanResult = result;
+    configStore.initFromScan();
+
+    // Pre-disable entries that were commented out in the source .lsx files
+    // Two-pass: first collect all active entry keys, then only disable entries
+    // that have no active counterpart (handles mods with both commented + active versions)
+    const activeKeys = new Set<string>();
+    for (const sr of result.sections) {
+      for (const entry of sr.entries) {
+        if (!entry.commented) {
+          activeKeys.add(`${sr.section}::${entry.uuid}`);
+        }
+      }
+    }
+    for (const sr of result.sections) {
+      for (const entry of sr.entries) {
+        if (entry.commented) {
+          const key = `${sr.section}::${entry.uuid}`;
+          if (!activeKeys.has(key)) {
+            configStore.disabled[key] = true;
+          }
+        }
+      }
+    }
+
+    undoStore.clear();
+
+    // Try restoring saved project state for this mod path
+    const restored = configStore.restoreProject(modPath);
+
+    // Import existing config entries as manual entries (marked as imported)
+    // Skip if project state was restored — the persisted state already has user edits
+    if (!restored && result.existing_config_path) {
+      try {
+        const configContent = await readExistingConfig(result.existing_config_path);
+        const { entries: existingEntries, warnings } = parseExistingConfig(configContent, result.existing_config_path);
+        if (warnings.length > 0) {
+          console.warn("Config parse warnings:", warnings);
+          toastStore.warning(m.scan_config_import_warnings_title(), m.scan_config_import_warnings_detail({ warnings: warnings.join("; ") }));
+        }
+        for (const entry of existingEntries) {
+          configStore.addManualEntry(entry.section, entry.fields, true);
+        }
+        if (existingEntries.length > 0) {
+          toastStore.info(m.scan_config_imported_title(), m.scan_config_imported_detail({ count: String(existingEntries.length) }));
+        }
+      } catch (configErr) {
+        console.warn("Failed to import existing config:", configErr);
+        toastStore.error(m.scan_config_import_failed(), String(configErr));
+      }
+    }
+
+    // Snapshot imported entries so reset can restore them
+    configStore.snapshotImports();
+
+    // Merge imported entries with auto-detected entries (disable covered auto entries)
+    configStore.mergeImportedWithAuto();
+
+    // Scan summary disabled (user can open via command palette if needed)
+    // modStore.showScanSummary = true;
+
+    const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
+    toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
+
+    // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
+    const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
+    await rehydrateStaging(modPath, modName);
+
+    // Load previewable text files from mod directory (non-blocking)
+    listModFiles(modPath).then(files => { modStore.modFiles = files; }).catch(err => console.warn("Failed to list mod files:", err));
+
+    // Load mod-specific localization entries and merge into the shared map (non-blocking)
+    getModLocalization(modPath).then(result => {
+      if (result.entries.length > 0) {
+        const map = new Map(modStore.localizationMap);
+        for (const e of result.entries) {
+          map.set(e.handle.toLowerCase(), e.text);
+        }
+        modStore.localizationMap = map;
+      }
+      if (result.warnings.length > 0) {
+        for (const w of result.warnings) console.warn("[Mod Loca]", w);
+        toastStore.warning(m.scan_mod_loca_parse_title(), m.scan_mod_loca_parse_detail({ count: String(result.warnings.length) }));
+      }
+    }).catch(err => console.warn("Failed to load mod localization:", err));
+
+    // Load mod stat entries for combobox population (non-blocking)
+    getModStatEntries(modPath).then(entries => {
+      modStore.modStatEntries = entries;
+    }).catch(err => console.warn("Failed to load mod stat entries:", err));
+
+    // Load vanilla entries for combobox population (non-blocking)
+    loadVanillaData();
+  } catch (e: any) {
+    modStore.error = typeof e === "string" ? e : e?.message ?? "Scan failed";
+    modStore.scanResult = null;
+    modStore.modStatEntries = [];
+    toastStore.error(m.scan_failed(), modStore.error);
+  } finally {
+    modStore.isScanning = false;
+  }
+}

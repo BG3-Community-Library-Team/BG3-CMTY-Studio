@@ -1,0 +1,51 @@
+[package]
+name = "bg3-cmty-studio"
+default-run = "bg3-cmty-studio"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.71"
+license = "MIT"
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+quick-xml = "0.39"
+regex = "1"
+flate2 = "1"
+lz4_flex = "0.13"
+rusqlite = { version = "0.39", features = ["bundled", "backup"] }
+crossbeam-channel = "0.5"
+rmp-serde = "1"
+walkdir = "2"
+rayon = "1.10"
+dirs = "6"
+chrono = "0.4"
+serde-saphyr = "0.0.23"
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+keyring = { version = "3", features = ["sync-secret-service", "windows-native", "apple-native"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+
+[dev-dependencies]
+dotenvy = "0.15"
+tempfile = "3"
+ts-rs = { version = "10", features = ["serde-compat"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[lib]
+name = "bg3_cmty_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "generate_schema"
+path = "src/bin/generate_schema.rs"

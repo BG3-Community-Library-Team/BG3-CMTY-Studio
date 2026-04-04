@@ -1,0 +1,549 @@
+use crate::commands::mod_import::PopulateResult;
+use crate::db_manager;
+use crate::error::AppError;
+use crate::reference_db;
+use crate::{blocking, blocking_with_timeout};
+
+/// Per-database status info (exists, size).
+#[derive(serde::Serialize, Clone)]
+pub struct DbFileStatus {
+    pub name: String,
+    pub path: String,
+    pub exists: bool,
+    pub size_bytes: u64,
+}
+
+/// Stream vanilla .pak files and populate the embedded schema databases.
+///
+/// Emits `pipeline-progress` events during execution for real-time status updates.
+#[tauri::command]
+pub async fn cmd_populate_game_data(
+    app: tauri::AppHandle,
+    game_data_path: String,
+) -> Result<PopulateResult, AppError> {
+    use tauri::Emitter;
+
+    blocking_with_timeout(std::time::Duration::from_secs(1200), move || {
+        let db_paths = db_manager::ensure_schema_dbs(&app)?;
+        let options = reference_db::BuildOptions::default();
+        let summary = reference_db::pipeline::populate_vanilla_dbs(
+            &game_data_path,
+            &db_paths.base,
+            Some(&db_paths.honor),
+            &options,
+            |progress| {
+                let _ = app.emit("pipeline-progress", &progress);
+            },
+        )?;
+
+        let mut diagnostics = summary.diagnostics;
+        let mut errors = summary.errors;
+
+        // DSM-04: Post-populate integrity check on reference DBs
+        for (label, path) in [("ref_base", &db_paths.base), ("ref_honor", &db_paths.honor)] {
+            match db_manager::run_integrity_check(path) {
+                Ok(None) => {
+                    diagnostics.push(format!("Integrity check {}: ok", label));
+                }
+                Ok(Some(details)) => {
+                    let msg = format!("Integrity check {} WARNING: {}", label, details);
+                    eprintln!("  {}", msg);
+                    errors.push(msg);
+                }
+                Err(e) => {
+                    let msg = format!("Integrity check {} FAILED: {}", label, e);
+                    eprintln!("  {}", msg);
+                    errors.push(msg);
+                }
+            }
+        }
+
+        Ok(PopulateResult {
+            paks_extracted: summary.paks_extracted,
+            files_kept: summary.files_extracted,
+            lsf_converted: 0,
+            unpack_path: db_paths.dir.to_string_lossy().to_string(),
+            errors,
+            diagnostics,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_build_reference_db(
+    unpacked_path: String,
+    db_path: String,
+) -> Result<reference_db::BuildSummary, AppError> {
+    // Long-running: 20 minute timeout
+    blocking_with_timeout(std::time::Duration::from_secs(1200), move || {
+        let unpacked = std::path::PathBuf::from(&unpacked_path);
+        let db = std::path::PathBuf::from(&db_path);
+        if !unpacked.is_dir() {
+            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
+        }
+        reference_db::build_reference_db(&unpacked, &db)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_populate_reference_db(
+    unpacked_path: String,
+    db_path: String,
+    vacuum: bool,
+) -> Result<reference_db::BuildSummary, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(1200), move || {
+        let unpacked = std::path::PathBuf::from(&unpacked_path);
+        let db = std::path::PathBuf::from(&db_path);
+        if !unpacked.is_dir() {
+            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
+        }
+        if !db.is_file() {
+            return Err(format!("Schema database not found: {}. Run the schema generator first.", db_path));
+        }
+        let options = reference_db::BuildOptions { vacuum, ..Default::default() };
+        reference_db::populate_reference_db(&unpacked, &db, reference_db::TargetDb::Base, &options)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_populate_honor_db(
+    unpacked_path: String,
+    db_path: String,
+    vacuum: bool,
+    base_db_path: Option<String>,
+) -> Result<reference_db::BuildSummary, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(600), move || {
+        let unpacked = std::path::PathBuf::from(&unpacked_path);
+        let db = std::path::PathBuf::from(&db_path);
+        if !unpacked.is_dir() {
+            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
+        }
+        if !db.is_file() {
+            return Err(format!("Honor schema database not found: {}. Run the schema generator first.", db_path));
+        }
+        let options = reference_db::BuildOptions {
+            vacuum,
+            fallback_base_db_path: base_db_path
+                .filter(|raw| !raw.trim().is_empty())
+                .map(std::path::PathBuf::from),
+            ..Default::default()
+        };
+        reference_db::populate_reference_db(&unpacked, &db, reference_db::TargetDb::Honor, &options)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_populate_mods_db(
+    mod_path: String,
+    mod_name: String,
+    db_path: String,
+    vacuum: bool,
+) -> Result<reference_db::BuildSummary, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(600), move || {
+        let mod_dir = std::path::PathBuf::from(&mod_path);
+        let db = std::path::PathBuf::from(&db_path);
+        if !mod_dir.is_dir() {
+            return Err(format!("Mod directory not found: {}", mod_path));
+        }
+        if !db.is_file() {
+            return Err(format!("Mods schema database not found: {}. Run the schema generator first.", db_path));
+        }
+        let options = reference_db::BuildOptions { vacuum, ..Default::default() };
+        reference_db::populate_mods_db(&mod_dir, &mod_name, &db, &options)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_validate_cross_db_fks(
+    db_path: String,
+    attach_paths: Vec<(String, String)>, // [(alias, path), ...]
+) -> Result<reference_db::cross_db::CrossDbFkReport, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(300), move || {
+        let db = std::path::PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Database not found: {}", db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open DB: {}", e))?;
+
+        let mut aliases = Vec::new();
+        for (alias, path) in &attach_paths {
+            let p = std::path::PathBuf::from(path);
+            if !p.is_file() {
+                return Err(format!("Attached DB not found: {} ({})", alias, path));
+            }
+            reference_db::cross_db::attach_readonly(&conn, &p, alias)?;
+            aliases.push(alias.as_str());
+        }
+
+        // Reborrow for validate call
+        let alias_refs: Vec<&str> = attach_paths.iter().map(|(a, _)| a.as_str()).collect();
+        reference_db::cross_db::validate_cross_db_fks(&conn, &alias_refs)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_create_staging_db(
+    schema_db_path: String,
+    staging_db_path: String,
+) -> Result<reference_db::staging::StagingSummary, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(60), move || {
+        let schema_db = std::path::PathBuf::from(&schema_db_path);
+        let staging_db = std::path::PathBuf::from(&staging_db_path);
+        if !schema_db.is_file() {
+            return Err(format!("Schema database not found: {}. Build ref_base.sqlite first.", schema_db_path));
+        }
+        reference_db::staging::create_staging_db(&schema_db, &staging_db)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_populate_staging_from_mod(
+    mod_path: String,
+    mod_name: String,
+    staging_db_path: String,
+    vacuum: bool,
+) -> Result<reference_db::BuildSummary, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(600), move || {
+        let mod_dir = std::path::PathBuf::from(&mod_path);
+        let staging_db = std::path::PathBuf::from(&staging_db_path);
+        if !mod_dir.is_dir() {
+            return Err(format!("Mod directory not found: {}", mod_path));
+        }
+        if !staging_db.is_file() {
+            return Err(format!("Staging database not found: {}. Create it first.", staging_db_path));
+        }
+        let options = reference_db::BuildOptions { vacuum, ..Default::default() };
+        reference_db::staging::populate_staging_from_mod(&mod_dir, &mod_name, &staging_db, &options)
+    })
+    .await
+}
+
+/// Get the resolved paths to the writable schema databases.
+#[tauri::command]
+pub async fn cmd_get_db_paths(
+    app: tauri::AppHandle,
+) -> Result<db_manager::DbPaths, AppError> {
+    blocking(move || db_manager::ensure_schema_dbs(&app)).await
+}
+
+/// Get the status (exists, size) of each schema database.
+#[tauri::command]
+pub async fn cmd_get_db_status(
+    app: tauri::AppHandle,
+) -> Result<Vec<DbFileStatus>, AppError> {
+    blocking(move || {
+        let paths = db_manager::get_db_paths(&app)?;
+        let entries = [
+            ("ref_base", &paths.base),
+            ("ref_honor", &paths.honor),
+            ("ref_mods", &paths.mods),
+            ("staging", &paths.staging),
+        ];
+        Ok(entries
+            .iter()
+            .map(|(name, path)| {
+                let exists = path.is_file();
+                let size_bytes = if exists {
+                    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+                } else {
+                    0
+                };
+                DbFileStatus {
+                    name: name.to_string(),
+                    path: path.display().to_string(),
+                    exists,
+                    size_bytes,
+                }
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Reset all schema databases to their clean (empty) state by re-copying from
+/// the bundled resources.  The caller should re-run the populate pipeline afterward.
+#[tauri::command]
+pub async fn cmd_reset_databases(
+    app: tauri::AppHandle,
+) -> Result<db_manager::DbPaths, AppError> {
+    blocking(move || db_manager::reset_schema_dbs(&app)).await
+}
+
+/// Reset only reference databases (ref_base, ref_honor, ref_mods) to their
+/// clean state, leaving staging untouched.
+#[tauri::command]
+pub async fn cmd_reset_reference_dbs(
+    app: tauri::AppHandle,
+) -> Result<db_manager::DbPaths, AppError> {
+    blocking(move || db_manager::reset_reference_dbs(&app)).await
+}
+
+/// Recreate only the staging database, leaving reference DBs untouched.
+///
+/// Deletes the existing staging.sqlite (+ WAL/SHM sidecars), copies a fresh
+/// copy from the bundled schema resource, and applies UUID uniqueness indexes.
+#[tauri::command]
+pub async fn cmd_recreate_staging(
+    app: tauri::AppHandle,
+) -> Result<String, AppError> {
+    blocking(move || {
+        let path = db_manager::recreate_staging_db(&app)?;
+        Ok(path.display().to_string())
+    })
+    .await
+}
+
+/// Run `PRAGMA integrity_check` on the staging database (DSM-04).
+///
+/// Returns `Ok(None)` if the DB passes, or `Ok(Some(details))` if issues found.
+#[tauri::command]
+pub async fn cmd_check_staging_integrity(
+    app: tauri::AppHandle,
+) -> Result<Option<String>, AppError> {
+    blocking(move || {
+        let paths = db_manager::get_db_paths(&app)?;
+        if !paths.staging.is_file() {
+            return Err("Staging database does not exist".to_string());
+        }
+        db_manager::run_integrity_check(&paths.staging)
+    })
+    .await
+}
+
+/// Run the full unpack-and-populate pipeline: extract game paks, convert files,
+/// and populate ref_base.sqlite (and optionally ref_honor.sqlite).
+///
+/// Emits `"pipeline-progress"` events to the frontend during execution with
+/// `PipelineProgress` payloads for real-time status updates.
+#[tauri::command]
+pub async fn cmd_unpack_and_populate(
+    app: tauri::AppHandle,
+    divine_path: String,
+    game_data_path: String,
+    work_dir: String,
+    base_db_path: String,
+    honor_db_path: String,
+    populate_honor: bool,
+    vacuum: bool,
+    cleanup: bool,
+) -> Result<reference_db::pipeline::PipelineSummary, AppError> {
+    use tauri::Emitter;
+
+    // Long-running: 30 minute timeout (extraction + conversion + DB population)
+    blocking_with_timeout(std::time::Duration::from_secs(1800), move || {
+        let config = reference_db::pipeline::PipelineConfig {
+            divine_path,
+            game_data_path,
+            work_dir: std::path::PathBuf::from(&work_dir),
+            base_db_path: std::path::PathBuf::from(&base_db_path),
+            honor_db_path: std::path::PathBuf::from(&honor_db_path),
+            populate_honor,
+            build_options: reference_db::BuildOptions { vacuum, ..Default::default() },
+            cleanup,
+        };
+
+        reference_db::pipeline::run_vanilla_pipeline(&config, |progress| {
+            let _ = app.emit("pipeline-progress", &progress);
+        })
+    })
+    .await
+}
+
+/// Remove a single mod's data from ref_mods.sqlite by its mod name.
+///
+/// Deletes all rows where `_SourceID` matches the mod's ID in `_sources`,
+/// then removes the `_sources` entry itself.
+#[tauri::command]
+pub async fn cmd_remove_mod_from_mods_db(
+    mod_name: String,
+    db_path: String,
+) -> Result<u64, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(120), move || {
+        let db = std::path::PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Mods database not found: {}", db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open mods DB: {}", e))?;
+
+        // Look up the _SourceID for this mod name
+        let source_id: i64 = conn
+            .query_row(
+                "SELECT id FROM _sources WHERE name = ?1",
+                [&mod_name],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Mod '{}' not found in _sources: {}", mod_name, e))?;
+
+        // Get all user tables (skip internal/meta tables starting with _)
+        let tables: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' \
+                     AND name NOT LIKE '\\_%' ESCAPE '\\'",
+                )
+                .map_err(|e| format!("List tables: {}", e))?;
+            let result = stmt.query_map([], |row| row.get(0))
+                .map_err(|e| format!("Query tables: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            result
+        };
+
+        let mut total_deleted: u64 = 0;
+        for table in &tables {
+            // Check if this table has a _SourceID column
+            let has_source_id: bool = {
+                let mut stmt = conn
+                    .prepare(&format!("PRAGMA table_info(\"{}\")", table))
+                    .map_err(|e| format!("PRAGMA table_info: {}", e))?;
+                let result = stmt.query_map([], |row| row.get::<_, String>(1))
+                    .map_err(|e| format!("table_info query: {}", e))?
+                    .filter_map(|r| r.ok())
+                    .any(|col| col == "_SourceID");
+                result
+            };
+            if has_source_id {
+                let deleted = conn
+                    .execute(
+                        &format!("DELETE FROM \"{}\" WHERE \"_SourceID\" = ?1", table),
+                        [source_id],
+                    )
+                    .map_err(|e| format!("Delete from {}: {}", table, e))?;
+                total_deleted += deleted as u64;
+            }
+        }
+
+        // Remove from _sources
+        conn.execute("DELETE FROM _sources WHERE id = ?1", [source_id])
+            .map_err(|e| format!("Delete from _sources: {}", e))?;
+
+        // Also clean up _source_files and _table_meta row counts
+        let _ = conn.execute("DELETE FROM _source_files WHERE source_id = ?1", [source_id]);
+        // Recount _table_meta row counts
+        for table in &tables {
+            let _ = conn.execute(
+                &format!(
+                    "UPDATE _table_meta SET row_count = (SELECT COUNT(*) FROM \"{}\") WHERE table_name = ?1",
+                    table
+                ),
+                [table.as_str()],
+            );
+        }
+
+        Ok(total_deleted)
+    })
+    .await
+}
+
+/// Clear all user-added mod data from ref_mods.sqlite.
+///
+/// Deletes all rows from all user tables and all entries in `_sources`.
+/// The schema is preserved.
+#[tauri::command]
+pub async fn cmd_clear_mods_db(
+    db_path: String,
+) -> Result<u64, AppError> {
+    blocking_with_timeout(std::time::Duration::from_secs(120), move || {
+        let db = std::path::PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Mods database not found: {}", db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open mods DB: {}", e))?;
+
+        let tables: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' \
+                     AND name NOT LIKE '\\_%' ESCAPE '\\'",
+                )
+                .map_err(|e| format!("List tables: {}", e))?;
+            let result = stmt.query_map([], |row| row.get(0))
+                .map_err(|e| format!("Query tables: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            result
+        };
+
+        let mut total_deleted: u64 = 0;
+        for table in &tables {
+            let deleted = conn
+                .execute(&format!("DELETE FROM \"{}\"", table), [])
+                .map_err(|e| format!("Clear {}: {}", table, e))?;
+            total_deleted += deleted as u64;
+        }
+
+        // Clear meta tables
+        let _ = conn.execute("DELETE FROM _sources", []);
+        let _ = conn.execute("DELETE FROM _source_files", []);
+        for table in &tables {
+            let _ = conn.execute(
+                "UPDATE _table_meta SET row_count = 0 WHERE table_name = ?1",
+                [table.as_str()],
+            );
+        }
+
+        Ok(total_deleted)
+    })
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn db_file_status_serializes_correctly() {
+        let status = DbFileStatus {
+            name: "ref_base".to_string(),
+            path: "/tmp/ref_base.sqlite".to_string(),
+            exists: true,
+            size_bytes: 1024,
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"name\":\"ref_base\""));
+        assert!(json.contains("\"exists\":true"));
+        assert!(json.contains("\"size_bytes\":1024"));
+        assert!(json.contains("\"path\":\"/tmp/ref_base.sqlite\""));
+    }
+
+    #[test]
+    fn db_file_status_serializes_nonexistent() {
+        let status = DbFileStatus {
+            name: "staging".to_string(),
+            path: "/tmp/staging.sqlite".to_string(),
+            exists: false,
+            size_bytes: 0,
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"exists\":false"));
+        assert!(json.contains("\"size_bytes\":0"));
+    }
+
+    #[test]
+    fn db_file_status_clone_is_equal() {
+        let status = DbFileStatus {
+            name: "ref_honor".to_string(),
+            path: "/data/ref_honor.sqlite".to_string(),
+            exists: true,
+            size_bytes: 512000,
+        };
+
+        let cloned = status.clone();
+        assert_eq!(cloned.name, status.name);
+        assert_eq!(cloned.path, status.path);
+        assert_eq!(cloned.exists, status.exists);
+        assert_eq!(cloned.size_bytes, status.size_bytes);
+    }
+}

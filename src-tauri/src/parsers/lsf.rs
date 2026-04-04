@@ -1,0 +1,2446 @@
+use std::fs::File;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+
+use flate2::read::ZlibDecoder;
+use lz4_flex::{block, frame::FrameDecoder};
+use uuid::Uuid;
+
+use crate::models::{LsxNode, LsxNodeAttribute, LsxRegion, LsxResource};
+use crate::pak::format::PakCompression;
+
+const LSF_SIGNATURE: u32 = u32::from_le_bytes(*b"LSOF");
+const MIN_BG3_VERSION: u32 = 2;
+const MAX_KNOWN_BG3_VERSION: u32 = 7;
+const NAME_HASH_BUCKET_LIMIT: usize = 4096;
+const MAX_SECTION_BYTES: usize = 256 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LsfMetadataFormat {
+    None,
+    KeysAndAdjacency,
+    None2,
+    Unknown(u32),
+}
+
+impl LsfMetadataFormat {
+    fn from_raw(raw: u32) -> Self {
+        match raw {
+            0 => Self::None,
+            1 => Self::KeysAndAdjacency,
+            2 => Self::None2,
+            value => Self::Unknown(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LsfMetadata {
+    strings_uncompressed_size: u32,
+    strings_size_on_disk: u32,
+    keys_uncompressed_size: u32,
+    keys_size_on_disk: u32,
+    nodes_uncompressed_size: u32,
+    nodes_size_on_disk: u32,
+    attributes_uncompressed_size: u32,
+    attributes_size_on_disk: u32,
+    values_uncompressed_size: u32,
+    values_size_on_disk: u32,
+    compression_flags: u8,
+    metadata_format: LsfMetadataFormat,
+}
+
+#[derive(Debug, Clone)]
+struct LsfNodeInfo {
+    parent_index: i32,
+    name_index: usize,
+    name_offset: usize,
+    first_attribute_index: i32,
+    key_attribute: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct LsfAttributeInfo {
+    name_index: usize,
+    name_offset: usize,
+    type_id: u32,
+    length: u32,
+    data_offset: u32,
+    next_attribute_index: i32,
+}
+
+#[derive(Debug)]
+struct ArenaNode {
+    id: String,
+    key_attribute: Option<String>,
+    attributes: Vec<LsxNodeAttribute>,
+    children: Vec<usize>,
+}
+
+pub fn parse_lsf_file(path: &Path) -> Result<LsxResource, String> {
+    let file = File::open(path)
+        .map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
+    parse_lsf(file)
+}
+
+pub fn parse_lsf<R: Read + Seek>(mut reader: R) -> Result<LsxResource, String> {
+    let file_len = reader.seek(SeekFrom::End(0))
+        .map_err(|e| format!("Failed to inspect lsf stream: {}", e))?;
+    reader.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("Failed to rewind lsf stream: {}", e))?;
+
+    if file_len < 16 {
+        return Err("LSF file too small to contain a header".into());
+    }
+
+    let signature = read_u32(&mut reader)?;
+    if signature != LSF_SIGNATURE {
+        return Err(format!(
+            "Incorrect signature in LSF file: expected {:08X}, got {:08X}",
+            LSF_SIGNATURE, signature
+        ));
+    }
+
+    let version = read_u32(&mut reader)?;
+    if !(MIN_BG3_VERSION..=MAX_KNOWN_BG3_VERSION).contains(&version) {
+        return Err(format!("Unsupported BG3 LSF version {}", version));
+    }
+
+    if version >= 5 {
+        let _engine_version = read_i64(&mut reader)?;
+    } else {
+        let _engine_version = read_i32(&mut reader)?;
+    }
+
+    let metadata = read_metadata(&mut reader, version)?;
+
+    let names_bytes = read_section(
+        &mut reader,
+        metadata.strings_size_on_disk,
+        metadata.strings_uncompressed_size,
+        metadata.compression_flags,
+        false,
+    )?;
+    let names = read_names(Cursor::new(names_bytes))?;
+
+    let nodes_bytes = read_section(
+        &mut reader,
+        metadata.nodes_size_on_disk,
+        metadata.nodes_uncompressed_size,
+        metadata.compression_flags,
+        true,
+    )?;
+    let nodes_section_len = nodes_bytes.len();
+    let has_adjacency = version >= 3 && metadata.metadata_format == LsfMetadataFormat::KeysAndAdjacency;
+    let mut nodes = read_nodes(Cursor::new(nodes_bytes), &names, has_adjacency)?;
+
+    let node_record_size = if has_adjacency { 16usize } else { 12 };
+    let expected_nodes_bytes = nodes.len() * node_record_size;
+    if expected_nodes_bytes != nodes_section_len {
+        return Err(format!(
+            "LSF node section size mismatch: expected {} bytes for {} nodes, but section contains {} bytes (possible truncation)",
+            expected_nodes_bytes, nodes.len(), nodes_section_len
+        ));
+    }
+
+    let attributes_bytes = read_section(
+        &mut reader,
+        metadata.attributes_size_on_disk,
+        metadata.attributes_uncompressed_size,
+        metadata.compression_flags,
+        true,
+    )?;
+    let attrs_section_len = attributes_bytes.len();
+    let attributes = if has_adjacency {
+        read_attributes_v3(Cursor::new(attributes_bytes), &names)?
+    } else {
+        read_attributes_v2(Cursor::new(attributes_bytes), &names)?
+    };
+
+    let attr_record_size = if has_adjacency { 16usize } else { 12 };
+    let expected_attrs_bytes = attributes.len() * attr_record_size;
+    if expected_attrs_bytes != attrs_section_len {
+        return Err(format!(
+            "LSF attribute section size mismatch: expected {} bytes for {} attributes, but section contains {} bytes (possible truncation)",
+            expected_attrs_bytes, attributes.len(), attrs_section_len
+        ));
+    }
+
+    let values = read_section(
+        &mut reader,
+        metadata.values_size_on_disk,
+        metadata.values_uncompressed_size,
+        metadata.compression_flags,
+        true,
+    )?;
+
+    if metadata.metadata_format == LsfMetadataFormat::KeysAndAdjacency {
+        let keys_bytes = read_section(
+            &mut reader,
+            metadata.keys_size_on_disk,
+            metadata.keys_uncompressed_size,
+            metadata.compression_flags,
+            true,
+        )?;
+        read_keys(Cursor::new(keys_bytes), &names, &mut nodes)?;
+    }
+
+    build_resource(&names, &nodes, &attributes, &values)
+}
+
+fn read_metadata<R: Read>(reader: &mut R, version: u32) -> Result<LsfMetadata, String> {
+    let strings_uncompressed_size = read_u32(reader)?;
+    let strings_size_on_disk = read_u32(reader)?;
+
+    let (keys_uncompressed_size, keys_size_on_disk) = if version >= 6 {
+        (read_u32(reader)?, read_u32(reader)?)
+    } else {
+        (0, 0)
+    };
+
+    let nodes_uncompressed_size = read_u32(reader)?;
+    let nodes_size_on_disk = read_u32(reader)?;
+    let attributes_uncompressed_size = read_u32(reader)?;
+    let attributes_size_on_disk = read_u32(reader)?;
+    let values_uncompressed_size = read_u32(reader)?;
+    let values_size_on_disk = read_u32(reader)?;
+    let compression_flags = read_u8(reader)?;
+    let _unknown2 = read_u8(reader)?;
+    let _unknown3 = read_u16(reader)?;
+    let metadata_format = LsfMetadataFormat::from_raw(read_u32(reader)?);
+
+    Ok(LsfMetadata {
+        strings_uncompressed_size,
+        strings_size_on_disk,
+        keys_uncompressed_size,
+        keys_size_on_disk,
+        nodes_uncompressed_size,
+        nodes_size_on_disk,
+        attributes_uncompressed_size,
+        attributes_size_on_disk,
+        values_uncompressed_size,
+        values_size_on_disk,
+        compression_flags,
+        metadata_format,
+    })
+}
+
+fn read_section<R: Read>(
+    reader: &mut R,
+    size_on_disk: u32,
+    uncompressed_size: u32,
+    compression_flags: u8,
+    allow_chunked: bool,
+) -> Result<Vec<u8>, String> {
+    if uncompressed_size as usize > MAX_SECTION_BYTES {
+        return Err(format!(
+            "LSF section exceeds size limit: {} bytes",
+            uncompressed_size
+        ));
+    }
+
+    if size_on_disk == 0 && uncompressed_size == 0 {
+        return Ok(Vec::new());
+    }
+
+    if size_on_disk == 0 {
+        let mut bytes = vec![0u8; uncompressed_size as usize];
+        reader.read_exact(&mut bytes)
+            .map_err(|e| format!("Failed to read uncompressed LSF section: {}", e))?;
+        return Ok(bytes);
+    }
+
+    let compression = PakCompression::from_method_bits(compression_flags);
+    let compressed_len = size_on_disk as usize;
+
+    let mut compressed = vec![0u8; compressed_len];
+    reader.read_exact(&mut compressed)
+        .map_err(|e| format!("Failed to read compressed LSF section: {}", e))?;
+
+    match compression {
+        PakCompression::None => Ok(compressed),
+        PakCompression::Zlib => {
+            let mut decoder = ZlibDecoder::new(Cursor::new(compressed));
+            let mut output = Vec::with_capacity(uncompressed_size as usize);
+            decoder.read_to_end(&mut output)
+                .map_err(|e| format!("Failed to decompress LSF zlib section: {}", e))?;
+            Ok(output)
+        }
+        PakCompression::Lz4 => {
+            if allow_chunked {
+                let mut decoder = FrameDecoder::new(Cursor::new(compressed));
+                let mut output = Vec::with_capacity(uncompressed_size as usize);
+                decoder.read_to_end(&mut output)
+                    .map_err(|e| format!("Failed to decompress LSF LZ4 frame section: {}", e))?;
+                Ok(output)
+            } else {
+                block::decompress(&compressed, uncompressed_size as usize)
+                    .map_err(|e| format!("Failed to decompress LSF LZ4 block section: {}", e))
+            }
+        }
+        PakCompression::Zstd => Err("Zstd-compressed LSF sections are not implemented yet".into()),
+        PakCompression::Unknown(value) => Err(format!("Unknown LSF compression method {}", value)),
+    }
+}
+
+fn read_names<R: Read>(mut reader: R) -> Result<Vec<Vec<String>>, String> {
+    let bucket_count = read_u32(&mut reader)? as usize;
+    if bucket_count > NAME_HASH_BUCKET_LIMIT {
+        return Err(format!("LSF name table bucket count too large: {}", bucket_count));
+    }
+
+    let mut names = Vec::with_capacity(bucket_count);
+    for _ in 0..bucket_count {
+        let string_count = read_u16(&mut reader)? as usize;
+        let mut bucket = Vec::with_capacity(string_count);
+        for _ in 0..string_count {
+            let len = read_u16(&mut reader)? as usize;
+            let mut bytes = vec![0u8; len];
+            reader.read_exact(&mut bytes)
+                .map_err(|e| format!("Failed to read LSF name bytes: {}", e))?;
+            let value = String::from_utf8(bytes)
+                .map_err(|e| format!("Invalid UTF-8 in LSF name table: {}", e))?;
+            bucket.push(value);
+        }
+        names.push(bucket);
+    }
+
+    Ok(names)
+}
+
+fn read_nodes<R: Read>(
+    mut reader: R,
+    names: &[Vec<String>],
+    long_nodes: bool,
+) -> Result<Vec<LsfNodeInfo>, String> {
+    let mut nodes = Vec::new();
+
+    loop {
+        let name_hash = match read_u32_opt(&mut reader)? {
+            Some(value) => value,
+            None => break,
+        };
+
+        let (parent_index, first_attribute_index) = if long_nodes {
+            let parent_index = read_i32(&mut reader)?;
+            let _next_sibling_index = read_i32(&mut reader)?;
+            let first_attribute_index = read_i32(&mut reader)?;
+            (parent_index, first_attribute_index)
+        } else {
+            let first_attribute_index = read_i32(&mut reader)?;
+            let parent_index = read_i32(&mut reader)?;
+            (parent_index, first_attribute_index)
+        };
+
+        let (name_index, name_offset) = split_name_hash(name_hash);
+        ensure_name_exists(names, name_index, name_offset)?;
+
+        nodes.push(LsfNodeInfo {
+            parent_index,
+            name_index,
+            name_offset,
+            first_attribute_index,
+            key_attribute: None,
+        });
+    }
+
+    Ok(nodes)
+}
+
+fn read_attributes_v2<R: Read>(
+    mut reader: R,
+    names: &[Vec<String>],
+) -> Result<Vec<LsfAttributeInfo>, String> {
+    let mut attributes: Vec<LsfAttributeInfo> = Vec::new();
+    let mut prev_attribute_refs: Vec<i32> = Vec::new();
+    let mut data_offset = 0u32;
+
+    loop {
+        let name_hash = match read_u32_opt(&mut reader)? {
+            Some(value) => value,
+            None => break,
+        };
+        let type_and_length = read_u32(&mut reader)?;
+        let node_index = read_i32(&mut reader)?;
+        let (name_index, name_offset) = split_name_hash(name_hash);
+        ensure_name_exists(names, name_index, name_offset)?;
+
+        let index = attributes.len() as i32;
+        let resolved = LsfAttributeInfo {
+            name_index,
+            name_offset,
+            type_id: type_and_length & 0x3f,
+            length: type_and_length >> 6,
+            data_offset,
+            next_attribute_index: -1,
+        };
+
+        let chain_index = node_index + 1;
+        if chain_index < 0 {
+            return Err(format!("Invalid negative node index {} in LSF attribute table", node_index));
+        }
+
+        let chain_index = chain_index as usize;
+        if prev_attribute_refs.len() <= chain_index {
+            prev_attribute_refs.resize(chain_index + 1, -1);
+        }
+        if prev_attribute_refs[chain_index] != -1 {
+            attributes[prev_attribute_refs[chain_index] as usize].next_attribute_index = index;
+        }
+        prev_attribute_refs[chain_index] = index;
+
+        data_offset = data_offset
+            .checked_add(resolved.length)
+            .ok_or_else(|| "LSF attribute value offset overflowed".to_string())?;
+        attributes.push(resolved);
+    }
+
+    Ok(attributes)
+}
+
+fn read_attributes_v3<R: Read>(
+    mut reader: R,
+    names: &[Vec<String>],
+) -> Result<Vec<LsfAttributeInfo>, String> {
+    let mut attributes = Vec::new();
+
+    loop {
+        let name_hash = match read_u32_opt(&mut reader)? {
+            Some(value) => value,
+            None => break,
+        };
+        let type_and_length = read_u32(&mut reader)?;
+        let next_attribute_index = read_i32(&mut reader)?;
+        let data_offset = read_u32(&mut reader)?;
+        let (name_index, name_offset) = split_name_hash(name_hash);
+        ensure_name_exists(names, name_index, name_offset)?;
+
+        attributes.push(LsfAttributeInfo {
+            name_index,
+            name_offset,
+            type_id: type_and_length & 0x3f,
+            length: type_and_length >> 6,
+            data_offset,
+            next_attribute_index,
+        });
+    }
+
+    Ok(attributes)
+}
+
+fn read_keys<R: Read>(
+    mut reader: R,
+    names: &[Vec<String>],
+    nodes: &mut [LsfNodeInfo],
+) -> Result<(), String> {
+    loop {
+        let node_index = match read_u32_opt(&mut reader)? {
+            Some(value) => value as usize,
+            None => break,
+        };
+        let key_name = read_u32(&mut reader)?;
+        let (name_index, name_offset) = split_name_hash(key_name);
+        let key = resolve_name(names, name_index, name_offset)?.to_string();
+
+        let node = nodes.get_mut(node_index)
+            .ok_or_else(|| format!("LSF key references missing node index {}", node_index))?;
+        node.key_attribute = Some(key);
+    }
+
+    Ok(())
+}
+
+fn build_resource(
+    names: &[Vec<String>],
+    nodes: &[LsfNodeInfo],
+    attributes: &[LsfAttributeInfo],
+    values: &[u8],
+) -> Result<LsxResource, String> {
+    let mut arena: Vec<ArenaNode> = Vec::with_capacity(nodes.len());
+    let mut region_roots = Vec::new();
+
+    for node in nodes {
+        let id = resolve_name(names, node.name_index, node.name_offset)?.to_string();
+        let attributes = read_node_attributes(names, node, attributes, values)?;
+        arena.push(ArenaNode {
+            id,
+            key_attribute: node.key_attribute.clone(),
+            attributes,
+            children: Vec::new(),
+        });
+        let index = arena.len() - 1;
+
+        if node.parent_index < 0 {
+            region_roots.push(index);
+        } else {
+            let parent = arena.get_mut(node.parent_index as usize)
+                .ok_or_else(|| format!("LSF node references missing parent index {}", node.parent_index))?;
+            parent.children.push(index);
+        }
+    }
+
+    let mut regions = Vec::with_capacity(region_roots.len());
+    for root_index in region_roots {
+        let root = arena_to_node(&arena, root_index);
+        let region_nodes = if root.id == "root" {
+            root.children.clone()
+        } else {
+            vec![root.clone()]
+        };
+        regions.push(LsxRegion {
+            id: root.id,
+            nodes: region_nodes,
+        });
+    }
+
+    Ok(LsxResource { regions })
+}
+
+fn read_node_attributes(
+    names: &[Vec<String>],
+    node: &LsfNodeInfo,
+    attributes: &[LsfAttributeInfo],
+    values: &[u8],
+) -> Result<Vec<LsxNodeAttribute>, String> {
+    let mut parsed = Vec::new();
+    let mut next_index = node.first_attribute_index;
+
+    while next_index != -1 {
+        let info = attributes.get(next_index as usize)
+            .ok_or_else(|| format!("LSF node references missing attribute index {}", next_index))?;
+        parsed.push(read_attribute_value(names, info, values)?);
+        next_index = info.next_attribute_index;
+    }
+
+    Ok(parsed)
+}
+
+fn read_attribute_value(
+    names: &[Vec<String>],
+    info: &LsfAttributeInfo,
+    values: &[u8],
+) -> Result<LsxNodeAttribute, String> {
+    let start = info.data_offset as usize;
+    let end = start
+        .checked_add(info.length as usize)
+        .ok_or_else(|| "LSF attribute slice overflowed".to_string())?;
+    if end > values.len() {
+        return Err(format!(
+            "LSF attribute value exceeds values section: {}..{} of {}",
+            start,
+            end,
+            values.len()
+        ));
+    }
+
+    let mut cursor = Cursor::new(&values[start..end]);
+    let attr_type = attribute_type_name(info.type_id)?;
+    let (value, handle, version, arguments) = read_typed_value(&mut cursor, info.type_id, info.length)?;
+
+    Ok(LsxNodeAttribute {
+        id: resolve_name(names, info.name_index, info.name_offset)?.to_string(),
+        attr_type: attr_type.to_string(),
+        value,
+        handle,
+        version,
+        arguments,
+    })
+}
+
+fn read_typed_value<R: Read>(
+    reader: &mut R,
+    type_id: u32,
+    length: u32,
+) -> Result<(String, Option<String>, Option<u16>, Vec<crate::models::LsxTranslatedFsArgument>), String> {
+    match type_id {
+        0 => Ok((String::new(), None, None, Vec::new())),
+        1 => Ok((read_u8(reader)?.to_string(), None, None, Vec::new())),
+        2 => Ok((read_i16(reader)?.to_string(), None, None, Vec::new())),
+        3 => Ok((read_u16(reader)?.to_string(), None, None, Vec::new())),
+        4 => Ok((read_i32(reader)?.to_string(), None, None, Vec::new())),
+        5 => Ok((read_u32(reader)?.to_string(), None, None, Vec::new())),
+        6 => Ok((read_f32(reader)?.to_string(), None, None, Vec::new())),
+        7 => Ok((read_f64(reader)?.to_string(), None, None, Vec::new())),
+        8 | 9 | 10 => Ok((read_i32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        11 | 12 | 13 => Ok((read_f32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        14 | 15 | 16 | 17 | 18 => Ok((read_f32_vector(reader, matrix_rows(type_id)? * matrix_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        19 => Ok((if read_u8(reader)? != 0 { "True" } else { "False" }.to_string(), None, None, Vec::new())),
+        20 | 21 | 22 | 23 => Ok((read_lsf_utf8_string(reader, length as usize)?, None, None, Vec::new())),
+        24 => Ok((read_u64(reader)?.to_string(), None, None, Vec::new())),
+        25 => Ok((bytes_to_hex(&read_bytes_exact(reader, length as usize)?), None, None, Vec::new())),
+        26 | 32 => Ok((read_i64(reader)?.to_string(), None, None, Vec::new())),
+        27 => Ok((read_i8(reader)?.to_string(), None, None, Vec::new())),
+        28 => {
+            let (handle, version) = read_translated_string_payload(reader)?;
+            Ok((handle.clone(), Some(handle), Some(version), Vec::new()))
+        }
+        29 | 30 => Ok((read_lsf_wide_string(reader, length as usize)?, None, None, Vec::new())),
+        31 => {
+            let bytes = read_bytes_exact(reader, 16)?;
+            let guid = read_lsf_guid(&bytes)?;
+            Ok((guid.to_string(), None, None, Vec::new()))
+        }
+        33 => {
+            let (handle, version) = read_translated_string_payload(reader)?;
+            let arg_count = read_i32(reader)?;
+            let mut arguments = Vec::with_capacity(arg_count.max(0) as usize);
+            for _ in 0..arg_count.max(0) {
+                let key_len = read_i32(reader)?;
+                let key = read_utf8_exact(reader, key_len.max(0) as usize)?;
+                let (nested_handle, nested_version) = read_translated_string_payload(reader)?;
+                let value_len = read_i32(reader)?;
+                let value = read_utf8_exact(reader, value_len.max(0) as usize)?;
+                arguments.push(crate::models::LsxTranslatedFsArgument {
+                    key,
+                    string: Box::new(LsxNodeAttribute {
+                        id: String::new(),
+                        attr_type: "TranslatedString".to_string(),
+                        value: nested_handle.clone(),
+                        handle: Some(nested_handle),
+                        version: Some(nested_version),
+                        arguments: Vec::new(),
+                    }),
+                    value,
+                });
+            }
+            Ok((handle.clone(), Some(handle), Some(version), arguments))
+        }
+        _ => Err(format!("Unsupported LSF attribute type {}", type_id)),
+    }
+}
+
+fn arena_to_node(arena: &[ArenaNode], index: usize) -> LsxNode {
+    let node = &arena[index];
+    LsxNode {
+        id: node.id.clone(),
+        key_attribute: node.key_attribute.clone(),
+        attributes: node.attributes.clone(),
+        children: node.children.iter().map(|child| arena_to_node(arena, *child)).collect(),
+        commented: false,
+    }
+}
+
+fn split_name_hash(raw: u32) -> (usize, usize) {
+    ((raw >> 16) as usize, (raw & 0xFFFF) as usize)
+}
+
+fn ensure_name_exists(names: &[Vec<String>], name_index: usize, name_offset: usize) -> Result<(), String> {
+    let _ = resolve_name(names, name_index, name_offset)?;
+    Ok(())
+}
+
+fn resolve_name(names: &[Vec<String>], name_index: usize, name_offset: usize) -> Result<&str, String> {
+    names
+        .get(name_index)
+        .and_then(|bucket| bucket.get(name_offset))
+        .map(|value| value.as_str())
+        .ok_or_else(|| format!("Missing LSF name table entry {}/{}", name_index, name_offset))
+}
+
+fn attribute_type_name(type_id: u32) -> Result<&'static str, String> {
+    match type_id {
+        0 => Ok("None"),
+        1 => Ok("uint8"),
+        2 => Ok("int16"),
+        3 => Ok("uint16"),
+        4 => Ok("int32"),
+        5 => Ok("uint32"),
+        6 => Ok("float"),
+        7 => Ok("double"),
+        8 => Ok("ivec2"),
+        9 => Ok("ivec3"),
+        10 => Ok("ivec4"),
+        11 => Ok("fvec2"),
+        12 => Ok("fvec3"),
+        13 => Ok("fvec4"),
+        14 => Ok("mat2x2"),
+        15 => Ok("mat3x3"),
+        16 => Ok("mat3x4"),
+        17 => Ok("mat4x3"),
+        18 => Ok("mat4x4"),
+        19 => Ok("bool"),
+        20 => Ok("string"),
+        21 => Ok("path"),
+        22 => Ok("FixedString"),
+        23 => Ok("LSString"),
+        24 => Ok("uint64"),
+        25 => Ok("ScratchBuffer"),
+        26 => Ok("old_int64"),
+        27 => Ok("int8"),
+        28 => Ok("TranslatedString"),
+        29 => Ok("WString"),
+        30 => Ok("LSWString"),
+        31 => Ok("guid"),
+        32 => Ok("int64"),
+        33 => Ok("TranslatedFSString"),
+        _ => Err(format!("Unknown LSF attribute type {}", type_id)),
+    }
+}
+
+fn vector_columns(type_id: u32) -> Result<usize, String> {
+    match type_id {
+        8 | 11 => Ok(2),
+        9 | 12 => Ok(3),
+        10 | 13 => Ok(4),
+        _ => Err(format!("Attribute type {} is not a vector", type_id)),
+    }
+}
+
+fn matrix_rows(type_id: u32) -> Result<usize, String> {
+    match type_id {
+        14 => Ok(2),
+        15 | 16 => Ok(3),
+        17 | 18 => Ok(4),
+        _ => Err(format!("Attribute type {} is not a matrix", type_id)),
+    }
+}
+
+fn matrix_columns(type_id: u32) -> Result<usize, String> {
+    match type_id {
+        14 => Ok(2),
+        15 | 17 => Ok(3),
+        16 | 18 => Ok(4),
+        _ => Err(format!("Attribute type {} is not a matrix", type_id)),
+    }
+}
+
+fn read_i32_vector<R: Read>(reader: &mut R, count: usize) -> Result<Vec<String>, String> {
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        values.push(read_i32(reader)?.to_string());
+    }
+    Ok(values)
+}
+
+fn read_f32_vector<R: Read>(reader: &mut R, count: usize) -> Result<Vec<String>, String> {
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        values.push(read_f32(reader)?.to_string());
+    }
+    Ok(values)
+}
+
+fn read_bytes_exact<R: Read>(reader: &mut R, len: usize) -> Result<Vec<u8>, String> {
+    let mut bytes = vec![0u8; len];
+    reader.read_exact(&mut bytes)
+        .map_err(|e| format!("Failed to read LSF bytes: {}", e))?;
+    Ok(bytes)
+}
+
+fn read_utf8_exact<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
+    let bytes = read_bytes_exact(reader, len)?;
+    String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 in LSF value: {}", e))
+}
+
+fn read_lsf_wide_string<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
+    let bytes = read_bytes_exact(reader, len)?;
+
+    let looks_utf16 = bytes.len() % 2 == 0
+        && bytes.chunks_exact(2).any(|chunk| chunk[1] == 0)
+        && !bytes.is_empty();
+
+    if looks_utf16 {
+        let mut words: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+
+        while words.last().copied() == Some(0) {
+            words.pop();
+        }
+
+        return String::from_utf16(&words)
+            .map_err(|e| format!("Invalid UTF-16 in LSF value: {}", e));
+    }
+
+    let trimmed_len = bytes.iter().rposition(|byte| *byte != 0).map(|index| index + 1).unwrap_or(0);
+    String::from_utf8(bytes[..trimmed_len].to_vec())
+        .map_err(|e| format!("Invalid UTF-8 in LSF wide string value: {}", e))
+}
+
+fn read_translated_string_payload<R: Read>(reader: &mut R) -> Result<(String, u16), String> {
+    let version = read_u16(reader)?;
+    let handle_len = read_i32(reader)?;
+    let handle = read_lsf_utf8_string(reader, handle_len.max(0) as usize)?;
+    Ok((handle, version))
+}
+
+fn read_lsf_utf8_string<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
+    let bytes = read_bytes_exact(reader, len)?;
+    let trimmed_len = bytes.iter().rposition(|byte| *byte != 0).map(|index| index + 1).unwrap_or(0);
+    String::from_utf8(bytes[..trimmed_len].to_vec())
+        .map_err(|e| format!("Invalid UTF-8 in LSF value: {}", e))
+}
+
+fn read_lsf_guid(bytes: &[u8]) -> Result<Uuid, String> {
+    if bytes.len() != 16 {
+        return Err(format!("Invalid UUID byte length {}", bytes.len()));
+    }
+
+    let mut swapped = [0u8; 16];
+    swapped.copy_from_slice(bytes);
+    for index in (8..16).step_by(2) {
+        swapped.swap(index, index + 1);
+    }
+
+    Ok(Uuid::from_bytes_le(swapped))
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push_str(&format!("{:02x}", byte));
+    }
+    output
+}
+
+fn read_u8<R: Read>(reader: &mut R) -> Result<u8, String> {
+    let mut buf = [0u8; 1];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read u8: {}", e))?;
+    Ok(buf[0])
+}
+
+fn read_i8<R: Read>(reader: &mut R) -> Result<i8, String> {
+    Ok(read_u8(reader)? as i8)
+}
+
+fn read_u16<R: Read>(reader: &mut R) -> Result<u16, String> {
+    let mut buf = [0u8; 2];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read u16: {}", e))?;
+    Ok(u16::from_le_bytes(buf))
+}
+
+fn read_i16<R: Read>(reader: &mut R) -> Result<i16, String> {
+    let mut buf = [0u8; 2];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read i16: {}", e))?;
+    Ok(i16::from_le_bytes(buf))
+}
+
+fn read_u32<R: Read>(reader: &mut R) -> Result<u32, String> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read u32: {}", e))?;
+    Ok(u32::from_le_bytes(buf))
+}
+
+fn read_u32_opt<R: Read>(reader: &mut R) -> Result<Option<u32>, String> {
+    let mut buf = [0u8; 4];
+    match reader.read_exact(&mut buf) {
+        Ok(()) => Ok(Some(u32::from_le_bytes(buf))),
+        Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
+        Err(err) => Err(format!("Failed to read u32: {}", err)),
+    }
+}
+
+fn read_i32<R: Read>(reader: &mut R) -> Result<i32, String> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read i32: {}", e))?;
+    Ok(i32::from_le_bytes(buf))
+}
+
+fn read_u64<R: Read>(reader: &mut R) -> Result<u64, String> {
+    let mut buf = [0u8; 8];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read u64: {}", e))?;
+    Ok(u64::from_le_bytes(buf))
+}
+
+fn read_i64<R: Read>(reader: &mut R) -> Result<i64, String> {
+    let mut buf = [0u8; 8];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read i64: {}", e))?;
+    Ok(i64::from_le_bytes(buf))
+}
+
+fn read_f32<R: Read>(reader: &mut R) -> Result<f32, String> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read f32: {}", e))?;
+    Ok(f32::from_le_bytes(buf))
+}
+
+fn read_f64<R: Read>(reader: &mut R) -> Result<f64, String> {
+    let mut buf = [0u8; 8];
+    reader.read_exact(&mut buf)
+        .map_err(|e| format!("Failed to read f64: {}", e))?;
+    Ok(f64::from_le_bytes(buf))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  LsxResource → binary LSF writer
+// ═══════════════════════════════════════════════════════════════════
+
+const WRITE_VERSION: u32 = 6;
+/// BG3 engine version: major=4, minor=0, rev=0, build=39 → packed as 4<<32|39
+const WRITE_ENGINE_VERSION: i64 = (4i64 << 32) | 39;
+
+/// Write an `LsxResource` as a BG3 binary `.lsf` / `.lsfx` file.
+///
+/// Uses version 6 with LZ4 compression and `KeysAndAdjacency` metadata format
+/// (matching vanilla output). The keys section is left empty.
+pub fn write_lsf<W: Write>(writer: &mut W, resource: &LsxResource) -> Result<(), String> {
+    // ── 1. Flatten the tree into parallel node/attribute/value arrays ───
+
+    let mut flat_nodes: Vec<FlatNode> = Vec::new();
+    let mut flat_attrs: Vec<FlatAttr> = Vec::new();
+    let mut values_buf: Vec<u8> = Vec::new();
+    let mut name_table = NameTable::new();
+
+    for region in &resource.regions {
+        // The region's nodes are the direct children of the region root.
+        // In binary LSF, region roots are top-level nodes (parent = -1).
+        // The reader's `build_resource` reconstructs regions from these roots:
+        //   - If root.id == "root", the root's children become region.nodes
+        //   - Otherwise, the root itself becomes the sole item in region.nodes
+        //
+        // So for writing, each region.nodes[i] should become a root node
+        // (parent = -1) that the reader will wrap back into a region.
+        for node in &region.nodes {
+            flatten_node(
+                node,
+                -1,
+                &mut flat_nodes,
+                &mut flat_attrs,
+                &mut values_buf,
+                &mut name_table,
+            )?;
+        }
+    }
+
+    // Wire up first_attribute_index for each node
+    for (attr_idx, attr) in flat_attrs.iter().enumerate() {
+        let node = &mut flat_nodes[attr.owner_node as usize];
+        if node.first_attribute_index == -1 {
+            node.first_attribute_index = attr_idx as i32;
+        }
+    }
+
+    // Build next_sibling_index for each node
+    let sibling_indices = build_sibling_indices(&flat_nodes);
+
+    // Build next_attribute_index chains
+    let next_attr_indices = build_next_attr_indices(&flat_attrs);
+
+    // ── 2. Serialize sections ──────────────────────────────────────
+
+    let names_raw = name_table.serialize();
+    let nodes_raw = serialize_nodes_v3(&flat_nodes, &sibling_indices);
+    let attrs_raw = serialize_attrs_v3(&flat_attrs, &next_attr_indices);
+    let values_raw = values_buf;
+
+    // ── 3. Compress sections (LZ4) ─────────────────────────────────
+
+    let names_disk = lz4_block_compress(&names_raw)?;
+    let nodes_disk = lz4_frame_compress(&nodes_raw)?;
+    let attrs_disk = lz4_frame_compress(&attrs_raw)?;
+    let values_disk = lz4_frame_compress(&values_raw)?;
+
+    let compression_flags: u8 = 2; // LZ4
+
+    // ── 4. Write header ────────────────────────────────────────────
+
+    write_u32(writer, LSF_SIGNATURE)?;
+    write_u32(writer, WRITE_VERSION)?;
+    write_i64(writer, WRITE_ENGINE_VERSION)?;
+
+    // Metadata
+    write_u32(writer, names_raw.len() as u32)?;   // strings_uncompressed
+    write_u32(writer, names_disk.len() as u32)?;   // strings_size_on_disk
+    write_u32(writer, 0)?;                         // keys_uncompressed (v6)
+    write_u32(writer, 0)?;                         // keys_size_on_disk (v6)
+    write_u32(writer, nodes_raw.len() as u32)?;    // nodes_uncompressed
+    write_u32(writer, nodes_disk.len() as u32)?;   // nodes_size_on_disk
+    write_u32(writer, attrs_raw.len() as u32)?;    // attrs_uncompressed
+    write_u32(writer, attrs_disk.len() as u32)?;   // attrs_size_on_disk
+    write_u32(writer, values_raw.len() as u32)?;   // values_uncompressed
+    write_u32(writer, values_disk.len() as u32)?;  // values_size_on_disk
+    write_u8_val(writer, compression_flags)?;       // compression_flags
+    write_u8_val(writer, 0)?;                       // unknown2
+    write_u16_val(writer, 0)?;                      // unknown3
+    write_u32(writer, 1)?;                          // metadata_format = KeysAndAdjacency
+
+    // Sections (order: names, nodes, attrs, values — keys omitted as size is 0)
+    writer.write_all(&names_disk).map_err(|e| format!("Failed to write names: {e}"))?;
+    writer.write_all(&nodes_disk).map_err(|e| format!("Failed to write nodes: {e}"))?;
+    writer.write_all(&attrs_disk).map_err(|e| format!("Failed to write attrs: {e}"))?;
+    writer.write_all(&values_disk).map_err(|e| format!("Failed to write values: {e}"))?;
+
+    Ok(())
+}
+
+pub fn write_lsf_file(path: &Path, resource: &LsxResource) -> Result<(), String> {
+    let file = std::fs::File::create(path)
+        .map_err(|e| format!("Failed to create {}: {}", path.display(), e))?;
+    let mut buf = std::io::BufWriter::new(file);
+    write_lsf(&mut buf, resource)?;
+    buf.flush().map_err(|e| format!("Failed to flush {}: {}", path.display(), e))?;
+    Ok(())
+}
+
+// ── Flattened representations ──────────────────────────────────────
+
+struct FlatNode {
+    name_hash: u32,
+    parent_index: i32,
+    first_attribute_index: i32,
+}
+
+struct FlatAttr {
+    name_hash: u32,
+    type_id: u32,
+    owner_node: i32,
+    data_offset: u32,
+    data_length: u32,
+}
+
+// ── Name table builder ─────────────────────────────────────────────
+
+struct NameTable {
+    /// All unique strings, in insertion order
+    strings: Vec<String>,
+    /// string → index in `strings`
+    index_map: std::collections::HashMap<String, usize>,
+}
+
+impl NameTable {
+    fn new() -> Self {
+        Self {
+            strings: Vec::new(),
+            index_map: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Intern a string and return its name_hash (bucket_index << 16 | offset).
+    /// All strings go into bucket 0 for simplicity.
+    fn intern(&mut self, name: &str) -> u32 {
+        if let Some(&idx) = self.index_map.get(name) {
+            return idx as u32; // bucket 0, offset = idx
+        }
+        let idx = self.strings.len();
+        self.strings.push(name.to_string());
+        self.index_map.insert(name.to_string(), idx);
+        idx as u32 // (0 << 16) | idx
+    }
+
+    /// Serialize as the name table binary format:
+    /// bucket_count (u32), then for each bucket: string_count (u16),
+    /// then for each string: len (u16) + bytes.
+    fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        // 1 bucket containing all strings
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&(self.strings.len() as u16).to_le_bytes());
+        for s in &self.strings {
+            let bytes = s.as_bytes();
+            buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            buf.extend_from_slice(bytes);
+        }
+        buf
+    }
+}
+
+// ── Tree flattening ────────────────────────────────────────────────
+
+fn flatten_node(
+    node: &LsxNode,
+    parent_index: i32,
+    flat_nodes: &mut Vec<FlatNode>,
+    flat_attrs: &mut Vec<FlatAttr>,
+    values_buf: &mut Vec<u8>,
+    names: &mut NameTable,
+) -> Result<(), String> {
+    let my_index = flat_nodes.len() as i32;
+    flat_nodes.push(FlatNode {
+        name_hash: names.intern(&node.id),
+        parent_index,
+        first_attribute_index: -1,
+    });
+
+    // Serialize attributes
+    for attr in &node.attributes {
+        let type_id = type_name_to_id(&attr.attr_type)?;
+        let data_offset = values_buf.len() as u32;
+        write_typed_value(values_buf, type_id, attr)?;
+        let data_length = values_buf.len() as u32 - data_offset;
+
+        flat_attrs.push(FlatAttr {
+            name_hash: names.intern(&attr.id),
+            type_id,
+            owner_node: my_index,
+            data_offset,
+            data_length,
+        });
+    }
+
+    // Recurse into children
+    for child in &node.children {
+        flatten_node(child, my_index, flat_nodes, flat_attrs, values_buf, names)?;
+    }
+
+    Ok(())
+}
+
+// ── Sibling / attribute chain builders ─────────────────────────────
+
+fn build_sibling_indices(nodes: &[FlatNode]) -> Vec<i32> {
+    let mut result = vec![-1i32; nodes.len()];
+    // Group children by parent, then link each child to the next one
+    let mut children_of: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
+    for (i, node) in nodes.iter().enumerate() {
+        if node.parent_index >= 0 {
+            children_of.entry(node.parent_index).or_default().push(i);
+        }
+    }
+    for children in children_of.values() {
+        for window in children.windows(2) {
+            result[window[0]] = window[1] as i32;
+        }
+    }
+    result
+}
+
+fn build_next_attr_indices(attrs: &[FlatAttr]) -> Vec<i32> {
+    let mut result = vec![-1i32; attrs.len()];
+    // Group attributes by owner node, link sequentially
+    let mut attrs_of: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
+    for (i, attr) in attrs.iter().enumerate() {
+        attrs_of.entry(attr.owner_node).or_default().push(i);
+    }
+    for attrs in attrs_of.values() {
+        for window in attrs.windows(2) {
+            result[window[0]] = window[1] as i32;
+        }
+    }
+    result
+}
+
+// ── Section serializers ────────────────────────────────────────────
+
+fn serialize_nodes_v3(nodes: &[FlatNode], siblings: &[i32]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(nodes.len() * 16);
+    for (i, node) in nodes.iter().enumerate() {
+        buf.extend_from_slice(&node.name_hash.to_le_bytes());
+        buf.extend_from_slice(&node.parent_index.to_le_bytes());
+        buf.extend_from_slice(&siblings[i].to_le_bytes());
+        buf.extend_from_slice(&node.first_attribute_index.to_le_bytes());
+    }
+    buf
+}
+
+fn serialize_attrs_v3(attrs: &[FlatAttr], next_indices: &[i32]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(attrs.len() * 16);
+    for (i, attr) in attrs.iter().enumerate() {
+        let type_and_length = (attr.type_id & 0x3f) | (attr.data_length << 6);
+        buf.extend_from_slice(&attr.name_hash.to_le_bytes());
+        buf.extend_from_slice(&type_and_length.to_le_bytes());
+        buf.extend_from_slice(&next_indices[i].to_le_bytes());
+        buf.extend_from_slice(&attr.data_offset.to_le_bytes());
+    }
+    buf
+}
+
+// ── Value serializer ───────────────────────────────────────────────
+
+fn write_typed_value(buf: &mut Vec<u8>, type_id: u32, attr: &LsxNodeAttribute) -> Result<(), String> {
+    match type_id {
+        0 => {} // None
+        1 => { // uint8
+            let v: u8 = attr.value.parse().map_err(|e| format!("uint8 parse: {e}"))?;
+            buf.push(v);
+        }
+        2 => { // int16
+            let v: i16 = attr.value.parse().map_err(|e| format!("int16 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        3 => { // uint16
+            let v: u16 = attr.value.parse().map_err(|e| format!("uint16 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        4 => { // int32
+            let v: i32 = attr.value.parse().map_err(|e| format!("int32 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        5 => { // uint32
+            let v: u32 = attr.value.parse().map_err(|e| format!("uint32 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        6 => { // float
+            let v: f32 = attr.value.parse().map_err(|e| format!("float parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        7 => { // double
+            let v: f64 = attr.value.parse().map_err(|e| format!("double parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        8 | 9 | 10 => { // ivec2/3/4
+            let cols = match type_id { 8 => 2, 9 => 3, _ => 4 };
+            write_i32_values(buf, &attr.value, cols)?;
+        }
+        11 | 12 | 13 => { // fvec2/3/4
+            let cols = match type_id { 11 => 2, 12 => 3, _ => 4 };
+            write_f32_values(buf, &attr.value, cols)?;
+        }
+        14 | 15 | 16 | 17 | 18 => { // matrices
+            let total = match type_id {
+                14 => 4,  // 2x2
+                15 => 9,  // 3x3
+                16 => 12, // 3x4
+                17 => 12, // 4x3
+                _ => 16,  // 4x4
+            };
+            write_f32_values(buf, &attr.value, total)?;
+        }
+        19 => { // bool
+            let v: u8 = if attr.value == "True" || attr.value == "true" || attr.value == "1" { 1 } else { 0 };
+            buf.push(v);
+        }
+        20 | 21 | 22 | 23 => { // string / path / FixedString / LSString
+            write_lsf_string(buf, &attr.value);
+        }
+        24 => { // uint64
+            let v: u64 = attr.value.parse().map_err(|e| format!("uint64 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        25 => { // ScratchBuffer
+            let bytes = hex_to_bytes(&attr.value)?;
+            buf.extend_from_slice(&bytes);
+        }
+        26 | 32 => { // old_int64 / int64
+            let v: i64 = attr.value.parse().map_err(|e| format!("int64 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        27 => { // int8
+            let v: i8 = attr.value.parse().map_err(|e| format!("int8 parse: {e}"))?;
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        28 => { // TranslatedString
+            let handle = attr.handle.as_deref().unwrap_or(&attr.value);
+            let version = attr.version.unwrap_or(1);
+            write_translated_string(buf, handle, version);
+        }
+        29 | 30 => { // WString / LSWString (UTF-16 LE)
+            write_lsf_wide(buf, &attr.value);
+        }
+        31 => { // guid
+            write_lsf_guid_bytes(buf, &attr.value)?;
+        }
+        33 => { // TranslatedFSString
+            let handle = attr.handle.as_deref().unwrap_or(&attr.value);
+            let version = attr.version.unwrap_or(1);
+            write_translated_string(buf, handle, version);
+            let arg_count = attr.arguments.len() as i32;
+            buf.extend_from_slice(&arg_count.to_le_bytes());
+            for arg in &attr.arguments {
+                let key_bytes = arg.key.as_bytes();
+                buf.extend_from_slice(&(key_bytes.len() as i32).to_le_bytes());
+                buf.extend_from_slice(key_bytes);
+                let nested_handle = arg.string.handle.as_deref().unwrap_or(&arg.string.value);
+                let nested_version = arg.string.version.unwrap_or(1);
+                write_translated_string(buf, nested_handle, nested_version);
+                let val_bytes = arg.value.as_bytes();
+                buf.extend_from_slice(&(val_bytes.len() as i32).to_le_bytes());
+                buf.extend_from_slice(val_bytes);
+            }
+        }
+        _ => return Err(format!("Unsupported write type_id {type_id}")),
+    }
+    Ok(())
+}
+
+fn write_lsf_string(buf: &mut Vec<u8>, value: &str) {
+    let bytes = value.as_bytes();
+    buf.extend_from_slice(bytes);
+    buf.push(0); // null terminator
+}
+
+fn write_lsf_wide(buf: &mut Vec<u8>, value: &str) {
+    for ch in value.encode_utf16() {
+        buf.extend_from_slice(&ch.to_le_bytes());
+    }
+    buf.extend_from_slice(&0u16.to_le_bytes()); // null terminator
+}
+
+fn write_translated_string(buf: &mut Vec<u8>, handle: &str, version: u16) {
+    buf.extend_from_slice(&version.to_le_bytes());
+    let handle_bytes = handle.as_bytes();
+    buf.extend_from_slice(&(handle_bytes.len() as i32).to_le_bytes());
+    buf.extend_from_slice(handle_bytes);
+}
+
+fn write_lsf_guid_bytes(buf: &mut Vec<u8>, value: &str) -> Result<(), String> {
+    let uuid = Uuid::parse_str(value)
+        .map_err(|e| format!("Invalid GUID '{}': {}", value, e))?;
+    let mut bytes = uuid.to_bytes_le();
+    // Reverse the byte-pair swap done in read_lsf_guid
+    for index in (8..16).step_by(2) {
+        bytes.swap(index, index + 1);
+    }
+    buf.extend_from_slice(&bytes);
+    Ok(())
+}
+
+fn write_i32_values(buf: &mut Vec<u8>, value: &str, count: usize) -> Result<(), String> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    if parts.len() != count {
+        return Err(format!("Expected {} int components, got {}", count, parts.len()));
+    }
+    for p in parts {
+        let v: i32 = p.parse().map_err(|e| format!("ivec parse: {e}"))?;
+        buf.extend_from_slice(&v.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn write_f32_values(buf: &mut Vec<u8>, value: &str, count: usize) -> Result<(), String> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    if parts.len() != count {
+        return Err(format!("Expected {} float components, got {}", count, parts.len()));
+    }
+    for p in parts {
+        let v: f32 = p.parse().map_err(|e| format!("fvec parse: {e}"))?;
+        buf.extend_from_slice(&v.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&hex[i..i + 2], 16)
+                .map_err(|e| format!("Invalid hex in ScratchBuffer: {e}"))
+        })
+        .collect()
+}
+
+fn type_name_to_id(type_name: &str) -> Result<u32, String> {
+    match type_name {
+        "None" => Ok(0),
+        "uint8" => Ok(1),
+        "int16" => Ok(2),
+        "uint16" => Ok(3),
+        "int32" => Ok(4),
+        "uint32" => Ok(5),
+        "float" => Ok(6),
+        "double" => Ok(7),
+        "ivec2" => Ok(8),
+        "ivec3" => Ok(9),
+        "ivec4" => Ok(10),
+        "fvec2" => Ok(11),
+        "fvec3" => Ok(12),
+        "fvec4" => Ok(13),
+        "mat2x2" => Ok(14),
+        "mat3x3" => Ok(15),
+        "mat3x4" => Ok(16),
+        "mat4x3" => Ok(17),
+        "mat4x4" => Ok(18),
+        "bool" => Ok(19),
+        "string" => Ok(20),
+        "path" => Ok(21),
+        "FixedString" => Ok(22),
+        "LSString" => Ok(23),
+        "uint64" => Ok(24),
+        "ScratchBuffer" => Ok(25),
+        "old_int64" => Ok(26),
+        "int8" => Ok(27),
+        "TranslatedString" => Ok(28),
+        "WString" => Ok(29),
+        "LSWString" => Ok(30),
+        "guid" => Ok(31),
+        "int64" => Ok(32),
+        "TranslatedFSString" => Ok(33),
+        _ => Err(format!("Unknown LSX attribute type '{type_name}'")),
+    }
+}
+
+// ── Compression helpers ────────────────────────────────────────────
+
+fn lz4_block_compress(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(block::compress(data))
+}
+
+fn lz4_frame_compress(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
+    encoder
+        .write_all(data)
+        .map_err(|e| format!("LZ4 frame compress write: {e}"))?;
+    encoder
+        .finish()
+        .map_err(|e| format!("LZ4 frame compress finish: {e}"))
+}
+
+// ── Write helpers ──────────────────────────────────────────────────
+
+fn write_u8_val<W: Write>(writer: &mut W, val: u8) -> Result<(), String> {
+    writer
+        .write_all(&[val])
+        .map_err(|e| format!("Failed to write u8: {e}"))
+}
+
+fn write_u16_val<W: Write>(writer: &mut W, val: u16) -> Result<(), String> {
+    writer
+        .write_all(&val.to_le_bytes())
+        .map_err(|e| format!("Failed to write u16: {e}"))
+}
+
+fn write_u32<W: Write>(writer: &mut W, val: u32) -> Result<(), String> {
+    writer
+        .write_all(&val.to_le_bytes())
+        .map_err(|e| format!("Failed to write u32: {e}"))
+}
+
+fn write_i64<W: Write>(writer: &mut W, val: i64) -> Result<(), String> {
+    writer
+        .write_all(&val.to_le_bytes())
+        .map_err(|e| format!("Failed to write i64: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pak::PakReader;
+    use crate::parsers::lsx::parse_lsx_resource;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_synthetic_uncompressed_v6_lsf() {
+        let bytes = build_test_lsf();
+        let resource = parse_lsf(Cursor::new(bytes)).unwrap();
+
+        assert_eq!(resource.regions.len(), 1);
+        assert_eq!(resource.regions[0].id, "Progressions");
+        assert_eq!(resource.regions[0].nodes.len(), 1);
+
+        let region_root = &resource.regions[0].nodes[0];
+        assert_eq!(region_root.id, "Progressions");
+        assert_eq!(region_root.children.len(), 1);
+
+        let entry = &region_root.children[0];
+        assert_eq!(entry.id, "Progression");
+        assert_eq!(entry.attributes.len(), 2);
+        assert_eq!(entry.attributes[0].id, "UUID");
+        assert_eq!(entry.attributes[1].id, "Name");
+        assert_eq!(entry.attributes[1].value, "Barbarian");
+    }
+
+    #[test]
+    fn parses_synthetic_uncompressed_v3_lsf() {
+        let bytes = build_test_lsf_v3();
+        let resource = parse_lsf(Cursor::new(bytes)).unwrap();
+
+        assert_eq!(resource.regions.len(), 1);
+        assert_eq!(resource.regions[0].id, "Progressions");
+        assert_eq!(resource.regions[0].nodes.len(), 1);
+
+        let region_root = &resource.regions[0].nodes[0];
+        assert_eq!(region_root.id, "Progressions");
+        assert_eq!(region_root.children.len(), 1);
+
+        let entry = &region_root.children[0];
+        assert_eq!(entry.id, "Progression");
+        assert_eq!(entry.attributes.len(), 2);
+        assert_eq!(entry.attributes[0].id, "UUID");
+        assert_eq!(entry.attributes[1].id, "Name");
+        assert_eq!(entry.attributes[1].value, "Barbarian");
+    }
+
+    #[test]
+    fn parses_synthetic_uncompressed_v2_lsf() {
+        let bytes = build_test_lsf_v2();
+        let resource = parse_lsf(Cursor::new(bytes)).unwrap();
+
+        assert_eq!(resource.regions.len(), 1);
+        assert_eq!(resource.regions[0].id, "Progressions");
+        assert_eq!(resource.regions[0].nodes.len(), 1);
+
+        let region_root = &resource.regions[0].nodes[0];
+        assert_eq!(region_root.id, "Progressions");
+        assert_eq!(region_root.children.len(), 1);
+
+        let entry = &region_root.children[0];
+        assert_eq!(entry.id, "Progression");
+        assert_eq!(entry.attributes.len(), 2);
+        assert_eq!(entry.attributes[0].id, "UUID");
+        assert_eq!(entry.attributes[1].id, "Name");
+        assert_eq!(entry.attributes[1].value, "Barbarian");
+    }
+
+    #[test]
+    #[ignore = "requires workspace-root Gustav.pak copied into the repository"]
+    fn parses_real_workspace_lsf_from_gustav_pak() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let pak_path = root.join("Gustav.pak");
+        assert!(pak_path.exists(), "missing {}", pak_path.display());
+
+        let reader = PakReader::open(&pak_path).unwrap();
+        for entry in reader.entries() {
+            if entry.is_deleted() || !entry.path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lsf")) {
+                continue;
+            }
+
+            let mut pak_entry_reader = reader.open_entry(entry).unwrap();
+            let bytes = pak_entry_reader.read_to_end_with_limit(64 * 1024 * 1024).unwrap();
+            let resource = parse_lsf(Cursor::new(bytes)).unwrap();
+            if resource.regions.is_empty() {
+                continue;
+            }
+
+            println!(
+                "LSF_SAMPLE entry_path={} regions={} first_region={} top_nodes={}",
+                entry.path.as_str(),
+                resource.regions.len(),
+                resource.regions[0].id,
+                resource.regions[0].nodes.len()
+            );
+            return;
+        }
+
+        panic!("expected at least one .lsf entry in Gustav.pak");
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Gustav Tags .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_gustav_tag_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &["UnpackedData", "Gustav", "Public", "Gustav", "Tags", "3549f056-0826-45ee-a8ae-351449b70fe3.lsf"],
+            "LSF_TAG_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Gustav Flags .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_gustav_flag_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &["UnpackedData", "Gustav", "Public", "Gustav", "Flags", "000dcdd7-84cc-916d-40bc-cb04031130a9.lsf"],
+            "LSF_FLAG_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Gustav MultiEffectInfos .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_multieffectinfos_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Gustav",
+                "Public",
+                "Gustav",
+                "MultiEffectInfos",
+                "0ba6bf24-13ee-4819-8aad-fc9f153d4761.lsf",
+            ],
+            "LSF_MULTIEFFECTINFOS_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked non-dialog .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_metadata_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &["UnpackedData", "DiceSet01", "Mods", "DiceSet_01", "GUI", "metadata.lsf"],
+            "LSF_METADATA_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Gustav CharacterVisuals merged .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_charactervisuals_merged_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Gustav",
+                "Public",
+                "Gustav",
+                "Content",
+                "[PAK]_CharacterVisuals",
+                "_merged.lsf",
+            ],
+            "LSF_CHARACTERVISUALS_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Gustav RootTemplates merged .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_roottemplates_merged_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Gustav",
+                "Public",
+                "Gustav",
+                "RootTemplates",
+                "_merged.lsf",
+            ],
+            "LSF_ROOTTEMPLATES_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Engine Timeline config .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_timeline_systemconfig_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Engine",
+                "Public",
+                "Engine",
+                "Timeline",
+                "SystemConfig.lsf",
+            ],
+            "LSF_TIMELINE_SYSTEMCONFIG_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Engine Timeline material group .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_timeline_materialgroup_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Engine",
+                "Public",
+                "Engine",
+                "Timeline",
+                "MaterialGroups",
+                "0055e802-a9e0-473c-9848-1b1d7fc998a2.lsf",
+            ],
+            "LSF_TIMELINE_MATERIALGROUP_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked merged scenery .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_level_scenery_merged_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Gustav",
+                "Mods",
+                "Gustav",
+                "Levels",
+                "BGO_WyrmsCrossing_C",
+                "Scenery",
+                "_merged.lsf",
+            ],
+            "LSF_SCENERY_MERGED_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Game [PAK]_UI .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_game_ui_resource_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Game",
+                "Public",
+                "Game",
+                "Content",
+                "Assets",
+                "[PAK]_UI",
+                "f0613a03-6ebc-4d7d-a2c4-5a5fddd5b49a.lsf",
+            ],
+            "LSF_GAME_UI_RESOURCE_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires unpacked Story Dialog .lsf/.lsx files in the workspace"]
+    fn compare_unpacked_story_dialog_lsf_against_sibling_lsx() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        compare_unpacked_pair(
+            &root,
+            &[
+                "UnpackedData",
+                "Gustav",
+                "Mods",
+                "Gustav",
+                "Story",
+                "DialogsBinary",
+                "Act1",
+                "Chapel",
+                "CHA_BronzePlaque_AD_FL1Mural.lsf",
+            ],
+            "LSF_DIALOG_COMPARE",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires the known unpacked LSF/LSX parity sample set in the workspace"]
+    fn compare_known_unpacked_lsf_pairs() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+
+        let cases: [(&str, &[&str]); 10] = [
+            (
+                "LSF_TAG_COMPARE",
+                &["UnpackedData", "Gustav", "Public", "Gustav", "Tags", "3549f056-0826-45ee-a8ae-351449b70fe3.lsf"],
+            ),
+            (
+                "LSF_FLAG_COMPARE",
+                &["UnpackedData", "Gustav", "Public", "Gustav", "Flags", "000dcdd7-84cc-916d-40bc-cb04031130a9.lsf"],
+            ),
+            (
+                "LSF_MULTIEFFECTINFOS_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Gustav",
+                    "Public",
+                    "Gustav",
+                    "MultiEffectInfos",
+                    "0ba6bf24-13ee-4819-8aad-fc9f153d4761.lsf",
+                ],
+            ),
+            (
+                "LSF_METADATA_COMPARE",
+                &["UnpackedData", "DiceSet01", "Mods", "DiceSet_01", "GUI", "metadata.lsf"],
+            ),
+            (
+                "LSF_CHARACTERVISUALS_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Gustav",
+                    "Public",
+                    "Gustav",
+                    "Content",
+                    "[PAK]_CharacterVisuals",
+                    "_merged.lsf",
+                ],
+            ),
+            (
+                "LSF_ROOTTEMPLATES_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Gustav",
+                    "Public",
+                    "Gustav",
+                    "RootTemplates",
+                    "_merged.lsf",
+                ],
+            ),
+            (
+                "LSF_TIMELINE_SYSTEMCONFIG_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Engine",
+                    "Public",
+                    "Engine",
+                    "Timeline",
+                    "SystemConfig.lsf",
+                ],
+            ),
+            (
+                "LSF_TIMELINE_MATERIALGROUP_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Engine",
+                    "Public",
+                    "Engine",
+                    "Timeline",
+                    "MaterialGroups",
+                    "0055e802-a9e0-473c-9848-1b1d7fc998a2.lsf",
+                ],
+            ),
+            (
+                "LSF_SCENERY_MERGED_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Gustav",
+                    "Mods",
+                    "Gustav",
+                    "Levels",
+                    "BGO_WyrmsCrossing_C",
+                    "Scenery",
+                    "_merged.lsf",
+                ],
+            ),
+            (
+                "LSF_DIALOG_COMPARE",
+                &[
+                    "UnpackedData",
+                    "Gustav",
+                    "Mods",
+                    "Gustav",
+                    "Story",
+                    "DialogsBinary",
+                    "Act1",
+                    "Chapel",
+                    "CHA_BronzePlaque_AD_FL1Mural.lsf",
+                ],
+            ),
+        ];
+
+        for (label, parts) in cases {
+            compare_unpacked_pair(&root, parts, label);
+        }
+    }
+
+    fn compare_unpacked_pair(root: &Path, relative_parts: &[&str], label: &str) {
+        let mut lsf_path = root.to_path_buf();
+        for part in relative_parts {
+            lsf_path.push(part);
+        }
+        let lsx_path = lsf_path.with_extension("lsx");
+
+        assert!(lsf_path.exists(), "missing {}", lsf_path.display());
+        assert!(lsx_path.exists(), "missing {}", lsx_path.display());
+
+        let native_bytes = fs::read(&lsf_path).unwrap();
+        let native_resource = parse_lsf(Cursor::new(native_bytes)).unwrap();
+        let sibling_lsx = fs::read_to_string(&lsx_path).unwrap();
+        let sibling_resource = parse_lsx_resource(&sibling_lsx).unwrap();
+
+        let native_points = collect_resource_points(&native_resource);
+        let sibling_points = collect_resource_points(&sibling_resource);
+
+        let missing_in_native = multiset_difference(&sibling_points, &native_points);
+        let missing_in_lsx = multiset_difference(&native_points, &sibling_points);
+
+        println!(
+            "{} file={} native_points={} sibling_points={} missing_in_native={} missing_in_lsx={}",
+            label,
+            lsf_path.display(),
+            total_point_count(&native_points),
+            total_point_count(&sibling_points),
+            total_point_count(&missing_in_native),
+            total_point_count(&missing_in_lsx)
+        );
+
+        for point in expand_points(&missing_in_native).into_iter().take(20) {
+            println!("{}_MISSING_IN_NATIVE {}", label, point);
+        }
+        for point in expand_points(&missing_in_lsx).into_iter().take(20) {
+            println!("{}_MISSING_IN_LSX {}", label, point);
+        }
+
+        assert!(!native_points.is_empty(), "expected native value inventory for {}", lsf_path.display());
+        assert!(!sibling_points.is_empty(), "expected sibling LSX value inventory for {}", lsx_path.display());
+        assert!(
+            missing_in_native.is_empty() && missing_in_lsx.is_empty(),
+            "{} mismatch for {}: missing_in_native={} missing_in_lsx={}",
+            label,
+            lsf_path.display(),
+            total_point_count(&missing_in_native),
+            total_point_count(&missing_in_lsx)
+        );
+    }
+
+    fn collect_resource_points(resource: &LsxResource) -> BTreeMap<String, usize> {
+        let mut points = BTreeMap::new();
+        for region in &resource.regions {
+            add_point(&mut points, format!("region|{}", region.id));
+            for node in &region.nodes {
+                collect_node_points(&mut points, node);
+            }
+        }
+        points
+    }
+
+    fn collect_node_points(points: &mut BTreeMap<String, usize>, node: &LsxNode) {
+        add_point(points, format!("node|{}", node.id));
+        if let Some(key) = &node.key_attribute {
+            add_point(points, format!("node-key|{}|{}", node.id, key));
+        }
+
+        for attr in &node.attributes {
+            let normalized_value = normalize_inventory_value(&attr.value);
+            add_point(
+                points,
+                format!(
+                    "attr|{}|{}|{}|handle={}|version={}",
+                    node.id,
+                    attr.id,
+                    normalized_value,
+                    attr.handle.as_deref().map(normalize_inventory_value).as_deref().unwrap_or(""),
+                    attr.version.map(|value| value.to_string()).as_deref().unwrap_or("")
+                ),
+            );
+
+            for (index, argument) in attr.arguments.iter().enumerate() {
+                let normalized_argument_value = normalize_inventory_value(&argument.value);
+                let normalized_string_value = normalize_inventory_value(&argument.string.value);
+                add_point(
+                    points,
+                    format!(
+                        "arg|{}|{}|{}|{}|{}|handle={}|version={}|{}",
+                        node.id,
+                        attr.id,
+                        index,
+                        argument.key,
+                        normalized_argument_value,
+                        normalized_string_value,
+                        argument.string.handle.as_deref().map(normalize_inventory_value).as_deref().unwrap_or(""),
+                        argument
+                            .string
+                            .version
+                            .map(|value| value.to_string())
+                            .as_deref()
+                            .unwrap_or("")
+                    ),
+                );
+            }
+        }
+
+        for child in &node.children {
+            collect_node_points(points, child);
+        }
+    }
+
+    fn add_point(points: &mut BTreeMap<String, usize>, point: String) {
+        *points.entry(point).or_insert(0) += 1;
+    }
+
+    fn normalize_inventory_value(value: &str) -> String {
+        let unescaped = xml_unescape(value);
+        let collapsed = unescaped.split_whitespace().collect::<Vec<_>>().join(" ");
+        if collapsed.contains(' ') {
+            let normalized_tokens: Vec<String> = collapsed
+                .split(' ')
+                .filter(|token| !token.is_empty())
+                .map(normalize_numeric_token)
+                .collect();
+            return normalized_tokens.join(" ");
+        }
+
+        normalize_numeric_token(&collapsed)
+    }
+
+    fn normalize_numeric_token(token: &str) -> String {
+        match token.parse::<f64>() {
+            Ok(number) => format_float_for_inventory(number),
+            Err(_) => token.to_string(),
+        }
+    }
+
+    fn format_float_for_inventory(number: f64) -> String {
+        if number == 0.0 {
+            return "0".to_string();
+        }
+
+        let magnitude = number.abs().log10().floor();
+        let scale = 10f64.powf(6.0 - magnitude);
+        let rounded = (number * scale).round() / scale;
+        rounded.to_string()
+    }
+
+    fn xml_unescape(value: &str) -> String {
+        value
+            .replace("&#xD;&#xA;", " ")
+            .replace("&#13;&#10;", " ")
+            .replace("\r\n", " ")
+            .replace('\n', " ")
+            .replace('\r', " ")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+    }
+
+    fn multiset_difference(
+        left: &BTreeMap<String, usize>,
+        right: &BTreeMap<String, usize>,
+    ) -> BTreeMap<String, usize> {
+        let mut diff = BTreeMap::new();
+        for (point, left_count) in left {
+            let right_count = right.get(point).copied().unwrap_or(0);
+            if *left_count > right_count {
+                diff.insert(point.clone(), left_count - right_count);
+            }
+        }
+        diff
+    }
+
+    fn total_point_count(points: &BTreeMap<String, usize>) -> usize {
+        points.values().sum()
+    }
+
+    fn expand_points(points: &BTreeMap<String, usize>) -> Vec<String> {
+        let mut expanded = Vec::new();
+        for (point, count) in points {
+            for _ in 0..*count {
+                expanded.push(point.clone());
+            }
+        }
+        expanded
+    }
+
+    fn build_test_lsf() -> Vec<u8> {
+        let names = build_names_section(&[
+            &["Progressions", "Progression", "UUID", "Name"],
+        ]);
+
+        let mut values = Vec::new();
+        let uuid_offset = values.len() as u32;
+        values.extend_from_slice(Uuid::parse_str("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb").unwrap().to_bytes_le().as_slice());
+        let name_offset = values.len() as u32;
+        values.extend_from_slice(b"Barbarian");
+
+        let mut attributes = Vec::new();
+        attributes.extend_from_slice(&make_attr_v3(0, 2, 31, 16, 1, uuid_offset));
+        attributes.extend_from_slice(&make_attr_v3(0, 3, 23, 9, -1, name_offset));
+
+        let mut nodes = Vec::new();
+        nodes.extend_from_slice(&make_node_v3(0, 0, -1, -1, -1));
+        nodes.extend_from_slice(&make_node_v3(0, 1, 0, -1, 0));
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"LSOF");
+        bytes.extend_from_slice(&6u32.to_le_bytes());
+        bytes.extend_from_slice(&0x0002_0000_0000_0000i64.to_le_bytes());
+        bytes.extend_from_slice(&(names.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(attributes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(values.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.push(0);
+        bytes.push(0);
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&names);
+        bytes.extend_from_slice(&nodes);
+        bytes.extend_from_slice(&attributes);
+        bytes.extend_from_slice(&values);
+        bytes
+    }
+
+    fn build_test_lsf_v3() -> Vec<u8> {
+        let names = build_names_section(&[
+            &["Progressions", "Progression", "UUID", "Name"],
+        ]);
+
+        let mut values = Vec::new();
+        let uuid_offset = values.len() as u32;
+        values.extend_from_slice(Uuid::parse_str("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb").unwrap().to_bytes_le().as_slice());
+        let name_offset = values.len() as u32;
+        values.extend_from_slice(b"Barbarian");
+
+        let mut attributes = Vec::new();
+        attributes.extend_from_slice(&make_attr_v3(0, 2, 31, 16, 1, uuid_offset));
+        attributes.extend_from_slice(&make_attr_v3(0, 3, 23, 9, -1, name_offset));
+
+        let mut nodes = Vec::new();
+        nodes.extend_from_slice(&make_node_v3(0, 0, -1, -1, -1));
+        nodes.extend_from_slice(&make_node_v3(0, 1, 0, -1, 0));
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"LSOF");
+        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(&(names.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(attributes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(values.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.push(0);
+        bytes.push(0);
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&names);
+        bytes.extend_from_slice(&nodes);
+        bytes.extend_from_slice(&attributes);
+        bytes.extend_from_slice(&values);
+        bytes
+    }
+
+    fn build_test_lsf_v2() -> Vec<u8> {
+        let names = build_names_section(&[
+            &["Progressions", "Progression", "UUID", "Name"],
+        ]);
+
+        let mut values = Vec::new();
+        values.extend_from_slice(Uuid::parse_str("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb").unwrap().to_bytes_le().as_slice());
+        values.extend_from_slice(b"Barbarian");
+
+        let mut attributes = Vec::new();
+        attributes.extend_from_slice(&make_attr_v2(0, 2, 31, 16, 1));
+        attributes.extend_from_slice(&make_attr_v2(0, 3, 23, 9, 1));
+
+        let mut nodes = Vec::new();
+        nodes.extend_from_slice(&make_node_v2(0, 0, -1, -1));
+        nodes.extend_from_slice(&make_node_v2(0, 1, 0, 0));
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"LSOF");
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(&(names.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(attributes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&(values.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.push(0);
+        bytes.push(0);
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&names);
+        bytes.extend_from_slice(&nodes);
+        bytes.extend_from_slice(&attributes);
+        bytes.extend_from_slice(&values);
+        bytes
+    }
+
+    fn build_names_section(buckets: &[&[&str]]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(buckets.len() as u32).to_le_bytes());
+        for bucket in buckets {
+            bytes.extend_from_slice(&(bucket.len() as u16).to_le_bytes());
+            for value in *bucket {
+                bytes.extend_from_slice(&(value.len() as u16).to_le_bytes());
+                bytes.extend_from_slice(value.as_bytes());
+            }
+        }
+        bytes
+    }
+
+    fn make_node_v3(name_index: u16, name_offset: u16, parent_index: i32, next_sibling_index: i32, first_attribute_index: i32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let name_hash = ((name_index as u32) << 16) | name_offset as u32;
+        bytes.extend_from_slice(&name_hash.to_le_bytes());
+        bytes.extend_from_slice(&parent_index.to_le_bytes());
+        bytes.extend_from_slice(&next_sibling_index.to_le_bytes());
+        bytes.extend_from_slice(&first_attribute_index.to_le_bytes());
+        bytes
+    }
+
+    fn make_node_v2(name_index: u16, name_offset: u16, first_attribute_index: i32, parent_index: i32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let name_hash = ((name_index as u32) << 16) | name_offset as u32;
+        bytes.extend_from_slice(&name_hash.to_le_bytes());
+        bytes.extend_from_slice(&first_attribute_index.to_le_bytes());
+        bytes.extend_from_slice(&parent_index.to_le_bytes());
+        bytes
+    }
+
+    fn make_attr_v3(
+        name_index: u16,
+        name_offset: u16,
+        type_id: u32,
+        length: u32,
+        next_attribute_index: i32,
+        data_offset: u32,
+    ) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let name_hash = ((name_index as u32) << 16) | name_offset as u32;
+        let type_and_length = (length << 6) | type_id;
+        bytes.extend_from_slice(&name_hash.to_le_bytes());
+        bytes.extend_from_slice(&type_and_length.to_le_bytes());
+        bytes.extend_from_slice(&next_attribute_index.to_le_bytes());
+        bytes.extend_from_slice(&data_offset.to_le_bytes());
+        bytes
+    }
+
+    fn make_attr_v2(
+        name_index: u16,
+        name_offset: u16,
+        type_id: u32,
+        length: u32,
+        node_index: i32,
+    ) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let name_hash = ((name_index as u32) << 16) | name_offset as u32;
+        let type_and_length = (length << 6) | type_id;
+        bytes.extend_from_slice(&name_hash.to_le_bytes());
+        bytes.extend_from_slice(&type_and_length.to_le_bytes());
+        bytes.extend_from_slice(&node_index.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn write_then_read_round_trip() {
+        // Build a resource with typed attributes matching an effect file
+        let resource = LsxResource {
+            regions: vec![LsxRegion {
+                id: "Effect".to_string(),
+                nodes: vec![LsxNode {
+                    id: "Effect".to_string(),
+                    key_attribute: None,
+                    attributes: vec![LsxNodeAttribute {
+                        id: "Duration".to_string(),
+                        attr_type: "float".to_string(),
+                        value: "2.5".to_string(),
+                        handle: None,
+                        version: None,
+                        arguments: Vec::new(),
+                    }],
+                    children: vec![LsxNode {
+                        id: "EffectComponents".to_string(),
+                        key_attribute: None,
+                        attributes: Vec::new(),
+                        children: vec![LsxNode {
+                            id: "EffectComponent".to_string(),
+                            key_attribute: None,
+                            attributes: vec![
+                                LsxNodeAttribute {
+                                    id: "EndTime".to_string(),
+                                    attr_type: "float".to_string(),
+                                    value: "2.5".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                                LsxNodeAttribute {
+                                    id: "ID".to_string(),
+                                    attr_type: "guid".to_string(),
+                                    value: "a304fd53-7589-4818-a5d1-4c42d33cc68f".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                                LsxNodeAttribute {
+                                    id: "Name".to_string(),
+                                    attr_type: "LSString".to_string(),
+                                    value: "BoundingSphere".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                                LsxNodeAttribute {
+                                    id: "StartTime".to_string(),
+                                    attr_type: "float".to_string(),
+                                    value: "0".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                                LsxNodeAttribute {
+                                    id: "Track".to_string(),
+                                    attr_type: "uint32".to_string(),
+                                    value: "0".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                                LsxNodeAttribute {
+                                    id: "Type".to_string(),
+                                    attr_type: "LSString".to_string(),
+                                    value: "BoundingSphere".to_string(),
+                                    handle: None,
+                                    version: None,
+                                    arguments: Vec::new(),
+                                },
+                            ],
+                            children: vec![LsxNode {
+                                id: "Properties".to_string(),
+                                key_attribute: None,
+                                attributes: Vec::new(),
+                                children: vec![
+                                    LsxNode {
+                                        id: "Property".to_string(),
+                                        key_attribute: None,
+                                        attributes: vec![
+                                            LsxNodeAttribute {
+                                                id: "AttributeName".to_string(),
+                                                attr_type: "FixedString".to_string(),
+                                                value: "Radius".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "FullName".to_string(),
+                                                attr_type: "FixedString".to_string(),
+                                                value: "Radius".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "Type".to_string(),
+                                                attr_type: "uint8".to_string(),
+                                                value: "4".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "Value".to_string(),
+                                                attr_type: "float".to_string(),
+                                                value: "3".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                        ],
+                                        children: Vec::new(),
+                                        commented: false,
+                                    },
+                                    LsxNode {
+                                        id: "Property".to_string(),
+                                        key_attribute: None,
+                                        attributes: vec![
+                                            LsxNodeAttribute {
+                                                id: "AttributeName".to_string(),
+                                                attr_type: "FixedString".to_string(),
+                                                value: "Visible".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "FullName".to_string(),
+                                                attr_type: "FixedString".to_string(),
+                                                value: "Visible".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "Type".to_string(),
+                                                attr_type: "uint8".to_string(),
+                                                value: "0".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                            LsxNodeAttribute {
+                                                id: "Value".to_string(),
+                                                attr_type: "bool".to_string(),
+                                                value: "True".to_string(),
+                                                handle: None,
+                                                version: None,
+                                                arguments: Vec::new(),
+                                            },
+                                        ],
+                                        children: Vec::new(),
+                                        commented: false,
+                                    },
+                                ],
+                                commented: false,
+                            }],
+                            commented: false,
+                        }],
+                        commented: false,
+                    }],
+                    commented: false,
+                }],
+            }],
+        };
+
+        // Write to bytes
+        let mut output = Vec::new();
+        write_lsf(&mut output, &resource).expect("write_lsf should succeed");
+
+        // Verify it starts with the LSOF signature
+        assert!(output.len() > 16, "output should be at least header size");
+        assert_eq!(&output[0..4], b"LSOF");
+
+        // Read back
+        let parsed = parse_lsf(Cursor::new(output)).expect("parse_lsf should succeed on written data");
+
+        // Verify structure
+        assert_eq!(parsed.regions.len(), 1);
+        assert_eq!(parsed.regions[0].id, "Effect");
+
+        let effect_node = &parsed.regions[0].nodes[0];
+        assert_eq!(effect_node.id, "Effect");
+
+        let duration = effect_node.attributes.iter().find(|a| a.id == "Duration").unwrap();
+        assert_eq!(duration.attr_type, "float");
+        // Float round-trip: 2.5 should survive
+        let dur_val: f32 = duration.value.parse().unwrap();
+        assert!((dur_val - 2.5).abs() < 0.001);
+
+        let ec = &effect_node.children[0];
+        assert_eq!(ec.id, "EffectComponents");
+        let comp = &ec.children[0];
+        assert_eq!(comp.id, "EffectComponent");
+        assert_eq!(comp.attributes.len(), 6);
+
+        // GUID round-trip
+        let id_attr = comp.attributes.iter().find(|a| a.id == "ID").unwrap();
+        assert_eq!(id_attr.value, "a304fd53-7589-4818-a5d1-4c42d33cc68f");
+
+        // String round-trip
+        let name_attr = comp.attributes.iter().find(|a| a.id == "Name").unwrap();
+        assert_eq!(name_attr.value, "BoundingSphere");
+
+        // Bool round-trip
+        let props = &comp.children[0]; // Properties
+        let visible_prop = &props.children[1]; // second Property
+        let val = visible_prop.attributes.iter().find(|a| a.id == "Value").unwrap();
+        assert_eq!(val.value, "True");
+        assert_eq!(val.attr_type, "bool");
+    }
+}

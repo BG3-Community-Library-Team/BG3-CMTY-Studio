@@ -1,0 +1,767 @@
+@import "tailwindcss" source(none);
+
+/* Disable automatic source detection, then explicitly register only src/.
+   Without this, Oxide walks the entire workspace (including unp/,
+   UnpackedData/, src-tauri/target/) — over 1 million files / 200 GB —
+   causing the build to exhaust system resources.
+   source(none) on the import disables auto-scan; @source below adds back
+   only what we need. .gitignore also excludes these dirs as a second layer. */
+@source "../src";
+
+/* ===================================================================
+   Custom Window Frame — Frameless Mode
+   With decorations:false in Tauri, the OS chrome is completely
+   hidden. The app fills the entire window like VS Code / Discord.
+   =================================================================== */
+html, body {
+  background: var(--th-bg-950, #09090b);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* UX-031: Enable keyword interpolation for smooth <details> transitions.
+   Chromium (Tauri WebView) supports interpolate-size: allow-keywords,
+   enabling height transitions on elements that use auto sizing. */
+html {
+  interpolate-size: allow-keywords;
+}
+
+/* ===================================================================
+   Zoom — scales text and interactable elements only.
+   Applied via font-size percentage on the main content flex container,
+   not on the titlebar, hamburger menu, or status bar.
+   =================================================================== */
+
+/* The root app container fills edge-to-edge. No rounded corners, no
+   border, no box-shadow — identical to frameless apps like VS Code. */
+.app-frame {
+  border-radius: 0;
+  overflow: hidden;
+  border: none;
+  box-shadow: none;
+}
+.app-frame.maximized {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+
+/* ===================================================================
+   PF-019: Reduced Motion Support
+   Class-based suppression of animations/transitions.
+   Applied via `.reduced-motion` class on <html> element, controlled
+   by settingsStore.reducedMotion (system/on/off).
+   Uses 0.01ms (not 0) so transitionend/animationend events still fire.
+   =================================================================== */
+:root.reduced-motion *, :root.reduced-motion *::before, :root.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ===================================================================
+   Theme system — CSS custom properties
+   Each theme variant overrides the same set of properties.
+   Utility overrides at the bottom map Tailwind classes to these vars.
+   =================================================================== */
+
+/* ---- Dark (default) ---- */
+:root, :root.dark {
+  --th-bg-950: #09090b;
+  --th-bg-900: #18181b;
+  --th-bg-900-50: rgba(24,24,27,.5);
+  --th-bg-800: #27272a;
+  --th-bg-800-50: rgba(39,39,42,.5);
+  --th-bg-850: #1f1f23;
+  --th-bg-700: #3f3f46;
+  --th-bg-red-900-50: rgba(127,29,29,.5);
+  --th-bg-sky-600: #0284c7;
+  --th-text-100: #f4f4f5;
+  --th-text-200: #e4e4e7;
+  --th-text-300: #d4d4d8;
+  --th-text-400: #a1a1aa;
+  --th-text-500: #71717a;
+  --th-text-600: #52525b;
+  --th-text-red-300: #fca5a5;
+  --th-text-red-400: #f87171;
+  --th-text-amber-400: #fbbf24;
+  --th-text-sky-400: #38bdf8;
+  --th-text-sky-300: #7dd3fc;
+  --th-text-emerald-400: #34d399;
+  --th-text-violet-400: #a78bfa;
+  --th-text-indigo-400: #818cf8;
+  --th-border-700: #3f3f46;
+  --th-border-700-50: rgba(63,63,70,.5);
+  --th-border-600: #52525b;
+  --th-border-red-700: #b91c1c;
+  --th-scroll-thumb: #4b5563;
+  --th-bg-sky-700-40: rgba(3,105,161,.4);
+  --th-bg-sky-700-60: rgba(3,105,161,.6);
+  --th-input-bg: rgb(39 39 42);
+  --th-input-border: #52525b;
+  --th-input-text: #f4f4f5;
+  --th-input-placeholder: #71717a;
+  --th-yaml-key: #7dd3fc;
+  --th-yaml-string: #86efac;
+  --th-yaml-anchor: #fbbf24;
+  --th-yaml-alias: #fbbf24;
+  --th-yaml-comment: #9ca3af;
+  --th-yaml-number: #c4b5fd;
+  --th-yaml-boolean: #fda4af;
+  --th-json-key: #7dd3fc;
+  --th-json-string: #86efac;
+  --th-json-number: #c4b5fd;
+  --th-json-boolean: #fda4af;
+  --th-diff-added: #4ade80;
+  --th-diff-removed: #f87171;
+  --th-diff-changed: #facc15;
+  --th-lsx-header-bg: rgb(39 39 42);
+  --th-lsx-header-border: rgb(63 63 70);
+  --th-lsx-header-text: rgb(113 113 122);
+  --th-lsx-body-bg: rgb(24 24 27);
+  --th-lsx-border: rgb(63 63 70);
+  --th-lsx-attr-key: #7dd3fc;
+  --th-lsx-attr-val: #86efac;
+  --th-lsx-child-key: #c4b5fd;
+  --th-lsx-child-val: #fde68a;
+  --th-lsx-punct: rgb(113 113 122);
+  --th-edit-pre-bg: rgb(9 9 11);
+  --th-edit-pre-color: rgb(161 161 170);
+  --th-edit-caret: rgb(228 228 231);
+  --th-edit-selection: rgba(56, 189, 248, 0.25);
+  /* Info note (teal) */
+  --th-text-teal-300: #5eead4;
+  --th-info-bg: rgba(19,78,74,.3);
+  --th-info-border: rgba(15,118,110,.4);
+  /* Modal backdrop — shared by all overlay modals */
+  --th-modal-backdrop: rgba(0,0,0,0.5);
+  /* Titlebar text (light on dark bg) */
+  --th-titlebar-text: #a1a1aa;
+  /* Tooltip text: white on dark bg */
+  --th-tooltip-text: #f4f4f5;
+  /* Structural border — same as content border in most themes; overridden in high-contrast */
+  --th-border-structural: var(--th-border-600);
+  /* Focus ring — theme-aware outline color for :focus-visible */
+  --th-focus-ring: #38bdf8;
+}
+
+/* P-01: Light, Solarized Dark/Light, High Contrast, Aubergine, Balance,
+   and Prototype theme blocks have been extracted to themeTokens.ts and
+   applied via JS (document.documentElement.style.setProperty). The dark
+   block above is retained as a CSS-only fallback for first paint. */
+
+/* ---- Custom (user-defined via settings) ---- */
+/* CSS variables are set dynamically via JavaScript.
+   Every token references a --custom-* variable with a dark-theme fallback
+   so that the user's color choices cover ALL visible text and backgrounds. */
+:root.custom {
+  /* Backgrounds */
+  --th-bg-950: var(--custom-bg-950, #09090b);
+  --th-bg-900: var(--custom-bg-main, #18181b);
+  --th-bg-900-50: color-mix(in srgb, var(--custom-bg-main, #18181b) 50%, transparent);
+  --th-bg-800: var(--custom-bg-sidebar, #27272a);
+  --th-bg-800-50: color-mix(in srgb, var(--custom-bg-sidebar, #27272a) 50%, transparent);
+  --th-bg-850: var(--custom-bg-section, #1f1f23);
+  --th-bg-700: var(--custom-border-color, #3f3f46);
+  --th-bg-red-900-50: color-mix(in srgb, var(--custom-accent-danger, #7f1d1d) 50%, transparent);
+  --th-bg-sky-600: var(--custom-accent-primary, #0284c7);
+  /* Text — all levels reference custom vars */
+  --th-text-100: var(--custom-text-primary, #f4f4f5);
+  --th-text-200: var(--custom-text-primary, #e4e4e7);
+  --th-text-300: var(--custom-text-secondary, #d4d4d8);
+  --th-text-400: var(--custom-text-secondary, #a1a1aa);
+  --th-text-500: var(--custom-text-secondary, #71717a);
+  --th-text-600: var(--custom-text-secondary, #52525b);
+  --th-text-red-300: var(--custom-accent-danger, #fca5a5);
+  --th-text-red-400: var(--custom-accent-danger, #f87171);
+  --th-text-amber-400: var(--custom-accent-warning, #fbbf24);
+  --th-text-sky-400: var(--custom-text-accent, #38bdf8);
+  --th-text-sky-300: var(--custom-text-accent, #7dd3fc);
+  --th-text-emerald-400: var(--custom-accent-success, #34d399);
+  --th-text-violet-400: var(--custom-text-accent, #a78bfa);
+  --th-text-indigo-400: var(--custom-text-accent, #818cf8);
+  /* Borders */
+  --th-border-700: var(--custom-border-color, #3f3f46);
+  --th-border-700-50: color-mix(in srgb, var(--custom-border-color, #3f3f46) 50%, transparent);
+  --th-border-600: var(--custom-border-color, #52525b);
+  --th-border-red-700: var(--custom-accent-danger, #b91c1c);
+  --th-scroll-thumb: var(--custom-scroll-thumb, #4b5563);
+  --th-bg-sky-700-40: color-mix(in srgb, var(--custom-accent-primary, #0369a1) 40%, transparent);
+  --th-bg-sky-700-60: color-mix(in srgb, var(--custom-accent-primary, #0369a1) 60%, transparent);
+  /* Inputs */
+  --th-input-bg: var(--custom-bg-input, rgb(39 39 42));
+  --th-input-border: var(--custom-border-color, #52525b);
+  --th-input-text: var(--custom-text-primary, #f4f4f5);
+  --th-input-placeholder: var(--custom-text-secondary, #71717a);
+  /* Syntax — YAML */
+  --th-yaml-key: var(--custom-yaml-key, #7dd3fc);
+  --th-yaml-string: var(--custom-yaml-string, #86efac);
+  --th-yaml-anchor: var(--custom-accent-warning, #fbbf24);
+  --th-yaml-alias: var(--custom-accent-warning, #fbbf24);
+  --th-yaml-comment: var(--custom-yaml-comment, #9ca3af);
+  --th-yaml-number: var(--custom-text-accent, #c4b5fd);
+  --th-yaml-boolean: var(--custom-accent-danger, #fda4af);
+  /* Syntax — JSON */
+  --th-json-key: var(--custom-text-accent, #7dd3fc);
+  --th-json-string: var(--custom-accent-success, #86efac);
+  --th-json-number: var(--custom-text-accent, #c4b5fd);
+  --th-json-boolean: var(--custom-accent-danger, #fda4af);
+  /* Diff */
+  --th-diff-added: var(--custom-diff-added, #4ade80);
+  --th-diff-removed: var(--custom-diff-removed, #f87171);
+  --th-diff-changed: var(--custom-diff-changed, #facc15);
+  /* LSX code blocks */
+  --th-lsx-header-bg: var(--custom-bg-sidebar, rgb(39 39 42));
+  --th-lsx-header-border: var(--custom-border-color, rgb(63 63 70));
+  --th-lsx-header-text: var(--custom-text-secondary, rgb(113 113 122));
+  --th-lsx-body-bg: var(--custom-bg-main, rgb(24 24 27));
+  --th-lsx-border: var(--custom-border-color, rgb(63 63 70));
+  --th-lsx-attr-key: var(--custom-text-accent, #7dd3fc);
+  --th-lsx-attr-val: var(--custom-accent-success, #86efac);
+  --th-lsx-child-key: var(--custom-text-accent, #c4b5fd);
+  --th-lsx-child-val: var(--custom-accent-warning, #fde68a);
+  --th-lsx-punct: var(--custom-text-secondary, rgb(113 113 122));
+  /* Editor */
+  --th-edit-pre-bg: var(--custom-bg-950, rgb(9 9 11));
+  --th-edit-pre-color: var(--custom-text-secondary, rgb(161 161 170));
+  --th-edit-caret: var(--custom-text-primary, rgb(228 228 231));
+  --th-edit-selection: color-mix(in srgb, var(--custom-accent-primary, #38bdf8) 25%, transparent);
+  /* Info note (teal) */
+  --th-text-teal-300: var(--custom-accent-success, #5eead4);
+  --th-info-bg: color-mix(in srgb, var(--custom-accent-success, #134e4a) 30%, transparent);
+  --th-info-border: color-mix(in srgb, var(--custom-accent-success, #0f766e) 40%, transparent);
+  --th-modal-backdrop: rgba(0,0,0,0.5);
+  --th-titlebar-text: var(--custom-titlebar-text, #a1a1aa);
+  --th-tooltip-text: var(--custom-text-primary, #f4f4f5);
+  --th-focus-ring: var(--custom-accent-primary, #38bdf8);
+  /* Sidebar chrome */
+  --th-sidebar-bg: var(--custom-sidebar-bg, #18181b);
+  --th-sidebar-bg-deep: var(--custom-sidebar-bg-deep, #09090b);
+  --th-sidebar-text: var(--custom-sidebar-text, #f4f4f5);
+  --th-sidebar-text-muted: var(--custom-sidebar-text-muted, #a1a1aa);
+  --th-sidebar-border: var(--custom-sidebar-border, #3f3f46);
+  --th-sidebar-highlight: var(--custom-sidebar-highlight, #27272a);
+}
+
+/* ===================================================================
+   Focus visible outlines for accessibility
+   =================================================================== */
+
+/* ===================================================================
+   PF-009: Animated Theme Transitions
+   Smooth 250ms cross-fade when switching themes. Wrapped inside
+   prefers-reduced-motion: no-preference so accessible users get
+   instant switches (PF-019 blanket rule also covers this).
+   .no-transitions suppresses flash on initial page load.
+   .no-theme-transition opt-out for elements that shouldn't animate.
+   =================================================================== */
+:focus-visible {
+  outline: 2px solid var(--th-focus-ring, #38bdf8);
+  outline-offset: 2px;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--th-focus-ring, #38bdf8);
+  outline-offset: 2px;
+}
+
+/* ===================================================================
+   Syntax highlighting — driven by CSS custom properties
+   =================================================================== */
+.yaml-key     { color: var(--th-yaml-key); }
+.yaml-string  { color: var(--th-yaml-string); }
+.yaml-anchor  { color: var(--th-yaml-anchor); font-weight: 600; }
+.yaml-alias   { color: var(--th-yaml-alias); font-style: italic; }
+.yaml-comment { color: var(--th-yaml-comment); font-style: italic; }
+.yaml-number  { color: var(--th-yaml-number); }
+.yaml-boolean { color: var(--th-yaml-boolean); }
+
+.json-key     { color: var(--th-json-key); }
+.json-string  { color: var(--th-json-string); }
+.json-number  { color: var(--th-json-number); }
+.json-boolean { color: var(--th-json-boolean); }
+
+.xml-decl     { color: var(--th-yaml-comment); font-style: italic; }
+.xml-comment  { color: var(--th-yaml-comment); font-style: italic; }
+.xml-tag      { color: var(--th-yaml-key); }
+.xml-attr     { color: var(--th-lsx-attr-key); }
+.xml-value    { color: var(--th-lsx-attr-val); }
+
+/* ===================================================================
+   Diff colours — driven by CSS custom properties
+   =================================================================== */
+.diff-added   { color: var(--th-diff-added); }
+.diff-removed { color: var(--th-diff-removed); }
+.diff-changed { color: var(--th-diff-changed); }
+
+/* ===================================================================
+   Theme-aware overrides for Tailwind utility classes.
+   Applied only for non-dark themes (dark matches Tailwind defaults).
+   =================================================================== */
+:root:not(.dark) .bg-zinc-900    { background-color: var(--th-bg-900) !important; }
+:root:not(.dark) .bg-zinc-900\/50{ background-color: var(--th-bg-900-50) !important; }
+:root:not(.dark) .bg-zinc-800    { background-color: var(--th-bg-800) !important; }
+:root:not(.dark) .bg-zinc-800\/50{ background-color: var(--th-bg-800-50) !important; }
+:root:not(.dark) .bg-zinc-700    { background-color: var(--th-bg-700) !important; }
+:root:not(.dark) .hover\:bg-zinc-700:hover { background-color: var(--th-bg-700) !important; }
+:root:not(.dark) .hover\:bg-zinc-750:hover { background-color: var(--th-bg-700) !important; }
+:root:not(.dark) .hover\:bg-zinc-700\/40:hover { background-color: color-mix(in srgb, var(--th-bg-700) 40%, transparent) !important; }
+:root:not(.dark) .hover\:bg-zinc-700\/20:hover { background-color: color-mix(in srgb, var(--th-bg-700) 20%, transparent) !important; }
+:root:not(.dark) .hover\:bg-zinc-600:hover { background-color: var(--th-border-600) !important; }
+:root:not(.dark) .bg-red-900\/50 { background-color: var(--th-bg-red-900-50) !important; }
+:root:not(.dark) .bg-sky-600     { background-color: var(--th-bg-sky-600) !important; }
+/* Preview detail blocks — opacity variants */
+:root:not(.dark) .bg-zinc-800\/60 { background-color: color-mix(in srgb, var(--th-bg-800) 60%, transparent) !important; }
+:root:not(.dark) .bg-zinc-700\/60 { background-color: color-mix(in srgb, var(--th-bg-700) 60%, transparent) !important; }
+:root:not(.dark) .hover\:text-zinc-200:hover { color: var(--th-text-200) !important; }
+:root:not(.dark) .border-zinc-700\/50 { border-color: color-mix(in srgb, var(--th-border-700) 50%, transparent) !important; }
+/* Hover bg for section header */
+:root:not(.dark) .hover\:bg-zinc-900\/80:hover { background-color: color-mix(in srgb, var(--th-bg-900) 80%, transparent) !important; }
+
+:root:not(.dark) .text-zinc-100 { color: var(--th-text-100) !important; }
+:root:not(.dark) .text-zinc-200 { color: var(--th-text-200) !important; }
+:root:not(.dark) .text-zinc-300 { color: var(--th-text-300) !important; }
+:root:not(.dark) .text-zinc-400 { color: var(--th-text-400) !important; }
+:root:not(.dark) .text-zinc-500 { color: var(--th-text-500) !important; }
+:root:not(.dark) .text-zinc-600 { color: var(--th-text-600) !important; }
+:root:not(.dark) .text-red-300  { color: var(--th-text-red-300) !important; }
+:root:not(.dark) .text-red-400  { color: var(--th-text-red-400) !important; }
+:root:not(.dark) .text-amber-400{ color: var(--th-text-amber-400) !important; }
+:root:not(.dark) .text-sky-400  { color: var(--th-text-sky-400) !important; }
+:root:not(.dark) .text-sky-300  { color: var(--th-text-sky-300) !important; }
+:root:not(.dark) .text-sky-200  { color: var(--th-text-sky-400) !important; }
+:root:not(.dark) .hover\:text-sky-100:hover { color: var(--th-text-sky-300) !important; }
+:root:not(.dark) .text-sky-300.hover\:text-sky-100:hover { color: var(--th-text-sky-300) !important; }
+:root:not(.dark) .text-emerald-400 { color: var(--th-text-emerald-400) !important; }
+:root:not(.dark) .text-violet-400  { color: var(--th-text-violet-400) !important; }
+:root:not(.dark) .text-indigo-400  { color: var(--th-text-indigo-400) !important; }
+
+:root:not(.dark) .border-zinc-700    { border-color: var(--th-border-700) !important; }
+:root:not(.dark) .border-zinc-700\/50{ border-color: var(--th-border-700-50) !important; }
+:root:not(.dark) .border-zinc-600    { border-color: var(--th-border-600) !important; }
+:root:not(.dark) .border-red-700     { border-color: var(--th-border-red-700) !important; }
+
+:root:not(.dark) ::-webkit-scrollbar-thumb { background: var(--th-scroll-thumb); }
+:root:not(.dark) ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--th-scroll-thumb) 80%, white); }
+
+:root:not(.dark) .bg-sky-700\/40{ background-color: var(--th-bg-sky-700-40) !important; }
+:root:not(.dark) .bg-sky-700\/60{ background-color: var(--th-bg-sky-700-60) !important; }
+
+/* ---- Non-dark theme — inputs ---- */
+:root:not(.dark) input[type="text"] {
+  background-color: var(--th-input-bg) !important;
+  border-color: var(--th-input-border) !important;
+  color: var(--th-input-text) !important;
+}
+:root:not(.dark) input[type="text"]::placeholder { color: var(--th-input-placeholder) !important; }
+:root:not(.dark) input[type="number"] {
+  background-color: var(--th-input-bg) !important;
+  border-color: var(--th-input-border) !important;
+  color: var(--th-input-text) !important;
+}
+:root:not(.dark) input[type="number"]::placeholder { color: var(--th-input-placeholder) !important; }
+:root:not(.dark) select {
+  background-color: var(--th-input-bg) !important;
+  border-color: var(--th-input-border) !important;
+  color: var(--th-input-text) !important;
+}
+:root:not(.dark) .form-input {
+  background-color: var(--th-input-bg) !important;
+  border-color: var(--th-input-border) !important;
+  color: var(--th-input-text) !important;
+}
+:root:not(.dark) .form-input::placeholder { color: var(--th-input-placeholder) !important; }
+
+/* ---- Non-dark theme — LSX code block ---- */
+:root:not(.dark) .lsx-codeblock-header { background: var(--th-lsx-header-bg); border-color: var(--th-lsx-header-border); color: var(--th-lsx-header-text); }
+:root:not(.dark) .lsx-codeblock-body   { background: var(--th-lsx-body-bg); }
+:root:not(.dark) .lsx-codeblock         { border-color: var(--th-lsx-border); }
+:root:not(.dark) .lsx-attr-key   { color: var(--th-lsx-attr-key); }
+:root:not(.dark) .lsx-attr-val   { color: var(--th-lsx-attr-val); }
+:root:not(.dark) .lsx-child-key  { color: var(--th-lsx-child-key); }
+:root:not(.dark) .lsx-child-val  { color: var(--th-lsx-child-val); }
+:root:not(.dark) .lsx-punct       { color: var(--th-lsx-punct); }
+
+/* ===================================================================
+   Entry-row add/remove button overrides for ALL light-bg themes.
+   emerald/red-* utility classes are not in the generic :root:not(.dark)
+   remap so we handle them per-theme for contrast on light backgrounds.
+   =================================================================== */
+:root.solarized-light .border-emerald-600\/60 { border-color: rgba(101,127,0,.6) !important; }
+:root.solarized-light .bg-emerald-700\/30 { background-color: rgba(101,127,0,.12) !important; }
+:root.solarized-light .text-emerald-300 { color: #556b00 !important; }
+:root.solarized-light .hover\:bg-emerald-700\/50:hover { background-color: rgba(101,127,0,.2) !important; }
+:root.solarized-light .border-red-600\/60 { border-color: rgba(203,75,22,.6) !important; }
+:root.solarized-light .bg-red-700\/30 { background-color: rgba(203,75,22,.1) !important; }
+:root.solarized-light .text-red-300 { color: #a63b12 !important; }
+:root.solarized-light .hover\:bg-red-700\/50:hover { background-color: rgba(203,75,22,.2) !important; }
+
+:root.light .border-emerald-600\/60 { border-color: rgba(5,150,105,.5) !important; }
+:root.light .bg-emerald-700\/30 { background-color: rgba(5,150,105,.1) !important; }
+:root.light .text-emerald-300 { color: #047857 !important; }
+:root.light .hover\:bg-emerald-700\/50:hover { background-color: rgba(5,150,105,.18) !important; }
+:root.light .border-red-600\/60 { border-color: rgba(220,38,38,.5) !important; }
+:root.light .bg-red-700\/30 { background-color: rgba(220,38,38,.08) !important; }
+:root.light .text-red-300 { color: #b91c1c !important; }
+:root.light .hover\:bg-red-700\/50:hover { background-color: rgba(220,38,38,.15) !important; }
+
+/* ===================================================================
+   Selector & fieldset background fixes for light-bg themes.
+   The selector container uses bg-zinc-800/40 which is too dark on
+   light backgrounds. Override to a gentle translucent tint.
+   =================================================================== */
+:root.light .bg-zinc-800\/40,
+:root.solarized-light .bg-zinc-800\/40,
+:root.balance .bg-zinc-800\/40 {
+  background-color: rgba(0,0,0,.04) !important;
+}
+:root.light .border-zinc-700\/50,
+:root.solarized-light .border-zinc-700\/50,
+:root.balance .border-zinc-700\/50 {
+  border-color: rgba(0,0,0,.12) !important;
+}
+/* Selector X button: more visible on light bg */
+:root.light .text-red-400,
+:root.balance main .text-red-400 {
+  color: #dc2626 !important;
+}
+/* solarized-light uses token --th-text-red-400 via :root:not(.dark) rule (darkened #9d3a0b for AA contrast on warm bg) */
+:root.light .hover\:text-red-300:hover,
+:root.solarized-light .hover\:text-red-300:hover,
+:root.balance main .hover\:text-red-300:hover {
+  color: #b91c1c !important;
+}
+
+/* ===================================================================
+   Balance theme — scoped overrides for dark-chrome areas.
+   Balance has light content backgrounds but the top bar, slide-out
+   menu, and combobox dropdowns sit on dark backgrounds. The global
+   :root:not(.dark) overrides make all text dark, so we force
+   dark-on-dark colors in those scoped areas.
+   =================================================================== */
+
+/* --- Top bar header (bg-900 = dark in Balance via inline var) --- */
+:root.balance header,
+:root.balance .titlebar {
+  --th-text-100: #f4f4f5;
+  --th-text-200: #e4e4e7;
+  --th-text-300: #d4d4d8;
+  --th-text-400: #a1a1aa;
+  --th-input-bg: rgba(39,39,42,.9);
+  --th-input-border: #52525b;
+  --th-input-text: #f4f4f5;
+  --th-input-placeholder: #71717a;
+  --th-bg-700: #3f3f46;
+  --th-bg-800: #27272a;
+  --th-border-600: #52525b;
+  background-color: #2a2a36 !important;
+}
+:root.balance header select,
+:root.balance .titlebar select {
+  background-color: rgba(39,39,42,.9) !important;
+  border-color: #52525b !important;
+  color: #f4f4f5 !important;
+}
+/* Command palette trigger in titlebar: white text, dark gray bg */
+:root.balance .titlebar .command-palette-trigger {
+  background-color: #3f3f46 !important;
+  border-color: #52525b !important;
+  color: #f4f4f5 !important;
+}
+
+/* --- Info bar below header (uses bg-800-50 which is light in Balance) --- */
+:root.balance .info-bar,
+:root.balance .action-bar,
+:root.balance header ~ div.px-4.py-2 {
+  background-color: #f1f3f5 !important;
+}
+
+/* --- Combobox dropdown panels (z-50 floating) --- */
+:root.balance .bg-zinc-800[class*="z-50"],
+:root.balance [class*="z-50"].bg-zinc-800 {
+  background-color: #27272a !important;
+  border-color: #52525b !important;
+}
+:root.balance [class*="z-50"] .text-zinc-200 { color: #e4e4e7 !important; }
+:root.balance [class*="z-50"] .text-zinc-100 { color: #f4f4f5 !important; }
+:root.balance [class*="z-50"] .hover\:bg-zinc-700:hover { background-color: #3f3f46 !important; }
+:root.balance [class*="z-50"] .bg-sky-600 { background-color: #0284c7 !important; }
+:root.balance [class*="z-50"] .text-white { color: #ffffff !important; }
+:root.balance [class*="z-50"] .text-sky-200 { color: #bae6fd !important; }
+:root.balance [class*="z-50"] .text-sky-400 { color: #38bdf8 !important; }
+:root.balance [class*="z-50"] .text-zinc-500 { color: #71717a !important; }
+:root.balance [class*="z-50"] .bg-sky-900\/30 { background-color: rgba(12, 74, 110, 0.3) !important; }
+
+/* --- Entry row add/remove/edit buttons (on light bg, need high-contrast text) --- */
+:root.balance .border-emerald-600\/60 { border-color: rgba(5,135,90,.6) !important; }
+:root.balance .bg-emerald-700\/30 { background-color: rgba(4,120,87,.15) !important; }
+:root.balance .text-emerald-300 { color: #0d7a50 !important; }
+:root.balance .hover\:bg-emerald-700\/50:hover { background-color: rgba(4,120,87,.25) !important; }
+:root.balance .border-red-600\/60 { border-color: rgba(190,18,60,.6) !important; }
+:root.balance .bg-red-700\/30 { background-color: rgba(185,28,28,.1) !important; }
+:root.balance .text-red-300 { color: #a81e2d !important; }
+:root.balance .hover\:bg-red-700\/50:hover { background-color: rgba(185,28,28,.2) !important; }
+
+/* --- Entry row badges (need to be readable on light bg) --- */
+:root.balance .bg-zinc-700 { background-color: #d5d8dc !important; }
+:root.balance .bg-violet-800\/50 { background-color: rgba(91,33,182,.12) !important; }
+:root.balance .text-violet-300 { color: #5a32a3 !important; }
+:root.balance .bg-amber-700 { background-color: rgba(217,119,6,.15) !important; }
+:root.balance .text-amber-100 { color: #92400e !important; }
+
+/* --- Sidebar border (subtle, not bright white) --- */
+:root.balance .border-l {
+  border-left-color: #d0d4d8 !important;
+}
+
+/* --- Side panel (dark sidebar in Balance: explorer, search, loaded data, help) --- */
+:root.balance .side-panel {
+  --th-text-100: #f4f4f5;
+  --th-text-200: #e4e4e7;
+  --th-text-300: #d4d4d8;
+  --th-text-400: #aeaeb6;
+  --th-text-500: #a3a3ac;
+  --th-text-600: #52525b;
+  --th-bg-800: #3d4349;
+  --th-bg-700: #4a5058;
+  --th-bg-900: #343a40;
+  --th-border-600: #4a5058;
+  --th-border-700: #3d4349;
+  --th-input-bg: #2b3035;
+  --th-input-border: #4a5058;
+  --th-input-text: #e4e4e7;
+  --th-input-placeholder: #9a9aa3;
+  --th-scroll-thumb: #5a6269;
+  /* Semantic colors lightened for dark sidebar — WCAG AA on #343a40 */
+  --th-text-sky-400: #60a8ea;    /* 4.54:1 */
+  --th-text-sky-300: #7dc0f0;    /* 5.85:1 */
+  --th-text-emerald-400: #4cc590; /* 5.31:1 */
+  --th-text-indigo-400: #a998f2;  /* 4.64:1 */
+  color: #c8cdd2;
+}
+:root.balance .side-panel input[type="text"],
+:root.balance .side-panel select {
+  background-color: #2b3035 !important;
+  border-color: #4a5058 !important;
+  color: #e4e4e7 !important;
+}
+:root.balance .side-panel input[type="text"]::placeholder {
+  color: #71717a !important;
+}
+:root.balance .side-panel .form-input {
+  background-color: #2b3035 !important;
+  border-color: #4a5058 !important;
+  color: #e4e4e7 !important;
+}
+:root.balance .side-panel button {
+  color: #c8cdd2;
+}
+:root.balance .side-panel button:hover {
+  color: #f4f4f5;
+}
+/* Red text/buttons in dark sidebar — WCAG AA (4.55:1 on #343a40) */
+:root.balance .side-panel .text-red-400,
+:root.balance .side-panel .text-red-400\/70 {
+  color: #fc7c7c !important;
+}
+:root.balance .side-panel .hover\:text-red-300:hover {
+  color: #ffa0a0 !important;
+}
+
+/* --- Notification History popover (light in Balance — match content area) --- */
+:root.balance footer [role="dialog"] {
+  --th-sidebar-bg: #eef1f4;
+  --th-bg-800: #e0e4e8;
+  --th-bg-700: #d5d9de;
+  --th-border-600: #ced4da;
+  --th-border-700: #d0d4d8;
+  color: #2d2d3a;
+}
+:root.balance footer [role="dialog"] button {
+  color: #495057;
+}
+:root.balance footer [role="dialog"] button:hover {
+  color: #1c1c24;
+}
+
+/* --- StatusBar theme dropup (dark in Balance) --- */
+:root.balance footer [role="listbox"] {
+  --th-bg-800: #3d4349;
+  --th-text-100: #f4f4f5;
+  --th-text-300: #d4d4d8;
+  background-color: #343a40 !important;
+  border-color: #4a5058 !important;
+}
+:root.balance footer [role="listbox"] button {
+  color: #c8cdd2;
+}
+:root.balance footer [role="listbox"] button:hover {
+  background-color: #3d4349 !important;
+  color: #f4f4f5;
+}
+
+/* --- Hamburger panel (dark slide-out to match header chrome) --- */
+
+/* --- Command Palette active dropdown (dark on Balance) --- */
+:root.balance .cp-dark-mode {
+  --th-bg-900: #1e1e26;
+  --th-bg-800: #27272a;
+  --th-bg-700: #3f3f46;
+  --th-text-100: #f4f4f5;
+  --th-text-200: #e4e4e7;
+  --th-text-300: #d4d4d8;
+  --th-text-400: #a1a1aa;
+  --th-text-500: #71717a;
+  --th-border-700: #3f3f46;
+  --th-border-600: #52525b;
+  --th-bg-sky-700-60: rgba(3, 105, 161, 0.6);
+  color: #e4e4e7 !important;
+}
+:root.balance .cp-dark-mode input {
+  background-color: transparent !important;
+  color: #f4f4f5 !important;
+}
+:root.balance .cp-dark-mode input::placeholder {
+  color: #71717a !important;
+}
+
+/* --- Light / Solarized-Light CP dark mode (palette input on dark titlebar) --- */
+:root.light .cp-dark-mode,
+:root.solarized-light .cp-dark-mode {
+  --th-bg-900: #1e1e26;
+  --th-bg-800: #27272a;
+  --th-bg-700: #3f3f46;
+  --th-text-100: #f4f4f5;
+  --th-text-200: #e4e4e7;
+  --th-text-300: #d4d4d8;
+  --th-text-400: #a1a1aa;
+  --th-text-500: #71717a;
+  --th-border-700: #3f3f46;
+  --th-border-600: #52525b;
+  --th-bg-sky-700-60: rgba(3, 105, 161, 0.6);
+  color: #e4e4e7 !important;
+}
+:root.light .cp-dark-mode input,
+:root.solarized-light .cp-dark-mode input {
+  background-color: transparent !important;
+  color: #f4f4f5 !important;
+}
+:root.light .cp-dark-mode input::placeholder,
+:root.solarized-light .cp-dark-mode input::placeholder {
+  color: #71717a !important;
+}
+
+:root.balance #hamburger-panel {
+  background-color: #2a2a36 !important;
+  border-color: #3f3f4a !important;
+}
+:root.balance #hamburger-panel .text-zinc-100 { color: #f4f4f5 !important; }
+:root.balance #hamburger-panel .text-zinc-200 { color: #e4e4e7 !important; }
+:root.balance #hamburger-panel .text-zinc-300 { color: #d4d4d8 !important; }
+:root.balance #hamburger-panel .text-zinc-400 { color: #a1a1aa !important; }
+:root.balance #hamburger-panel .text-zinc-500 { color: #71717a !important; }
+:root.balance #hamburger-panel .text-sky-400  { color: #38bdf8 !important; }
+:root.balance #hamburger-panel .text-emerald-400 { color: #34d399 !important; }
+:root.balance #hamburger-panel .text-emerald-300 { color: #6ee7b7 !important; }
+:root.balance #hamburger-panel .text-amber-400 { color: #fbbf24 !important; }
+:root.balance #hamburger-panel .text-red-400  { color: #f87171 !important; }
+:root.balance #hamburger-panel .text-red-300  { color: #fca5a5 !important; }
+:root.balance #hamburger-panel .bg-zinc-800   { background-color: #27272a !important; }
+:root.balance #hamburger-panel .bg-zinc-700   { background-color: #3f3f46 !important; }
+:root.balance #hamburger-panel .bg-emerald-700\/30 { background-color: rgba(4,120,87,.3) !important; }
+:root.balance #hamburger-panel .bg-red-700\/30 { background-color: rgba(185,28,28,.3) !important; }
+:root.balance #hamburger-panel .hover\:bg-zinc-700:hover { background-color: #3f3f46 !important; }
+:root.balance #hamburger-panel .hover\:bg-zinc-600:hover { background-color: #52525b !important; }
+:root.balance #hamburger-panel .border-zinc-700 { border-color: #3f3f46 !important; }
+:root.balance #hamburger-panel .border-zinc-600 { border-color: #52525b !important; }
+:root.balance #hamburger-panel input[type="text"],
+:root.balance #hamburger-panel select {
+  background-color: rgba(39,39,42,.9) !important;
+  border-color: #52525b !important;
+  color: #f4f4f5 !important;
+}
+:root.balance #hamburger-panel .form-input {
+  background-color: rgba(39,39,42,.9) !important;
+  border-color: #52525b !important;
+  color: #f4f4f5 !important;
+}
+/* Hamburger button icon should be white on dark header */
+:root.balance .hamburger-btn svg {
+  color: #f4f4f5 !important;
+}
+
+/* --- Modal panels (light-styled on Balance with slight grey tint for distinction) --- */
+:root.balance .modal-panel {
+  background-color: #f1f3f5 !important;
+  border-color: #d0d4d8 !important;
+}
+:root.balance .modal-panel .bg-red-900\/60 { background-color: rgba(220,53,69,.1) !important; }
+:root.balance .modal-panel .text-red-200 { color: #a01a2a !important; }
+
+/* ===================================================================
+   Utility classes
+   =================================================================== */
+
+/* --- Base modal panel background (all themes) — ensures consistency
+   even if Tailwind utility layers conflict with theme overrides ---*/
+.modal-panel {
+  background-color: var(--th-bg-900);
+  border-color: var(--th-border-700);
+}
+
+/* --- Form input height — match combobox trigger min-h-[2rem] (32px) --- */
+.form-input,
+select,
+input[type="text"],
+input[type="number"] {
+  min-height: 2rem;
+  box-sizing: border-box;
+}
+
+/* Global themed scrollbars — applied to all scrollable containers */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--th-scroll-thumb, #4b5563); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--th-scroll-thumb, #4b5563) 80%, white); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Legacy class alias — still works where already applied */
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+
+/* --- Section hover enhancement for all themes --- */
+section > button.hover\:bg-zinc-900\/80:hover {
+  background-color: var(--th-bg-800) !important;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, .12);
+}
+:root:not(.dark) section > button.hover\:bg-zinc-900\/80:hover {
+  background-color: rgba(0,0,0,.06) !important;
+}
+
+/* --- Responsive selector grid: collapse to 1 column on narrow forms --- */
+@media (max-width: 480px) {
+  .grid-cols-2 { grid-template-columns: 1fr !important; }
+}
+
+/* --- Indeterminate progress bar animation --- */
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+/* --- UX-031: Smooth accordion expand/collapse for <details> (CSS grid) --- */
+details > :not(summary) {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 150ms ease, opacity 150ms ease;
+  opacity: 0;
+  overflow: hidden;
+}
+details > :not(summary) > * {
+  overflow: hidden;
+}
+details[open] > :not(summary) {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
