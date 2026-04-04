@@ -1,5 +1,7 @@
 # BG3 CMTY Studio
 
+> Note: This application is built using AI-assisted development practices - this has been a mixture of hand-crafted code and spec-driven agentic workflows. While LLMs are utilized as a tool for building this application, they are not integrated into the application.
+
 A desktop application for creating and editing Baldur's Gate 3 mods. Built with **Tauri 2** (Rust backend) and **Svelte 5** (TypeScript frontend).
 
 The app itself is a cross-platform, form-driven, unofficial toolkit. CMTY Studio reads from BG3's `.pak` files to build reference databases, allowing for form validation, autocomplete, and reference, all without unpacking your files. It also builds DBs for the same features for other mods, making it easy to set up dependencies.
