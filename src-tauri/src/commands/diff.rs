@@ -379,7 +379,8 @@ fn diff_feat(mod_entry: &LsxEntry, vanilla_entry: &LsxEntry) -> Vec<Change> {
     let mut changes = Vec::new();
 
     // Delimited fields
-    for field in ["PassivesAdded"] {
+    {
+        let field = "PassivesAdded";
         let mut field_changes = diff_delimited_field(mod_entry, vanilla_entry, field, ';');
         changes.append(&mut field_changes);
     }
@@ -428,7 +429,8 @@ fn diff_origin(mod_entry: &LsxEntry, vanilla_entry: &LsxEntry) -> Vec<Change> {
     let mut changes = Vec::new();
 
     // Delimited string fields
-    for field in ["Passives"] {
+    {
+        let field = "Passives";
         let mut field_changes = diff_delimited_field(mod_entry, vanilla_entry, field, ';');
         changes.append(&mut field_changes);
     }
@@ -457,7 +459,8 @@ fn diff_origin(mod_entry: &LsxEntry, vanilla_entry: &LsxEntry) -> Vec<Change> {
 fn diff_background(mod_entry: &LsxEntry, vanilla_entry: &LsxEntry) -> Vec<Change> {
     let mut changes = Vec::new();
 
-    for field in ["Passives"] {
+    {
+        let field = "Passives";
         let mut field_changes = diff_delimited_field(mod_entry, vanilla_entry, field, ';');
         changes.append(&mut field_changes);
     }

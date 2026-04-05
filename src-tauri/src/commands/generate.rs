@@ -329,11 +329,7 @@ pub fn detect_anchors(entries: &[SelectedEntry], threshold: usize) -> Vec<Anchor
             // Anchor definition is ~6 lines
             let full_lines = entry_count * 6;
             let anchored_lines = 6 + entry_count * 2;
-            let lines_saved = if full_lines > anchored_lines {
-                full_lines - anchored_lines
-            } else {
-                0
-            };
+            let lines_saved = full_lines.saturating_sub(anchored_lines);
 
             AnchorGroup {
                 anchor_name: format!("shared_{}", first.section.yaml_key().to_lowercase()),
@@ -672,7 +668,7 @@ fn build_preview_sections(
     }
     let mut manual_by_section: HashMap<Section, Vec<&ManualEntry>> = HashMap::new();
     for me in manual_entries {
-        if let Some(section) = Section::from_str(&me.section) {
+        if let Some(section) = Section::parse_name(&me.section) {
             manual_by_section.entry(section).or_default().push(me);
         }
     }

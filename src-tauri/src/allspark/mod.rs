@@ -322,24 +322,21 @@ impl AllSparkRegistry {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(ref e)) => {
-                    let tag = tag_name(e.name().as_ref());                    match tag.as_str() {
-                        "module" => {
-                            current_module_name.clear();
-                            current_module_guid.clear();
-                            module_props.clear();
-                            for attr in e.attributes().flatten() {
-                                match attr.key.as_ref() {
-                                    b"name" => current_module_name = attr_value(&attr),
-                                    b"id" => {
-                                        current_module_guid =
-                                            attr_value(&attr).to_lowercase();
-                                    }
-                                    _ => {}
+                    let tag = tag_name(e.name().as_ref());                    if tag.as_str() == "module" {
+                        current_module_name.clear();
+                        current_module_guid.clear();
+                        module_props.clear();
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"name" => current_module_name = attr_value(&attr),
+                                b"id" => {
+                                    current_module_guid =
+                                        attr_value(&attr).to_lowercase();
                                 }
+                                _ => {}
                             }
-                            in_module = true;
                         }
-                        _ => {}
+                        in_module = true;
                     }
                 }
                 Ok(Event::Empty(ref e)) => {

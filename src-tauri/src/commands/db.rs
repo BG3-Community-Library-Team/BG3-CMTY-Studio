@@ -324,6 +324,7 @@ pub async fn cmd_check_staging_integrity(
 /// Emits `"pipeline-progress"` events to the frontend during execution with
 /// `PipelineProgress` payloads for real-time status updates.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn cmd_unpack_and_populate(
     app: tauri::AppHandle,
     divine_path: String,

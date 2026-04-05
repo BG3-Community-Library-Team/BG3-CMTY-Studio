@@ -338,7 +338,7 @@ fn compute_fk_constraints(
     };
 
     // Check table-specific FKs first (highest priority)
-    for (col_name, _bg3_type) in columns {
+    for col_name in columns.keys() {
         if let Some((tgt_tbl, tgt_col)) = fk_patterns::table_specific_fk(table_name, col_name) {
             if let Some(resolved) = resolve(tgt_tbl) {
                 fks.push(FkConstraint {
@@ -357,7 +357,7 @@ fn compute_fk_constraints(
     // Object column FKs (node_id-based)
     if columns.contains_key("Object")
         && columns.get("Object").map(|t| t.as_str()) == Some("guid")
-        && !specific_cols.contains(&"Object".to_string())
+        && !specific_cols.contains("Object")
     {
         if let Some(nid) = node_id {
             if let Some((tgt_tbl, tgt_col)) = fk_patterns::object_fk_for_node(nid) {
@@ -424,15 +424,14 @@ fn compute_fk_constraints(
 
     // TranslatedString columns → loca FK
     for (col_name, bg3_type) in columns {
-        if bg3_type == "TranslatedString" {
-            if let Some(_) = resolve("loca__english") {
+        if bg3_type == "TranslatedString"
+            && resolve("loca__english").is_some() {
                 fks.push(FkConstraint {
                     source_column: col_name.clone(),
                     target_table: "loca__english".to_string(),
                     target_column: "contentuid".to_string(),
                 });
             }
-        }
     }
 
     // Stats _using → self inheritance
@@ -447,17 +446,15 @@ fn compute_fk_constraints(
     // Stats contentuid-versioned columns → loca
     if table_name.starts_with("stats__") {
         for col_name in columns.keys() {
-            if is_stats_loca_column(col_name) {
-                if let Some(_) = resolve("loca__english") {
-                    if !fks.iter().any(|f| f.source_column == *col_name) {
+            if is_stats_loca_column(col_name)
+                && resolve("loca__english").is_some()
+                    && !fks.iter().any(|f| f.source_column == *col_name) {
                         fks.push(FkConstraint {
                             source_column: col_name.clone(),
                             target_table: "loca__english".to_string(),
                             target_column: "contentuid".to_string(),
                         });
                     }
-                }
-            }
         }
     }
 

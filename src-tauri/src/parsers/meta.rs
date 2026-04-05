@@ -44,7 +44,7 @@ pub fn parse_meta_lsx(content: &str) -> Result<ModMeta, String> {
         .children
         .iter()
         .find(|g| g.group_id == "PublishVersion")
-        .and_then(|_| {
+        .and({
             // PublishVersion Version64 is lost in generic parser's LsxChildEntry,
             // so fall back to regex extraction from raw content
             None::<String>

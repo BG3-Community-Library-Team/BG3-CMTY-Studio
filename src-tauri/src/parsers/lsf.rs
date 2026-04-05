@@ -315,11 +315,7 @@ fn read_nodes<R: Read>(
 ) -> Result<Vec<LsfNodeInfo>, String> {
     let mut nodes = Vec::new();
 
-    loop {
-        let name_hash = match read_u32_opt(&mut reader)? {
-            Some(value) => value,
-            None => break,
-        };
+    while let Some(name_hash) = read_u32_opt(&mut reader)? {
 
         let (parent_index, first_attribute_index) = if long_nodes {
             let parent_index = read_i32(&mut reader)?;
@@ -355,11 +351,7 @@ fn read_attributes_v2<R: Read>(
     let mut prev_attribute_refs: Vec<i32> = Vec::new();
     let mut data_offset = 0u32;
 
-    loop {
-        let name_hash = match read_u32_opt(&mut reader)? {
-            Some(value) => value,
-            None => break,
-        };
+    while let Some(name_hash) = read_u32_opt(&mut reader)? {
         let type_and_length = read_u32(&mut reader)?;
         let node_index = read_i32(&mut reader)?;
         let (name_index, name_offset) = split_name_hash(name_hash);
@@ -404,11 +396,7 @@ fn read_attributes_v3<R: Read>(
 ) -> Result<Vec<LsfAttributeInfo>, String> {
     let mut attributes = Vec::new();
 
-    loop {
-        let name_hash = match read_u32_opt(&mut reader)? {
-            Some(value) => value,
-            None => break,
-        };
+    while let Some(name_hash) = read_u32_opt(&mut reader)? {
         let type_and_length = read_u32(&mut reader)?;
         let next_attribute_index = read_i32(&mut reader)?;
         let data_offset = read_u32(&mut reader)?;
@@ -433,11 +421,8 @@ fn read_keys<R: Read>(
     names: &[Vec<String>],
     nodes: &mut [LsfNodeInfo],
 ) -> Result<(), String> {
-    loop {
-        let node_index = match read_u32_opt(&mut reader)? {
-            Some(value) => value as usize,
-            None => break,
-        };
+    while let Some(node_index_raw) = read_u32_opt(&mut reader)? {
+        let node_index = node_index_raw as usize;
         let key_name = read_u32(&mut reader)?;
         let (name_index, name_offset) = split_name_hash(key_name);
         let key = resolve_name(names, name_index, name_offset)?.to_string();
@@ -547,6 +532,7 @@ fn read_attribute_value(
     })
 }
 
+#[allow(clippy::type_complexity)]
 fn read_typed_value<R: Read>(
     reader: &mut R,
     type_id: u32,
@@ -561,11 +547,11 @@ fn read_typed_value<R: Read>(
         5 => Ok((read_u32(reader)?.to_string(), None, None, Vec::new())),
         6 => Ok((read_f32(reader)?.to_string(), None, None, Vec::new())),
         7 => Ok((read_f64(reader)?.to_string(), None, None, Vec::new())),
-        8 | 9 | 10 => Ok((read_i32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
-        11 | 12 | 13 => Ok((read_f32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
-        14 | 15 | 16 | 17 | 18 => Ok((read_f32_vector(reader, matrix_rows(type_id)? * matrix_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        8..=10 => Ok((read_i32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        11..=13 => Ok((read_f32_vector(reader, vector_columns(type_id)?)?.join(" "), None, None, Vec::new())),
+        14..=18 => Ok((read_f32_vector(reader, matrix_rows(type_id)? * matrix_columns(type_id)?)?.join(" "), None, None, Vec::new())),
         19 => Ok((if read_u8(reader)? != 0 { "True" } else { "False" }.to_string(), None, None, Vec::new())),
-        20 | 21 | 22 | 23 => Ok((read_lsf_utf8_string(reader, length as usize)?, None, None, Vec::new())),
+        20..=23 => Ok((read_lsf_utf8_string(reader, length as usize)?, None, None, Vec::new())),
         24 => Ok((read_u64(reader)?.to_string(), None, None, Vec::new())),
         25 => Ok((bytes_to_hex(&read_bytes_exact(reader, length as usize)?), None, None, Vec::new())),
         26 | 32 => Ok((read_i64(reader)?.to_string(), None, None, Vec::new())),
@@ -1176,15 +1162,15 @@ fn write_typed_value(buf: &mut Vec<u8>, type_id: u32, attr: &LsxNodeAttribute) -
             let v: f64 = attr.value.parse().map_err(|e| format!("double parse: {e}"))?;
             buf.extend_from_slice(&v.to_le_bytes());
         }
-        8 | 9 | 10 => { // ivec2/3/4
+        8..=10 => { // ivec2/3/4
             let cols = match type_id { 8 => 2, 9 => 3, _ => 4 };
             write_i32_values(buf, &attr.value, cols)?;
         }
-        11 | 12 | 13 => { // fvec2/3/4
+        11..=13 => { // fvec2/3/4
             let cols = match type_id { 11 => 2, 12 => 3, _ => 4 };
             write_f32_values(buf, &attr.value, cols)?;
         }
-        14 | 15 | 16 | 17 | 18 => { // matrices
+        14..=18 => { // matrices
             let total = match type_id {
                 14 => 4,  // 2x2
                 15 => 9,  // 3x3
@@ -1198,7 +1184,7 @@ fn write_typed_value(buf: &mut Vec<u8>, type_id: u32, attr: &LsxNodeAttribute) -
             let v: u8 = if attr.value == "True" || attr.value == "true" || attr.value == "1" { 1 } else { 0 };
             buf.push(v);
         }
-        20 | 21 | 22 | 23 => { // string / path / FixedString / LSString
+        20..=23 => { // string / path / FixedString / LSString
             write_lsf_string(buf, &attr.value);
         }
         24 => { // uint64

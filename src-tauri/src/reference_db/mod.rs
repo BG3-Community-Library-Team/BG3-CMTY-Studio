@@ -69,6 +69,7 @@ pub enum TargetDb {
 
 /// Options controlling the build/populate process.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct BuildOptions {
     /// Whether to VACUUM the database after populating.
     /// Reduces DB size by ~10-20% but adds ~14s to the build.
@@ -86,15 +87,6 @@ pub struct BuildOptions {
     pub fallback_base_db_path: Option<PathBuf>,
 }
 
-impl Default for BuildOptions {
-    fn default() -> Self {
-        Self {
-            vacuum: false,
-            force_disk: None,
-            fallback_base_db_path: None,
-        }
-    }
-}
 
 /// Estimate available physical memory in bytes.
 /// Returns `None` if detection fails.
@@ -103,7 +95,7 @@ fn available_memory_bytes() -> Option<u64> {
     {
         use std::mem;
         #[repr(C)]
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, clippy::upper_case_acronyms)]
         struct MEMORYSTATUSEX {
             dwLength: u32,
             dwMemoryLoad: u32,

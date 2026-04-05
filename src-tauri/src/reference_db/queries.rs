@@ -332,10 +332,8 @@ pub fn query_stat_entries(
                 })
             })
             .map_err(|e| format!("Query {}: {}", table_name, e))?;
-        for row in rows {
-            if let Ok(entry) = row {
-                results.push(entry);
-            }
+        for entry in rows.flatten() {
+            results.push(entry);
         }
     }
 

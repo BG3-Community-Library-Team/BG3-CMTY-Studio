@@ -207,7 +207,7 @@ async fn cmd_scan_mod(app: tauri::AppHandle, mod_path: String, extra_scan_paths:
             .map_err(|e| format!("DB paths not available: {e}"))?;
         let base_db = &db_paths.base;
         if !base_db.exists() {
-            return Err(format!("Reference DB not found at {}", base_db.display()).into());
+            return Err(format!("Reference DB not found at {}", base_db.display()));
         }
         let result = scan_mod(&mod_path, base_db, &extra_scan_paths.unwrap_or_default())?;
 
@@ -277,7 +277,7 @@ async fn cmd_query_section_entries(
 #[tauri::command]
 async fn cmd_get_vanilla_entries(app: tauri::AppHandle, section: String, limit: Option<usize>, offset: Option<usize>) -> Result<PaginatedResponse<VanillaEntryInfo>, AppError> {
     blocking(move || {
-        let cf_section = Section::from_str(&section)
+        let cf_section = Section::parse_name(&section)
             .ok_or_else(|| format!("Unknown section: {}", section))?;
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths: {}", e))?;
@@ -536,13 +536,13 @@ async fn cmd_get_entries_by_folder(app: tauri::AppHandle, folder_name: String) -
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths: {}", e))?;
-        let section = Section::from_str(&folder_name)
+        let section = Section::parse_name(&folder_name)
             .or_else(|| match folder_name.as_str() {
                 "ActionResourceDefinitions" => Some(Section::ActionResources),
                 "ActionResourceGroupDefinitions" => Some(Section::ActionResourceGroups),
                 "Spell" => Some(Section::SpellMetadata),
                 "Status" => Some(Section::StatusMetadata),
-                _ => Section::from_str(&folder_name),
+                _ => Section::parse_name(&folder_name),
             })
             .ok_or_else(|| format!("Unknown folder/section: {}", folder_name))?;
         reference_db::queries::query_entries_by_folder(&db_paths.base, &section)
@@ -748,7 +748,7 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
         if mods_dir.exists() {
             if let Ok(read_dir) = fs::read_dir(&mods_dir) {
                 for dir_entry in read_dir.filter_map(|e| e.ok()) {
-                    if dir_entry.file_type().map_or(false, |ft| ft.is_dir()) {
+                    if dir_entry.file_type().is_ok_and(|ft| ft.is_dir()) {
                         let sub_loca = dir_entry.path().join("Localization");
                         if sub_loca.exists() {
                             loca_dirs.push(sub_loca);
@@ -770,7 +770,7 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
                 .filter_map(|e| e.ok())
                 .filter(|e| {
                     e.file_type().is_file()
-                        && e.path().extension().map_or(false, |ext| ext == "yaml" || ext == "xml")
+                        && e.path().extension().is_some_and(|ext| ext == "yaml" || ext == "xml")
                 })
             {
                 if check_file_size(entry.path(), MAX_LOCA_FILE_SIZE).is_err() { continue; }
@@ -837,7 +837,6 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
 
 /// Validate that divine.exe exists at the given path.
 /// (Kept for potential future use; IPC command removed since no frontend workflow needs Divine.exe.)
-
 /// Get stat entry names grouped by entry_type (e.g. "SpellData", "PassiveData", "Armor", etc.).
 /// Optionally filter to a single entry_type; pass empty string to get all.
 #[tauri::command]
@@ -966,7 +965,7 @@ async fn cmd_get_selector_ids(
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file()
-                    && e.path().extension().map_or(false, |ext| is_data_file_ext(ext)))
+                    && e.path().extension().is_some_and(is_data_file_ext))
             {
                 if check_file_size(entry.path(), MAX_LSX_FILE_SIZE).is_err() { continue; }
                 let content = match fs::read_to_string(entry.path()) {
@@ -1054,7 +1053,7 @@ async fn cmd_process_mod_folder(
         let is_pak = mod_dir.is_file()
             && mod_dir
                 .extension()
-                .map_or(false, |ext| ext.eq_ignore_ascii_case("pak"));
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("pak"));
 
         let mut errors: Vec<String> = Vec::new();
         let mod_meta;
@@ -1130,7 +1129,7 @@ async fn cmd_rediff_mod(
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths not available: {e}"))?;
         if !db_paths.base.exists() {
-            return Err(format!("Reference DB not found at {}", db_paths.base.display()).into());
+            return Err(format!("Reference DB not found at {}", db_paths.base.display()));
         }
         rediff::rediff_mod(&primary_mod_path, &compare_mod_path, &db_paths.base)
     })
@@ -1157,7 +1156,7 @@ async fn cmd_list_load_order_paks() -> Result<Vec<String>, AppError> {
             .filter(|e| {
                 e.path()
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("pak"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("pak"))
             })
             .map(|e| e.path().to_string_lossy().into_owned())
             .collect();
@@ -1496,7 +1495,7 @@ async fn cmd_export_mod(
                 Some("lsx") => {}
                 _ => {
                     result.file_errors.entry(spec.output_path.clone()).or_default()
-                        .push(format!("Skipped: not a .lsx file"));
+                        .push("Skipped: not a .lsx file".to_string());
                     continue;
                 }
             }
@@ -1541,10 +1540,7 @@ async fn cmd_export_mod(
         if let (Some(content), Some(cfg_path)) = (config_content, config_path) {
             let path = PathBuf::from(&cfg_path);
 
-            let ext_ok = match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
-                Some("yaml" | "json") => true,
-                _ => false,
-            };
+            let ext_ok = matches!(path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(), Some("yaml" | "json"));
 
             if !ext_ok {
                 result.file_errors.entry(cfg_path.clone()).or_default()
@@ -1638,7 +1634,7 @@ async fn cmd_export_mod(
 
 #[tauri::command]
 async fn cmd_region_id_for_section(section: String) -> Result<String, AppError> {
-    Ok(Section::from_str(&section)
+    Ok(Section::parse_name(&section)
         .map(|s| lsx_writer::section_to_region_id(s).to_string())
         .ok_or_else(|| format!("Unknown section: {}", section))?)
 }
@@ -1649,7 +1645,7 @@ async fn cmd_infer_schemas(app: tauri::AppHandle) -> Result<Vec<schema::infer::N
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths not available: {e}"))?;
         if !db_paths.base.exists() {
-            return Err(format!("Reference DB not found at {}", db_paths.base.display()).into());
+            return Err(format!("Reference DB not found at {}", db_paths.base.display()));
         }
         let mut lsx_sections = std::collections::HashMap::new();
         for section in Section::all_ordered() {

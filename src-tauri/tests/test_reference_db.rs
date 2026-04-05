@@ -10,6 +10,7 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
+#[ignore] // Requires game-data fixture file not present in CI/dev environments
 fn build_reference_db_small_real_lsf_fixture() {
     let ws = workspace_root();
     let source_lsf = ws.join("UnpackedData/Gustav/Public/Gustav/Tags/3549f056-0826-45ee-a8ae-351449b70fe3.lsf");

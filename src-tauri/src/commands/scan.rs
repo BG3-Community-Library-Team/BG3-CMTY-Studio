@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 /// Uses exact path-component matching to avoid substring false positives.
 fn file_to_section(relative_path: &str) -> Option<Section> {
     let components: Vec<&str> = relative_path.split(['\\', '/']).collect();
-    let has = |name: &str| components.iter().any(|c| *c == name);
+    let has = |name: &str| components.contains(&name);
 
     // Check the file name to distinguish BackgroundGoals from Backgrounds,
     // since both live inside the Backgrounds/ folder.
@@ -25,9 +25,9 @@ fn file_to_section(relative_path: &str) -> Option<Section> {
         Some(Section::Progressions)
     } else if has("Races") {
         Some(Section::Races)
-    } else if has("Feats") && file_name.starts_with("FeatDescriptions") {
-        Some(Section::FeatDescriptions)
-    } else if has("FeatDescriptions") {
+    } else if has("Feats") && file_name.starts_with("FeatDescriptions")
+        || has("FeatDescriptions")
+    {
         Some(Section::FeatDescriptions)
     } else if has("Feats") {
         Some(Section::Feats)
@@ -149,7 +149,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
         .map_err(|e| format!("Failed to read meta: {}", e))?;
     let is_yaml_meta = meta_path
         .extension()
-        .map_or(false, |ext| ext == "yaml");
+        .is_some_and(|ext| ext == "yaml");
     let mod_meta = if is_yaml_meta {
         crate::parsers::meta::parse_meta_yaml(&meta_content)?
     } else {
@@ -312,7 +312,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                 e.file_type().is_file()
                     && e.path()
                         .extension()
-                        .map_or(false, |ext| ext == "lsx" || ext == "yaml")
+                        .is_some_and(|ext| ext == "lsx" || ext == "yaml")
             })
         {
             let relative = entry
@@ -332,7 +332,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                     Err(_) => continue,
                 };
 
-                let is_yaml = entry.path().extension().map_or(false, |ext| ext == "yaml");
+                let is_yaml = entry.path().extension().is_some_and(|ext| ext == "yaml");
                 let parse_result = if is_yaml {
                     crate::parsers::lsx_yaml::yaml_to_lsx_entries(&content)
                 } else {
@@ -387,7 +387,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
             .filter_map(|e| e.ok())
             .filter(|e| {
                 e.file_type().is_file()
-                    && e.path().extension().map_or(false, |ext| ext == "yaml")
+                    && e.path().extension().is_some_and(|ext| ext == "yaml")
             })
         {
             let content = match fs::read_to_string(entry.path()) {

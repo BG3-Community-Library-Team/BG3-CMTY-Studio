@@ -490,7 +490,7 @@ impl Section {
     }
 
     /// Parse a section name string to Section.
-    pub fn from_str(s: &str) -> Option<Section> {
+    pub fn parse_name(s: &str) -> Option<Section> {
         match s {
             "Races" => Some(Section::Races),
             "Progressions" => Some(Section::Progressions),

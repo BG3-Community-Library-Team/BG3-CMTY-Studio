@@ -135,7 +135,7 @@ pub fn create_schema_db(
 
     // Data tables
     let mut fk_count = 0;
-    for (_table_name, ts) in &schema.tables {
+    for ts in schema.tables.values() {
         fk_count += create_data_table(&tx, ts, schema)?;
     }
 
@@ -252,7 +252,7 @@ pub fn create_mods_schema_db(
     .map_err(|e| format!("Create _embedded_schema: {}", e))?;
 
     // Data tables with composite PKs — no FK constraints
-    for (_table_name, ts) in &schema.tables {
+    for ts in schema.tables.values() {
         create_mods_data_table(&tx, ts)?;
     }
 
@@ -417,7 +417,7 @@ fn populate_db_in_memory(
         let n_parts = num_effect_partitions(effect_files.len());
         if n_parts >= 1 {
             // Split effect files into N contiguous chunks (preserving priority order).
-            let chunk_size = (effect_files.len() + n_parts - 1) / n_parts;
+            let chunk_size = effect_files.len().div_ceil(n_parts);
             let effect_file_groups: Vec<Vec<FileEntry>> = effect_files
                 .chunks(chunk_size)
                 .map(|chunk| chunk.iter().map(|f| (*f).clone()).collect())
@@ -524,7 +524,7 @@ fn populate_db_on_disk(
     // For parallel on-disk, create effect temp DBs BEFORE opening the
     // main connection to avoid copying WAL artifacts.
     let effect_tmp_paths: Vec<PathBuf> = if use_parallel {
-        let chunk_size = (effect_refs.len() + n_parts - 1) / n_parts;
+        let chunk_size = effect_refs.len().div_ceil(n_parts);
         (0..effect_refs.chunks(chunk_size).len())
             .map(|i| {
                 let p = std::env::temp_dir().join(format!(
@@ -560,7 +560,7 @@ fn populate_db_on_disk(
     let fk_count = count_fk_constraints(&conn)?;
 
     let (counts, row_counts) = if use_parallel {
-        let chunk_size = (effect_refs.len() + n_parts - 1) / n_parts;
+        let chunk_size = effect_refs.len().div_ceil(n_parts);
         let effect_file_groups: Vec<Vec<FileEntry>> = effect_refs
             .chunks(chunk_size)
             .map(|chunk| chunk.iter().map(|f| (*f).clone()).collect())
@@ -763,7 +763,7 @@ fn run_parallel_insert(
     let main_sources = SourceIdCache::new_from_existing(main_conn)?;
     let effect_sources: Vec<SourceIdCache> = effect_conns
         .iter()
-        .map(|c| SourceIdCache::new_from_existing(c))
+        .map(SourceIdCache::new_from_existing)
         .collect::<Result<_, _>>()?;
 
     // File-id ranges: sub-partition 0 gets 1..N0, sub-partition 1 gets N0+1..N0+N1, etc.
@@ -789,9 +789,9 @@ fn run_parallel_insert(
     // Bundle effect data for move into threads.
     let effect_bundles: Vec<_> = effect_conns
         .into_iter()
-        .zip(effect_file_groups.into_iter())
-        .zip(effect_sources.into_iter())
-        .zip(effect_id_bases.into_iter())
+        .zip(effect_file_groups)
+        .zip(effect_sources)
+        .zip(effect_id_bases)
         .map(|(((conn, files), sources), base)| (conn, files, sources, base))
         .collect();
 
@@ -1048,16 +1048,16 @@ fn run_pipeline_insert(
         let schema_ref = schema;
         let files_ref = files;
 
-        let _producer = std::thread::scope(|s| {
+        std::thread::scope(|s| {
             let parse_handle = s.spawn(move || {
                 for (chunk_idx, file_chunk) in files_ref.chunks(parse_chunk_size).enumerate() {
                     let parsed: Vec<(ParsedFile, usize)> = {
-                        let per_thread = (file_chunk.len() + num_threads - 1) / num_threads;
+                        let per_thread = file_chunk.len().div_ceil(num_threads);
                         std::thread::scope(|s2| {
                             let handles: Vec<_> = file_chunk
                                 .chunks(per_thread)
-                                .enumerate()
-                                .map(|(_, thread_files)| {
+                                
+                                .map(|thread_files| {
                                     s2.spawn(move || {
                                         thread_files
                                             .iter()
@@ -1179,7 +1179,7 @@ pub fn build_db(
     // Create all data tables with proper PKs and FKs
     let t_ddl = Instant::now();
     let mut fk_count = 0;
-    for (_table_name, ts) in &schema.tables {
+    for ts in schema.tables.values() {
         fk_count += create_data_table(&conn, ts, schema)?;
     }
 
@@ -1975,8 +1975,8 @@ fn process_stats(
     }
 
     // Raw text fallback
-    if !has_entries && !content.trim().is_empty() {
-        if schema.tables.contains_key("txt__raw") {
+    if !has_entries && !content.trim().is_empty()
+        && schema.tables.contains_key("txt__raw") {
             tx.prepare_cached(
                 "INSERT INTO \"txt__raw\" (_file_id, content) VALUES (?1, ?2)",
             )
@@ -1984,7 +1984,6 @@ fn process_stats(
             .map_err(|e| format!("Insert raw txt: {}", e))?;
             total_rows += 1;
         }
-    }
 
     Ok(FileResult {
         rows: total_rows,
@@ -2200,7 +2199,7 @@ fn process_allspark(
 
     // --- Modules ---
     if schema.tables.contains_key("allspark__modules") {
-        for (_, module) in &registry.modules {
+        for module in registry.modules.values() {
             tx.prepare_cached(
                 "INSERT OR IGNORE INTO \"allspark__modules\" (_file_id, guid, name) VALUES (?1, ?2, ?3)",
             )
@@ -2212,7 +2211,7 @@ fn process_allspark(
 
     // --- Module properties ---
     if schema.tables.contains_key("allspark__module_properties") {
-        for (_, module) in &registry.modules {
+        for module in registry.modules.values() {
             for (guid, prop_name) in &module.properties {
                 tx.prepare_cached(
                     "INSERT OR IGNORE INTO \"allspark__module_properties\" \
@@ -2422,15 +2421,14 @@ fn build_indexes(conn: &Connection, schema: &DiscoveredSchema) -> Result<(), Str
         // tracked via junction tables.
 
         // Stats entry name (it's the PK so already indexed, but let's be explicit)
-        if table_name.starts_with("stats__") {
-            if ts.columns.iter().any(|c| c.name == "_entry_name") {
+        if table_name.starts_with("stats__")
+            && ts.columns.iter().any(|c| c.name == "_entry_name") {
                 conn.execute_batch(&format!(
                     "CREATE INDEX IF NOT EXISTS \"idx_{tn}__ent\" ON \"{tn}\"(\"_entry_name\")",
                     tn = table_name
                 ))
                 .map_err(|e| format!("Index error: {}", e))?;
             }
-        }
 
         // Loca contentuid (it's the PK so already indexed)
         // No additional indexes needed for PKs
@@ -3202,6 +3200,7 @@ fn read_text_content(file: &FileEntry) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 /// Insert all content from a parsed file.  Returns (rows_inserted, errors).
+#[allow(clippy::too_many_arguments)]
 fn insert_parsed_file(
     tx: &Transaction,
     parsed: &mut ParsedFile,
@@ -3274,6 +3273,7 @@ fn insert_parsed_file(
     Ok((rows, errors))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn insert_parsed_lsx(
     tx: &Transaction,
     file_path: &str,
@@ -3313,6 +3313,7 @@ fn insert_parsed_lsx(
 /// (processed first) claim ownership of PK entities and their children.
 ///
 /// Returns: (registrations_for_grandparent, rows_inserted, errors)
+#[allow(clippy::too_many_arguments)]
 fn insert_node_tree(
     tx: &Transaction,
     file_path: &str,
@@ -3510,6 +3511,7 @@ fn insert_row_planned(
     Ok((pk_value, was_inserted))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn insert_parsed_stats(
     tx: &Transaction,
     file_id: i64,

@@ -60,7 +60,7 @@ pub fn create_staging_db(
     let _ = std::fs::remove_file(staging_db_path);
     let db_str = staging_db_path.to_string_lossy();
     for suffix in &["-wal", "-shm"] {
-        let _ = std::fs::remove_file(&format!("{}{}", db_str, suffix));
+        let _ = std::fs::remove_file(format!("{}{}", db_str, suffix));
     }
 
     let conn = Connection::open(staging_db_path)
@@ -90,7 +90,7 @@ pub fn create_staging_db(
     .map_err(|e| format!("Create _embedded_schema: {}", e))?;
 
     // Data tables with staging tracking columns, no FK constraints
-    for (_name, ts) in &schema.tables {
+    for ts in schema.tables.values() {
         create_staging_data_table(&tx, ts)?;
     }
 

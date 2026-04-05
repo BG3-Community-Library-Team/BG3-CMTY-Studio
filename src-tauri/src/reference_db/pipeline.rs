@@ -784,7 +784,7 @@ fn has_pak_files(dir: &Path) -> bool {
     fs::read_dir(dir)
         .map(|entries| entries
             .filter_map(|e| e.ok())
-            .any(|e| e.path().extension().map_or(false, |ext| ext == "pak")))
+            .any(|e| e.path().extension().is_some_and(|ext| ext == "pak")))
         .unwrap_or(false)
 }
 
@@ -794,7 +794,7 @@ fn list_pak_files(dir: &Path) -> Result<Vec<String>, String> {
         .map_err(|e| format!("Cannot read data dir: {}", e))?;
     let mut paks: Vec<String> = entries
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "pak"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "pak"))
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     paks.sort();

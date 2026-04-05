@@ -91,14 +91,14 @@ pub fn dir_size_bytes(dir_path: &str) -> Result<u64, String> {
 pub fn read_mod_meta(mod_path: &str) -> Result<crate::models::ModMeta, String> {
     let base = Path::new(mod_path);
     // Walk for meta.lsx first (original format)
-    for entry in WalkDir::new(base)
+    if let Some(entry) = WalkDir::new(base)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| {
+        .find(|e| {
             e.file_type().is_file()
                 && e.path()
                     .file_name()
-                    .map_or(false, |n| n.eq_ignore_ascii_case("meta.lsx"))
+                    .is_some_and(|n| n.eq_ignore_ascii_case("meta.lsx"))
         })
     {
         let content = fs::read_to_string(entry.path())
@@ -106,14 +106,14 @@ pub fn read_mod_meta(mod_path: &str) -> Result<crate::models::ModMeta, String> {
         return crate::parsers::meta::parse_meta_lsx(&content);
     }
     // Fall back to meta.yaml (converted format)
-    for entry in WalkDir::new(base)
+    if let Some(entry) = WalkDir::new(base)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| {
+        .find(|e| {
             e.file_type().is_file()
                 && e.path()
                     .file_name()
-                    .map_or(false, |n| n.eq_ignore_ascii_case("meta.yaml"))
+                    .is_some_and(|n| n.eq_ignore_ascii_case("meta.yaml"))
         })
     {
         let content = fs::read_to_string(entry.path())
