@@ -191,3 +191,151 @@ pub fn rediff_mod(
         Ok(sections)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: build a minimal StatsEntry.
+    fn make_stats_entry(name: &str, entry_type: &str) -> StatsEntry {
+        StatsEntry {
+            name: name.to_string(),
+            entry_type: entry_type.to_string(),
+            parent: None,
+            data: HashMap::new(),
+        }
+    }
+
+    // NOTE: Tests use unique paths and never call clear_cache() because
+    // MOD_ENTRY_CACHE is a global static shared across parallel tests.
+
+    // ── cache_mod_entries + get_mod_stat_entries ──────────────────
+
+    #[test]
+    fn cache_mod_entries_stores_and_retrieves() {
+        let path = "/test_rediff/cache_store_retrieve";
+        let stats = vec![
+            make_stats_entry("Fireball", "SpellData"),
+            make_stats_entry("AcidSplash", "SpellData"),
+        ];
+
+        cache_mod_entries(path, HashMap::new(), stats, HashMap::new()).expect("cache insert");
+        let result = get_mod_stat_entries(path);
+
+        assert_eq!(result.len(), 2);
+        // Results should be sorted by name
+        assert_eq!(result[0].name, "AcidSplash");
+        assert_eq!(result[1].name, "Fireball");
+    }
+
+    #[test]
+    fn cache_mod_entries_overwrites_existing() {
+        let path = "/test_rediff/cache_overwrite";
+        let stats1 = vec![make_stats_entry("SpellA", "SpellData")];
+        let stats2 = vec![
+            make_stats_entry("SpellX", "SpellData"),
+            make_stats_entry("SpellY", "SpellData"),
+        ];
+
+        cache_mod_entries(path, HashMap::new(), stats1, HashMap::new()).expect("first insert");
+        cache_mod_entries(path, HashMap::new(), stats2, HashMap::new()).expect("overwrite");
+
+        let result = get_mod_stat_entries(path);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "SpellX");
+        assert_eq!(result[1].name, "SpellY");
+    }
+
+    #[test]
+    fn get_mod_stat_entries_missing_path_returns_empty() {
+        // A path never inserted returns empty without error
+        let entries = get_mod_stat_entries("/test_rediff/nonexistent_path_xyz");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn get_mod_stat_entries_populated_returns_sorted() {
+        let path = "/test_rediff/stat_entries_sorted";
+        let stats = vec![
+            make_stats_entry("Zephyr", "PassiveData"),
+            make_stats_entry("Alpha", "StatusData"),
+            make_stats_entry("Mana", "SpellData"),
+        ];
+
+        cache_mod_entries(path, HashMap::new(), stats, HashMap::new()).expect("insert");
+        let result = get_mod_stat_entries(path);
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].name, "Alpha");
+        assert_eq!(result[0].entry_type, "StatusData");
+        assert_eq!(result[1].name, "Mana");
+        assert_eq!(result[2].name, "Zephyr");
+    }
+
+    #[test]
+    fn get_mod_stat_entries_preserves_entry_type() {
+        let path = "/test_rediff/stat_entry_types";
+        let stats = vec![make_stats_entry("TestSpell", "SpellData")];
+        cache_mod_entries(path, HashMap::new(), stats, HashMap::new()).expect("insert");
+
+        let result = get_mod_stat_entries(path);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].entry_type, "SpellData");
+    }
+
+    #[test]
+    fn cache_mod_entries_stores_lsx_maps() {
+        let path = "/test_rediff/lsx_maps";
+        let mut lsx = HashMap::new();
+        lsx.insert(Section::Races, vec![LsxEntry {
+            uuid: "uuid-1".to_string(),
+            node_id: "Race".to_string(),
+            attributes: HashMap::new(),
+            children: Vec::new(),
+            commented: false,
+        }]);
+        let mut sources = HashMap::new();
+        sources.insert(Section::Races, "Races/test.lsx".to_string());
+
+        cache_mod_entries(path, lsx, Vec::new(), sources).expect("insert");
+        // Verify it's in cache by checking get_mod_stat_entries (stats are empty)
+        let stat_result = get_mod_stat_entries(path);
+        assert!(stat_result.is_empty(), "no stats stored");
+
+        // Verify the LSX data is accessible via the cache lock
+        let cache = MOD_ENTRY_CACHE.lock().expect("lock");
+        let data = cache.get(path).expect("should be cached");
+        assert_eq!(data.lsx_entries.get(&Section::Races).unwrap().len(), 1);
+        assert_eq!(data.source_files.get(&Section::Races).unwrap(), "Races/test.lsx");
+    }
+
+    // ── rediff_mod ──────────────────────────────────────────────
+
+    #[test]
+    fn rediff_mod_fails_when_primary_not_cached() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fake_db = tmp.path().join("fake.sqlite");
+        let result = rediff_mod("/test_rediff/never_cached_primary_xyz", "", &fake_db);
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("Primary mod not found"),
+            "error should mention primary mod not found"
+        );
+    }
+
+    #[test]
+    fn rediff_mod_fails_when_compare_not_cached() {
+        let path = "/test_rediff/compare_primary_unique_abc";
+        cache_mod_entries(path, HashMap::new(), Vec::new(), HashMap::new()).expect("insert primary");
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fake_db = tmp.path().join("fake.sqlite");
+        let result = rediff_mod(path, "/test_rediff/never_cached_compare_xyz", &fake_db);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Comparison mod not found"),
+            "expected 'Comparison mod not found' but got: {err}"
+        );
+    }
+}

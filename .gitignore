@@ -15,6 +15,15 @@ test_populated_dbs/
 
 # === Environment ===
 .env
+.env.*
+!.env.example
+
+# === Secret / credential files ===
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
 
 # === Editor / IDE ===
 .vscode/

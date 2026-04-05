@@ -766,6 +766,7 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
             }
 
             for entry in WalkDir::new(loca_dir)
+                .follow_links(false)
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| {
@@ -962,6 +963,7 @@ async fn cmd_get_selector_ids(
             let folder = root.join("Progressions");
             if !folder.exists() { return; }
             for entry in WalkDir::new(&folder)
+                .follow_links(false)
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file()
@@ -982,6 +984,23 @@ async fn cmd_get_selector_ids(
         if let Some(extras) = extra_paths {
             for p in extras {
                 let mod_base = PathBuf::from(&p);
+
+                // SEC-03: Canonicalize to resolve any .. or relative components
+                let mod_base = mod_base.canonicalize().map_err(|e| {
+                    format!("Failed to canonicalize extra path '{}': {}", p, e)
+                })?;
+
+                // SEC-03: Reject symlinks
+                let meta = fs::symlink_metadata(&mod_base).map_err(|e| {
+                    format!("Failed to read metadata for extra path '{}': {}", p, e)
+                })?;
+                if meta.file_type().is_symlink() {
+                    return Err(format!(
+                        "Extra path '{}' is a symlink, which is not allowed for security reasons",
+                        p
+                    ));
+                }
+
                 let mod_name = mod_base.file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "Mod".to_string());

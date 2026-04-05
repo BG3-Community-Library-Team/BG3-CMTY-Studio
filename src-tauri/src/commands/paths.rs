@@ -179,3 +179,204 @@ pub fn categorize_pak_sections(file_paths: &[String]) -> Vec<PakSectionInfo> {
     results.sort_by(|a, b| a.folder.cmp(&b.folder));
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── dir_size_bytes ──────────────────────────────────────────
+
+    #[test]
+    fn dir_size_bytes_nonexistent_returns_zero() {
+        let result = dir_size_bytes("/definitely/does/not/exist/xyz");
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn dir_size_bytes_empty_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = dir_size_bytes(tmp.path().to_str().unwrap());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn dir_size_bytes_with_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let content_a = b"hello";
+        let content_b = b"world!!!";
+        fs::write(tmp.path().join("a.txt"), content_a).expect("write a");
+        fs::write(tmp.path().join("b.txt"), content_b).expect("write b");
+
+        let result = dir_size_bytes(tmp.path().to_str().unwrap()).unwrap();
+        assert_eq!(result, (content_a.len() + content_b.len()) as u64);
+    }
+
+    #[test]
+    fn dir_size_bytes_nested_dirs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let sub = tmp.path().join("sub");
+        fs::create_dir_all(&sub).expect("mkdir");
+        fs::write(sub.join("nested.dat"), b"1234567890").expect("write");
+
+        let result = dir_size_bytes(tmp.path().to_str().unwrap()).unwrap();
+        assert_eq!(result, 10);
+    }
+
+    // ── categorize_pak_sections ─────────────────────────────────
+
+    #[test]
+    fn categorize_pak_sections_empty_input() {
+        let result = categorize_pak_sections(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn categorize_pak_sections_known_folders() {
+        let paths = vec![
+            "Public/MyMod/Progressions/prog1.lsx".to_string(),
+            "Public/MyMod/Progressions/prog2.lsx".to_string(),
+            "Public/MyMod/Races/race1.lsx".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+
+        let prog = result.iter().find(|s| s.folder == "Progressions").expect("Progressions");
+        assert_eq!(prog.file_count, 2);
+
+        let races = result.iter().find(|s| s.folder == "Races").expect("Races");
+        assert_eq!(races.file_count, 1);
+    }
+
+    #[test]
+    fn categorize_pak_sections_stats_folder() {
+        let paths = vec![
+            "Public/MyMod/Stats/Generated/Data/Spell_Projectile.txt".to_string(),
+            "Public/MyMod/Stats/Generated/Data/Passive.txt".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+
+        let stats = result.iter().find(|s| s.folder == "Stats").expect("Stats section");
+        assert_eq!(stats.file_count, 2);
+    }
+
+    #[test]
+    fn categorize_pak_sections_localization() {
+        let paths = vec![
+            "Localization/English/en.xml".to_string(),
+            "Data/Localization/English/strings.xml".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+
+        let loca = result.iter().find(|s| s.folder == "Localization").expect("Localization");
+        assert_eq!(loca.file_count, 2);
+    }
+
+    #[test]
+    fn categorize_pak_sections_meta() {
+        let paths = vec![
+            "Mods/MyMod/meta.lsx".to_string(),
+            "Mods/SomeOther/meta.lsf".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+
+        let meta = result.iter().find(|s| s.folder == "Meta").expect("Meta section");
+        assert_eq!(meta.file_count, 2);
+    }
+
+    #[test]
+    fn categorize_pak_sections_unrecognized_folder_ignored() {
+        let paths = vec![
+            "Public/MyMod/SomeRandomFolder/data.lsx".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+        assert!(result.is_empty(), "unrecognized folders should be ignored");
+    }
+
+    #[test]
+    fn categorize_pak_sections_backslash_normalization() {
+        let paths = vec![
+            "Public\\MyMod\\Feats\\feat1.lsx".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+
+        let feats = result.iter().find(|s| s.folder == "Feats").expect("Feats");
+        assert_eq!(feats.file_count, 1);
+    }
+
+    #[test]
+    fn categorize_pak_sections_sorted_output() {
+        let paths = vec![
+            "Public/MyMod/Tags/tag1.lsx".to_string(),
+            "Public/MyMod/Feats/feat1.lsx".to_string(),
+            "Public/MyMod/Animation/anim1.lsx".to_string(),
+        ];
+        let result = categorize_pak_sections(&paths);
+        let folders: Vec<&str> = result.iter().map(|s| s.folder.as_str()).collect();
+        assert_eq!(folders, &["Animation", "Feats", "Tags"]);
+    }
+
+    // ── read_mod_meta ───────────────────────────────────────────
+
+    #[test]
+    fn read_mod_meta_no_meta_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = read_mod_meta(tmp.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("meta.lsx not found"));
+    }
+
+    #[test]
+    fn read_mod_meta_finds_lsx() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mods_dir = tmp.path().join("Mods").join("TestMod");
+        fs::create_dir_all(&mods_dir).expect("mkdir");
+
+        let meta_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<save>
+  <version major="4" minor="0" revision="0" build="49"/>
+  <region id="Config">
+    <node id="root">
+      <children>
+        <node id="ModuleInfo">
+          <attribute id="UUID" type="FixedString" value="test-uuid-1234"/>
+          <attribute id="Folder" type="LSString" value="TestMod"/>
+          <attribute id="Name" type="LSString" value="Test Mod Name"/>
+          <attribute id="Author" type="LSString" value="Author"/>
+          <attribute id="Version64" type="int64" value="36028797018963968"/>
+          <attribute id="Description" type="LSString" value="A test mod"/>
+          <attribute id="MD5" type="LSString" value=""/>
+          <attribute id="Type" type="FixedString" value="Add-on"/>
+          <attribute id="Tags" type="LSString" value=""/>
+          <attribute id="NumPlayers" type="uint8" value="4"/>
+          <attribute id="GMTemplate" type="LSString" value=""/>
+          <attribute id="CharacterCreationLevelName" type="FixedString" value=""/>
+          <attribute id="LobbyLevelName" type="FixedString" value=""/>
+          <attribute id="MenuLevelName" type="FixedString" value=""/>
+          <attribute id="StartupLevelName" type="FixedString" value=""/>
+          <attribute id="PhotoBooth" type="FixedString" value=""/>
+          <attribute id="MainMenuBackgroundVideo" type="FixedString" value=""/>
+          <attribute id="PublishVersion" type="int64" value="0"/>
+          <attribute id="TargetMode" type="FixedString" value="Story"/>
+        </node>
+      </children>
+    </node>
+  </region>
+</save>"#;
+        fs::write(mods_dir.join("meta.lsx"), meta_content).expect("write meta");
+
+        let meta = read_mod_meta(tmp.path().to_str().unwrap()).expect("should parse meta");
+        assert_eq!(meta.uuid, "test-uuid-1234");
+        assert_eq!(meta.folder, "TestMod");
+        assert_eq!(meta.name, "Test Mod Name");
+    }
+
+    // ── vanilla_subfolders ──────────────────────────────────────
+
+    #[test]
+    fn vanilla_subfolders_non_empty() {
+        let subs = vanilla_subfolders();
+        assert!(!subs.is_empty());
+        assert!(subs.contains(&"Progressions"));
+        assert!(subs.contains(&"Races"));
+        assert!(subs.contains(&"Feats"));
+    }
+}

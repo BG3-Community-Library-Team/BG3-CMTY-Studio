@@ -168,4 +168,22 @@ describe("TC-001: ColorGridPicker component", () => {
     const cells = container.querySelectorAll("[role='gridcell']");
     expect(cells.length).toBe(defaultOptions.length);
   });
+
+  it("gridcells have aria-colindex and aria-rowindex attributes", () => {
+    const { container } = render(ColorGridPicker, {
+      label: "Test Colors",
+      options: defaultOptions,
+      selected: [],
+      onchange: noop,
+    });
+    const cells = container.querySelectorAll("[role='gridcell']");
+    // Every gridcell should have both attributes
+    for (const cell of cells) {
+      expect(cell.getAttribute("aria-colindex")).toBeTruthy();
+      expect(cell.getAttribute("aria-rowindex")).toBeTruthy();
+    }
+    // First cell should be row 1, col 1
+    expect(cells[0].getAttribute("aria-colindex")).toBe("1");
+    expect(cells[0].getAttribute("aria-rowindex")).toBe("1");
+  });
 });

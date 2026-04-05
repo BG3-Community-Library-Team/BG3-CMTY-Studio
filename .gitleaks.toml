@@ -1,0 +1,28 @@
+title = "BG3 CMTY Studio Gitleaks Config"
+
+[allowlist]
+description = "Known false positives"
+
+# Test fixture UUIDs and BG3 data references are not secrets
+regexTarget = "match"
+regexes = [
+  # BG3 UUIDs in test fixtures and data files
+  '''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+]
+
+paths = [
+  # Test data directories
+  '''test_populated_dbs/.*''',
+  '''test_schema_dbs/.*''',
+  '''UnpackedData/.*''',
+  # Coverage output
+  '''coverage/.*''',
+  # Generated paraglide files
+  '''src/paraglide/.*''',
+  # License files
+  '''LICENSES/.*''',
+  # Cargo lock (contains registry hashes, not secrets)
+  '''src-tauri/Cargo\.lock''',
+  # Tauri generated files
+  '''src-tauri/gen/.*''',
+]

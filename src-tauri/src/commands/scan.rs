@@ -244,6 +244,23 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
     scan_roots.push((mod_root.clone(), public_path));
     for extra in extra_scan_paths {
         let extra_root = PathBuf::from(extra);
+
+        // SEC-03: Canonicalize to resolve any .. or relative components
+        let extra_root = extra_root.canonicalize().map_err(|e| {
+            format!("Failed to canonicalize extra scan path '{}': {}", extra, e)
+        })?;
+
+        // SEC-03: Reject symlinks
+        let meta = fs::symlink_metadata(&extra_root).map_err(|e| {
+            format!("Failed to read metadata for extra scan path '{}': {}", extra, e)
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "Extra scan path '{}' is a symlink, which is not allowed for security reasons",
+                extra
+            ));
+        }
+
         let extra_public = extra_root.join("Public").join(&mod_meta.folder);
         scan_roots.push((extra_root, extra_public));
     }
@@ -306,6 +323,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
     // Scan LSX and YAML files
     if scan_public_path.exists() {
         for entry in WalkDir::new(scan_public_path)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -382,6 +400,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
         .collect();
     for stats_dir in &stats_yaml_dirs {
         for entry in WalkDir::new(stats_dir)
+            .follow_links(false)
             .max_depth(1)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -456,6 +475,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
             .join("Data");
         if stats_path.exists() {
             for entry in WalkDir::new(&stats_path)
+                .follow_links(false)
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| {
@@ -592,5 +612,118 @@ mod tests {
             file_to_section("Public/MyMod/Unknown/Stuff.lsx"),
             None
         );
+    }
+
+    /// Helper: create a minimal temp mod directory with meta.lsx so scan_mod
+    /// can proceed past the metadata step and reach extra path validation.
+    fn create_temp_mod() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let mods_dir = tmp.path().join("Mods").join("TestMod");
+        fs::create_dir_all(&mods_dir).unwrap();
+        let meta_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<save>
+  <version major="4" minor="0" revision="9" build="331"/>
+  <region id="Config">
+    <node id="root">
+      <children>
+        <node id="ModuleInfo">
+          <attribute id="Folder" type="LSString" value="TestMod"/>
+          <attribute id="Name" type="LSString" value="TestMod"/>
+          <attribute id="UUID" type="FixedString" value="00000000-0000-0000-0000-000000000001"/>
+          <attribute id="Version64" type="int64" value="36028797018963968"/>
+        </node>
+      </children>
+    </node>
+  </region>
+</save>"#;
+        fs::write(mods_dir.join("meta.lsx"), meta_content).unwrap();
+        let mod_path = tmp.path().to_path_buf();
+        (tmp, mod_path)
+    }
+
+    #[test]
+    fn test_extra_scan_paths_nonexistent_rejected() {
+        // A nonexistent path should fail canonicalization
+        let (_tmp, mod_path) = create_temp_mod();
+        let result = scan_mod(
+            &mod_path.to_string_lossy(),
+            Path::new("nonexistent.sqlite"),
+            &["Z:\\this\\path\\does\\not\\exist\\at\\all".to_string()],
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("canonicalize"),
+            "Expected canonicalization error, got: {}",
+            err
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_extra_scan_paths_canonicalized() {
+        // On Windows, a path with .. components should be canonicalized.
+        // We use a real temp dir to ensure canonicalization can succeed.
+        let tmp = std::env::temp_dir();
+        let nested = tmp.join("cmty_test_canon").join("sub");
+        let _ = fs::create_dir_all(&nested);
+
+        // Path with .. that resolves to tmp/cmty_test_canon
+        let path_with_dots = nested.join("..").to_string_lossy().to_string();
+
+        let (_tmp_mod, mod_path) = create_temp_mod();
+        let result = scan_mod(
+            &mod_path.to_string_lossy(),
+            Path::new("nonexistent.sqlite"),
+            &[path_with_dots],
+        );
+        // Will fail due to missing vanilla DB or no entries, not canonicalization
+        // The key assertion is that canonicalization itself succeeded
+        if let Err(err) = &result {
+            assert!(
+                !err.contains("canonicalize"),
+                "Path with .. should have been canonicalized successfully, got: {}",
+                err
+            );
+        }
+
+        // cleanup
+        let _ = fs::remove_dir_all(tmp.join("cmty_test_canon"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore] // Requires developer mode on Windows to create symlinks
+    fn test_extra_scan_paths_symlink_rejected() {
+        use std::os::windows::fs as win_fs;
+
+        let tmp = std::env::temp_dir();
+        let real_dir = tmp.join("cmty_test_symlink_real");
+        let link_dir = tmp.join("cmty_test_symlink_link");
+
+        let _ = fs::create_dir_all(&real_dir);
+        let _ = fs::remove_file(&link_dir);
+        let _ = fs::remove_dir(&link_dir);
+
+        // Try to create a directory symlink
+        if win_fs::symlink_dir(&real_dir, &link_dir).is_ok() {
+            let (_tmp_mod, mod_path) = create_temp_mod();
+            let result = scan_mod(
+                &mod_path.to_string_lossy(),
+                Path::new("nonexistent.sqlite"),
+                &[link_dir.to_string_lossy().to_string()],
+            );
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("symlink"),
+                "Expected symlink rejection error, got: {}",
+                err
+            );
+
+            // cleanup
+            let _ = fs::remove_dir(&link_dir);
+        }
+        let _ = fs::remove_dir_all(&real_dir);
     }
 }

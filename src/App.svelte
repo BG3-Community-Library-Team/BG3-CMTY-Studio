@@ -480,7 +480,7 @@
       e.preventDefault();
       const label = undoStore.undo();
       if (label) {
-        toastStore.info("Undo", m.app_undid({ label }));
+        toastStore.info(m.toast_undo_title(), m.app_undid({ label }));
       }
     }
     // IX-03A + ER-01: Ctrl+Y or Ctrl+Shift+Z → redo
@@ -488,7 +488,7 @@
       e.preventDefault();
       const label = undoStore.redo();
       if (label) {
-        toastStore.info("Redo", m.app_redid({ label }));
+        toastStore.info(m.toast_redo_title(), m.app_redid({ label }));
       }
     }
   }

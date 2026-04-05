@@ -50,7 +50,7 @@
 
   async function handleCreateMod() {
     if (!newModName.trim()) return;
-    const selected = await open({ directory: true, title: "Select Location for New Mod" });
+    const selected = await open({ directory: true, title: m.create_mod_dialog_title() });
     if (selected == null) return;
     const targetDir = Array.isArray(selected) ? selected[0] : String(selected);
     isCreatingMod = true;
@@ -70,7 +70,7 @@
 
   async function welcomeOpenProject() {
     try {
-      const selected = await open({ directory: true, title: "Select Mod Folder" });
+      const selected = await open({ directory: true, title: m.header_select_mod_folder() });
       if (selected == null) return;
       const p = Array.isArray(selected) ? selected[0] : String(selected);
       await scanAndImport(p);
@@ -234,86 +234,86 @@
               class="flex items-center gap-1 text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-200)] mb-6 transition-colors"
               onclick={resetNewModForm}
             >
-              ← Back
+              ← {m.common_back()}
             </button>
 
-            <h2 class="text-lg font-semibold text-[var(--th-text-100)] mb-1">New Project</h2>
-            <p class="text-xs text-[var(--th-text-500)] mb-6">Configure your new BG3 mod project</p>
+            <h2 class="text-lg font-semibold text-[var(--th-text-100)] mb-1">{m.create_mod_title()}</h2>
+            <p class="text-xs text-[var(--th-text-500)] mb-6">{m.create_mod_subtitle()}</p>
 
             <div class="space-y-4">
               <label class="flex flex-col gap-1 text-xs">
-                <span class="text-[var(--th-text-400)] font-medium">Mod Name <span class="text-red-400">*</span></span>
+                <span class="text-[var(--th-text-400)] font-medium">{m.create_mod_name_label()} <span class="text-red-400">{m.create_mod_name_required()}</span></span>
                 <input
                   type="text"
                   class="bg-[var(--th-input-bg)] border border-[var(--th-input-border)] rounded px-3 py-2 text-sm text-[var(--th-input-text)] focus:border-[var(--th-focus-ring,#0ea5e9)]"
                   bind:value={newModName}
-                  placeholder="My Awesome Mod"
+                  placeholder={m.create_mod_name_placeholder()}
                 />
               </label>
 
               <div class="grid grid-cols-2 gap-4">
                 <label class="flex flex-col gap-1 text-xs">
-                  <span class="text-[var(--th-text-400)] font-medium">Author</span>
+                  <span class="text-[var(--th-text-400)] font-medium">{m.create_mod_author_label()}</span>
                   <input
                     type="text"
                     class="bg-[var(--th-input-bg)] border border-[var(--th-input-border)] rounded px-3 py-2 text-sm text-[var(--th-input-text)] focus:border-[var(--th-focus-ring,#0ea5e9)]"
                     bind:value={newModAuthor}
-                    placeholder="Your name"
+                    placeholder={m.create_mod_author_placeholder()}
                   />
                 </label>
                 <label class="flex flex-col gap-1 text-xs">
-                  <span class="text-[var(--th-text-400)] font-medium">Version</span>
+                  <span class="text-[var(--th-text-400)] font-medium">{m.create_mod_version_label()}</span>
                   <input
                     type="text"
                     class="bg-[var(--th-input-bg)] border border-[var(--th-input-border)] rounded px-3 py-2 text-sm text-[var(--th-input-text)] focus:border-[var(--th-focus-ring,#0ea5e9)]"
                     bind:value={newModVersion}
-                    placeholder="1.0.0.0"
+                    placeholder={m.create_mod_version_placeholder()}
                   />
                 </label>
               </div>
 
               <label class="flex flex-col gap-1 text-xs">
-                <span class="text-[var(--th-text-400)] font-medium">Folder Name <span class="text-[var(--th-text-600)]">(defaults to Mod Name)</span></span>
+                <span class="text-[var(--th-text-400)] font-medium">{m.create_mod_folder_label()} <span class="text-[var(--th-text-600)]">{m.create_mod_folder_hint()}</span></span>
                 <input
                   type="text"
                   class="bg-[var(--th-input-bg)] border border-[var(--th-input-border)] rounded px-3 py-2 text-sm text-[var(--th-input-text)] focus:border-[var(--th-focus-ring,#0ea5e9)]"
                   bind:value={newModFolder}
-                  placeholder={newModName.trim() || "ModFolderName"}
+                  placeholder={newModName.trim() || m.create_mod_folder_placeholder()}
                 />
               </label>
 
               <label class="flex flex-col gap-1 text-xs">
-                <span class="text-[var(--th-text-400)] font-medium">Description</span>
+                <span class="text-[var(--th-text-400)] font-medium">{m.create_mod_description_label()}</span>
                 <textarea
                   class="bg-[var(--th-input-bg)] border border-[var(--th-input-border)] rounded px-3 py-2 text-sm text-[var(--th-input-text)] focus:border-[var(--th-focus-ring,#0ea5e9)] resize-y min-h-[64px]"
                   bind:value={newModDescription}
                   rows="3"
-                  placeholder="Mod description"
+                  placeholder={m.create_mod_description_placeholder()}
                 ></textarea>
               </label>
 
               <label class="flex items-center gap-2 text-xs text-[var(--th-text-300)] cursor-pointer">
                 <input type="checkbox" class="accent-[var(--th-accent-500)]" bind:checked={newModUseSE} />
-                Include ScriptExtender folder
+                {m.create_mod_script_extender_checkbox()}
               </label>
 
               <div class="flex justify-end gap-3 pt-2 border-t border-[var(--th-border-700)]">
                 <button
                   class="px-4 py-2 text-xs rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
                   onclick={resetNewModForm}
-                >Cancel</button>
+                >{m.common_cancel()}</button>
                 <button
                   class="px-5 py-2 text-xs rounded font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   onclick={handleCreateMod}
                   disabled={isCreatingMod || !newModName.trim()}
-                >{isCreatingMod ? "Creating…" : "Create Mod"}</button>
+                >{isCreatingMod ? m.create_mod_button_creating() : m.create_mod_button_create()}</button>
               </div>
             </div>
           </div>
         {:else}
         <div class="welcome-card">
-          <h1 class="text-lg font-semibold text-[var(--th-text-100)] mb-1">BG3 CMTY Studio</h1>
-          <p class="text-xs text-[var(--th-text-500)] mb-6">Community Mod Authoring Studio for Baldur's Gate 3</p>
+          <h1 class="text-lg font-semibold text-[var(--th-text-100)] mb-1">{m.welcome_app_title()}</h1>
+          <p class="text-xs text-[var(--th-text-500)] mb-6">{m.welcome_app_subtitle()}</p>
 
           {#if modStore.scanResult}
             <div class="mb-6 p-3 rounded-md bg-[var(--th-bg-700)]/50 border border-[var(--th-border-700)]">
@@ -321,7 +321,7 @@
               <p class="text-xs text-[var(--th-text-500)] mt-1">by {modStore.scanResult.mod_meta.author}</p>
               <p class="text-xs text-[var(--th-text-500)] mt-0.5">{sections.length} sections · {sections.reduce((n: number, s: SectionResult) => n + s.entries.length, 0)} entries detected</p>
             </div>
-            <p class="text-xs text-[var(--th-text-500)]">Select a section from the Explorer panel to begin.</p>
+            <p class="text-xs text-[var(--th-text-500)]">{m.welcome_select_section()}</p>
           {:else}
             <!-- Action Buttons -->
             <div class="flex flex-col gap-3 w-full max-w-[280px] mx-auto mb-6">
@@ -333,8 +333,8 @@
               >
                 <FolderOpen size={18} class="text-[var(--th-accent-500,#0ea5e9)] shrink-0" />
                 <div>
-                  <div class="text-xs font-medium text-[var(--th-text-200)]">Open Project</div>
-                  <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">Select an existing unpacked mod folder</div>
+                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.command_label_open_project()}</div>
+                  <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">{m.welcome_open_desc()}</div>
                 </div>
               </button>
 
@@ -346,8 +346,8 @@
               >
                 <FilePlus2 size={18} class="text-emerald-400 shrink-0" />
                 <div>
-                  <div class="text-xs font-medium text-[var(--th-text-200)]">New Project</div>
-                  <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">Generate a new mod project scaffold</div>
+                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.command_label_new_project()}</div>
+                  <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">{m.welcome_new_desc()}</div>
                 </div>
               </button>
             </div>

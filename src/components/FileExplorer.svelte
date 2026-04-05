@@ -412,7 +412,7 @@
         aria-label="Open project folder"
         onclick={async () => {
           try {
-            const selected = await open({ directory: true, title: "Select Mod Folder" });
+            const selected = await open({ directory: true, title: m.header_select_mod_folder() });
             if (selected == null) return;
             const p = Array.isArray(selected) ? selected[0] : String(selected);
             await scanAndImport(p);
@@ -434,7 +434,7 @@
                  hover:bg-[var(--th-bg-600)]/80 hover:border-[var(--th-border-600)] transition-colors"
           onclick={async () => {
             try {
-              const selected = await open({ directory: true, title: "Select Mod Folder" });
+              const selected = await open({ directory: true, title: m.header_select_mod_folder() });
               if (selected == null) return;
               const p = Array.isArray(selected) ? selected[0] : String(selected);
               await scanAndImport(p);
@@ -456,7 +456,7 @@
       </div>
     </div>
   {:else}
-    <div class="tree-root">
+    <div class="tree-root" role="tree">
       <!-- Root: Mod name -->
       <button class="tree-node root-node" onclick={() => { uiStore.expandNode("root"); uiStore.openTab({ id: "meta.lsx", label: "meta.lsx", type: "meta-lsx", category: "meta", icon: "⚙" }); }} oncontextmenu={(e) => showContextMenu(e, resolveNodePath("", "root"), modName)}>
         <ChevronRight size={14} class="chevron {isRootExpanded ? 'expanded' : ''}" />
@@ -497,6 +497,7 @@
                     tabindex="0"
                     aria-selected="false"
                     aria-expanded={isExpanded}
+                    aria-level={3}
                   >
                     <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(node.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(node.name); } }} role="button" tabindex="0" aria-label="Toggle {node.label}">
                       <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
@@ -530,6 +531,7 @@
                             role="treeitem"
                             aria-selected="false"
                             aria-expanded={childExpanded}
+                            aria-level={4}
                           >
                             <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
                               <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
@@ -654,6 +656,7 @@
                         tabindex="0"
                         aria-selected="false"
                         aria-expanded={isExpanded}
+                        aria-level={3}
                       >
                         <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(node.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(node.name); } }} role="button" tabindex="0" aria-label="Toggle {node.label}">
                           <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />

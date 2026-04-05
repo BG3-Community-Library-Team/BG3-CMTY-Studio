@@ -56,6 +56,12 @@
   "create_mod_button_create": "Create Mod",
   "create_mod_button_creating": "Creating…",
   "create_mod_dialog_title": "Select Location for New Mod",
+  "create_mod_folder_hint": "(defaults to Mod Name)",
+  "create_mod_folder_label": "Folder Name",
+  "create_mod_folder_placeholder": "ModFolderName",
+  "create_mod_subtitle": "Configure your new BG3 mod project",
+  "create_mod_version_label": "Version",
+  "create_mod_version_placeholder": "1.0.0.0",
 
   "export_mod_title": "Export Mod",
   "export_mod_file_count": "{totalFiles} files",
@@ -550,6 +556,8 @@
 
   "toast_notifications_aria": "Notifications",
   "toast_dismiss": "Dismiss notification",
+  "toast_redo_title": "Redo",
+  "toast_undo_title": "Undo",
 
   "theme_preview_heading": "Theme Preview",
   "theme_preview_text_backgrounds": "Text & Backgrounds",
@@ -689,6 +697,12 @@
   "loaded_data_reset_failed_title": "Reset Failed",
 
   "ui_welcome_tab": "Welcome",
+
+  "welcome_app_subtitle": "Community Mod Authoring Studio for Baldur's Gate 3",
+  "welcome_app_title": "BG3 CMTY Studio",
+  "welcome_new_desc": "Generate a new mod project scaffold",
+  "welcome_open_desc": "Select an existing unpacked mod folder",
+  "welcome_select_section": "Select a section from the Explorer panel to begin.",
 
   "entry_row_edit_tooltip": "Edit entry",
   "entry_row_edit_aria": "Edit {name}",

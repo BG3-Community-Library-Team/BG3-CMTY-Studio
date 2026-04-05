@@ -169,7 +169,9 @@
     {#each sortedOptions as opt, i (opt.value)}
       {@const isSelected = selectedSet.has(opt.value)}
       {@const hidden = filterLower && !opt.label.toLowerCase().includes(filterLower)}
-      <div role="gridcell" style:display={hidden ? "none" : ""}>
+      {@const colIndex = (i % columnCount) + 1}
+      {@const rowIndex = Math.floor(i / columnCount) + 1}
+      <div role="gridcell" aria-colindex={colIndex} aria-rowindex={rowIndex} style:display={hidden ? "none" : ""}>
         <button
           bind:this={swatchEls[i]}
           type="button"

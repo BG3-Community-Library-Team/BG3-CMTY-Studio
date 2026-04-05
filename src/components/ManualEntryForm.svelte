@@ -335,34 +335,186 @@
     });
   }
 
-  /** Pre-built map of field combobox options — only rebuilds when dependencies change */
-  let fieldComboboxOptionsMap = $derived.by(() => {
+  // -- Per-descriptor-type combobox option derivations (PF-009) --
+  // Each group tracks only its specific reactive data sources, avoiding
+  // full recomputation of ALL field options when any single source changes.
+
+  /** section: — vanilla entries + scanned mod + additional mods */
+  let _cbSection = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
     const ctx: FieldComboboxContext = {
       caps,
       vanilla: modStore.vanilla as unknown as Record<string, VanillaEntryInfo[]>,
       scanResult: modStore.scanResult,
       additionalModResults: modStore.additionalModResults,
       additionalModPaths: modStore.additionalModPaths,
-      vanillaValueLists: modStore.vanillaValueLists,
-      vanillaStatEntries: modStore.vanillaStatEntries,
-      modStatEntries: modStore.modStatEntries,
-      vanillaEquipment: modStore.vanillaEquipment,
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
       modName: modStore.scanResult?.mod_meta?.name,
       lookupFn: (h) => modStore.lookupLocalizedString(h),
-      locaValues: configStore.locaEntries.flatMap(f => f.values.map(v => ({ contentuid: v.contentuid, text: v.text }))),
-      localizationMap: modStore.localizationMap,
     };
     const map = new Map<string, ComboboxOption[]>();
-    if (caps.fieldCombobox) {
-      for (const fieldKey of Object.keys(caps.fieldCombobox)) {
-        map.set(fieldKey, _getFieldComboboxOptions(fieldKey, ctx));
-      }
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('section:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
     }
     return map;
   });
 
+  /** folder: + progressionTable: + voiceTable: — vanilla entries only (no scan data) */
+  let _cbVanillaOnly = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: modStore.vanilla as unknown as Record<string, VanillaEntryInfo[]>,
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+      lookupFn: (h) => modStore.lookupLocalizedString(h),
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('folder:') || desc.startsWith('progressionTable:') || desc.startsWith('voiceTable:'))
+        map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** valueList: — depends only on vanillaValueLists */
+  let _cbValueList = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: modStore.vanillaValueLists,
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('valueList:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** static: — no reactive data dependencies (parsed from descriptor string) */
+  let _cbStatic = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('static:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** statType: — depends on stat entries from vanilla + mod */
+  let _cbStatType = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: modStore.vanillaStatEntries,
+      modStatEntries: modStore.modStatEntries,
+      vanillaEquipment: [],
+      modName: modStore.scanResult?.mod_meta?.name,
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('statType:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** equipment: — depends only on vanillaEquipment */
+  let _cbEquipment = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: modStore.vanillaEquipment,
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('equipment:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** loca: — depends on user-authored loca entries + vanilla localization map */
+  let _cbLoca = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+      locaValues: configStore.locaEntries.flatMap(f => f.values.map(v => ({ contentuid: v.contentuid, text: v.text }))),
+      localizationMap: modStore.localizationMap,
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('loca:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** Dispatching accessor — routes to the correct per-type derivation.
+   *  Reads only ONE derived map per call, preserving fine-grained reactivity
+   *  when called from child component render scopes. */
   function fieldComboboxOptions(fieldKey: string): ComboboxOption[] {
-    return fieldComboboxOptionsMap.get(fieldKey) ?? [];
+    const descriptor = caps.fieldCombobox?.[fieldKey];
+    if (!descriptor) return [];
+    if (descriptor.startsWith('section:')) return _cbSection.get(fieldKey) ?? [];
+    if (descriptor.startsWith('folder:') || descriptor.startsWith('progressionTable:') || descriptor.startsWith('voiceTable:'))
+      return _cbVanillaOnly.get(fieldKey) ?? [];
+    if (descriptor.startsWith('valueList:')) return _cbValueList.get(fieldKey) ?? [];
+    if (descriptor.startsWith('static:')) return _cbStatic.get(fieldKey) ?? [];
+    if (descriptor.startsWith('statType:')) return _cbStatType.get(fieldKey) ?? [];
+    if (descriptor.startsWith('equipment:')) return _cbEquipment.get(fieldKey) ?? [];
+    if (descriptor.startsWith('loca:')) return _cbLoca.get(fieldKey) ?? [];
+    return [];
   }
 
   /** Resolve a localization handle to its display text, if known. */

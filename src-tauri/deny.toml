@@ -225,13 +225,14 @@ skip = [
     { crate = "syn@1", reason = "Pulled by derive_more (Tauri selectors)" },
     { crate = "thiserror@1", reason = "Tauri transitive — migrating to v2 in progress" },
     { crate = "thiserror-impl@1", reason = "Tauri transitive — migrating to v2 in progress" },
-    { crate = "winreg@0.52", reason = "Direct dep for registry access; Tauri pulls a different version" },
+    { crate = "winreg@0.55", reason = "Pulled by embed-resource (Tauri build)" },
     { crate = "windows-link@0.1", reason = "Windows API crate version spread across Tauri deps" },
-    { crate = "windows-sys@0.48", reason = "Windows API crate version spread across Tauri deps" },
-    { crate = "windows-targets@0.48", reason = "Windows API crate version spread across Tauri deps" },
+    { crate = "windows-sys@0.59", reason = "Pulled by window-vibrancy / winreg 0.55 (Tauri deps)" },
+    { crate = "windows-sys@0.60", reason = "Pulled by keyring/muda/rfd (Tauri deps), alongside 0.61" },
     { crate = "windows-targets@0.52", reason = "Windows API crate version spread across Tauri deps" },
-    { crate = "windows_x86_64_msvc@0.48", reason = "Windows API crate version spread across Tauri deps" },
     { crate = "windows_x86_64_msvc@0.52", reason = "Windows API crate version spread across Tauri deps" },
+    # DEP-01: Additional Tauri transitive duplicates
+    { crate = "winnow@0.7", reason = "Pulled by toml 0.9 (Tauri build), alongside winnow 1.0 via toml_parser" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive

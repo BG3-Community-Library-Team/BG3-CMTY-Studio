@@ -89,7 +89,7 @@
   {@const comboPlaceholder = badgeText ? `${badgeText} — Search…` : 'Search…'}
   {@const isLoca = caps.fieldCombobox?.[item.key]?.startsWith('loca:')}
   <div class="flex flex-col gap-0.5 text-xs min-w-0">
-    <span class="text-[var(--th-text-400)]">{item.label ?? item.key}
+    <label for="field-{item.key}" class="text-[var(--th-text-400)]">{item.label ?? item.key}
       {#if item.generateUuid}
         <button type="button"
           class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)]
@@ -99,7 +99,7 @@
           aria-label="Generate random UUID"
         ><Shuffle size={12} /></button>
       {/if}
-    </span>
+    </label>
     {#if isLoca}
       <div class="loca-field">
         <SingleSelectCombobox
@@ -145,7 +145,7 @@
       <textarea class="form-input w-full" rows="2" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLTextAreaElement).value)}></textarea>
     {:else}
       <div class="relative">
-        <input type={isNum ? 'number' : 'text'} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} style={hasBadge ? "padding-right: 4rem;" : ""} />
+        <input id="field-{item.key}" type={isNum ? 'number' : 'text'} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} style={hasBadge ? "padding-right: 4rem;" : ""} />
         {#if hasBadge}
           <span class="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs font-medium px-1.5 py-0.5 rounded-full pointer-events-none {badgeClass}">{badgeText}</span>
         {/if}
