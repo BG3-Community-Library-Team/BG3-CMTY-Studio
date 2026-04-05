@@ -255,6 +255,7 @@ fn write_attribute(out: &mut String, id: &str, attr_type: &str, value: &str, ind
 }
 
 /// Render a complete `meta.lsx` XML string from mod metadata.
+#[allow(clippy::too_many_arguments)]
 fn render_meta_lsx(
     uuid: &str,
     name: &str,

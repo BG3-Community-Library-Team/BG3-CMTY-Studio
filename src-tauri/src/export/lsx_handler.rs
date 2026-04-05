@@ -255,12 +255,15 @@ fn query_children(
 
 /// Collect raw `(pk_value, attributes)` pairs from a staging table.
 ///
+/// A raw row: (rowid string, column_name → value map).
+type RawRow = (String, HashMap<String, String>);
+
 /// Rows are collected eagerly so the statement borrow on `conn` is released
 /// before junction-table queries run for each row.
 fn collect_raw_rows(
     conn: &Connection,
     table_name: &str,
-) -> Result<Vec<(String, HashMap<String, String>)>, AppError> {
+) -> Result<Vec<RawRow>, AppError> {
     let sql = format!(
         "SELECT * FROM \"{}\" WHERE \"_is_deleted\" = 0",
         table_name

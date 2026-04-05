@@ -187,7 +187,7 @@ fn compute_orphan_files(ctx: &ExportContext, plan: &ExportPlan) -> Result<Vec<Pa
 
         // Exclude externally-managed files.
         if let Some(name) = rel.file_name().and_then(|n| n.to_str()) {
-            if ORPHAN_EXCLUSIONS.iter().any(|&excl| excl == name) {
+            if ORPHAN_EXCLUSIONS.contains(&name) {
                 continue;
             }
         }

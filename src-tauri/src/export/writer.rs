@@ -3,7 +3,7 @@
 //! Implements a 5-phase strategy: validate → write temps → backup → rename → delete.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 
@@ -38,7 +38,7 @@ fn cleanup_temp_files(temp_paths: &[PathBuf]) {
 }
 
 /// Compute the `.cmty_tmp` temp path for a given absolute path.
-fn temp_path_for(absolute_path: &PathBuf) -> PathBuf {
+fn temp_path_for(absolute_path: &Path) -> PathBuf {
     let mut name = absolute_path
         .as_os_str()
         .to_os_string();
@@ -175,9 +175,7 @@ pub fn write_files_atomic(
                 if fallback.is_err() {
                     // Clean up remaining temps (current one + all after).
                     remaining_temps.push(tmp.clone());
-                    for j in (i + 1)..temp_paths.len() {
-                        remaining_temps.push(temp_paths[j].clone());
-                    }
+                    remaining_temps.extend_from_slice(&temp_paths[i + 1..]);
                     cleanup_temp_files(&remaining_temps);
                     return Err(AppError::io_error(format!(
                         "Failed to rename/copy temp file to '{}': rename={}, copy={}",
@@ -270,7 +268,7 @@ pub fn write_files_atomic(
 }
 
 /// Compute the `.bak` backup path for a given absolute path.
-fn backup_path_for(absolute_path: &PathBuf) -> PathBuf {
+fn backup_path_for(absolute_path: &Path) -> PathBuf {
     let mut name = absolute_path
         .as_os_str()
         .to_os_string();
