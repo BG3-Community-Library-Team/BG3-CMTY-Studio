@@ -21,6 +21,7 @@
   import MultiSelectCombobox from "./MultiSelectCombobox.svelte";
   import SingleSelectCombobox from "./SingleSelectCombobox.svelte";
   import { m } from "../paraglide/messages.js";
+  import { generateUuid } from "../lib/utils/uuid.js";
 
   let meta = $derived(modStore.scanResult?.mod_meta);
 
@@ -54,14 +55,6 @@
               (BigInt(revision & 0xFFFF) << 31n) |
               BigInt(build & 0x7FFFFFFF);
     return n.toString();
-  }
-
-  function generateUuid(): string {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 0x0f);
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
   }
 
   // ── ModuleInfo fields ──
@@ -358,7 +351,7 @@
       const xml = buildMetaLsx();
       const metaPath = `${modPath}/Mods/${folder}/meta.lsx`;
       await saveConfig(xml, metaPath, true);
-      toastStore.success("meta.lsx saved", `Saved to Mods/${folder}/meta.lsx`);
+      toastStore.success(m.meta_lsx_saved_title(), m.meta_lsx_saved_message({ folder }));
     } catch (e: any) {
       toastStore.error("Save failed", String(e?.message ?? e));
     } finally {

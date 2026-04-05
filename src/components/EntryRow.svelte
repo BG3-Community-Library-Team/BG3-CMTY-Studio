@@ -209,7 +209,7 @@
          {isVanilla && !editing ? 'opacity-60' : dataState.enabled ? '' : 'opacity-60'}"
   style={depth > 0 ? `margin-left: ${depth * 20}px` : ''}
   data-entry-id="{section}:{entry.uuid}"
-  title={isVanilla && !editing ? m.entry_row_vanilla_tooltip() : dataState.enabled ? undefined : 'This entry will be commented out in the .lsx file'}
+  title={isVanilla && !editing ? m.entry_row_vanilla_tooltip() : dataState.enabled ? undefined : m.entry_row_disabled_tooltip()}
   oncontextmenu={(e) => { if (onCtxMenu) { e.preventDefault(); onCtxMenu(e, entry); } }}
 >
   {#if isVanilla && !editing}

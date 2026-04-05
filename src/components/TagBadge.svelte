@@ -4,6 +4,8 @@
   Tooltip uses fixed positioning with viewport bounds awareness.
 -->
 <script lang="ts">
+  import { m } from "../paraglide/messages.js";
+
   export type TagType = "NEW" | "EDIT" | "DUP" | "IMP" | "WARN" | "ERR" | "MOD" | "OVRD" | "BASE";
 
   let { tag }: { tag: TagType } = $props();
@@ -33,15 +35,15 @@
   };
 
   const TAG_TOOLTIPS: Record<TagType, string> = {
-    NEW:  "New: This entry has been introduced by the active mod",
-    EDIT: "Edited: This entry differs from the mod's unpacked files",
-    DUP:  "Duplicate: This entry matches the mod's unpacked files exactly",
-    IMP:  "Imported: Entries from a pre-existing configuration file",
-    WARN: "Warning: This entry has no actionable changes and will be skipped in output",
-    ERR:  "Error: This entry has configuration errors that must be fixed",
-    MOD:  "Modified: This entry has unsaved changes",
-    OVRD: "Override: This entry overrides vanilla or loaded mod data",
-    BASE: "Base: Unmodified vanilla game entry",
+    NEW:  m.tag_tooltip_new(),
+    EDIT: m.tag_tooltip_edit(),
+    DUP:  m.tag_tooltip_dup(),
+    IMP:  m.tag_tooltip_imp(),
+    WARN: m.tag_tooltip_warn(),
+    ERR:  m.tag_tooltip_err(),
+    MOD:  m.tag_tooltip_mod(),
+    OVRD: m.tag_tooltip_ovrd(),
+    BASE: m.tag_tooltip_base(),
   };
 
   let showTooltip = $state(false);

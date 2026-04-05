@@ -9,15 +9,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import FileText from "@lucide/svelte/icons/file-text";
   import X from "@lucide/svelte/icons/x";
-
-  /** Generate a v4 UUID. */
-  function generateUuid(): string {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 0x0f);
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  }
+  import { generateUuid } from "../lib/utils/uuid.js";
 
   /** Generate a BG3-style contentuid: 'h' prefix, all hyphens replaced with 'g'. */
   function generateContentUid(): string {
@@ -27,7 +19,7 @@
   function addFileEntry() {
     configStore.locaEntries = [
       ...configStore.locaEntries,
-      { id: crypto.randomUUID(), label: "", values: [{ id: crypto.randomUUID(), contentuid: generateContentUid(), version: 1, text: "" }] },
+      { id: generateUuid(), label: "", values: [{ id: generateUuid(), contentuid: generateContentUid(), version: 1, text: "" }] },
     ];
   }
 
@@ -37,7 +29,7 @@
 
   function addValue(entryId: string) {
     const entry = configStore.locaEntries.find(e => e.id === entryId);
-    if (entry) entry.values = [...entry.values, { id: crypto.randomUUID(), contentuid: generateContentUid(), version: 1, text: "" }];
+    if (entry) entry.values = [...entry.values, { id: generateUuid(), contentuid: generateContentUid(), version: 1, text: "" }];
   }
 
   function removeValue(entryId: string, valId: string) {

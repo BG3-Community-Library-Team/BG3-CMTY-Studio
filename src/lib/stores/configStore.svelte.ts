@@ -8,6 +8,7 @@ import type {
   AnchorGroup,
 } from "../types/index.js";
 import { SECTIONS_ORDERED } from "../types/index.js";
+import { generateUuid } from "../utils/uuid.js";
 import { modStore } from "./modStore.svelte.js";
 import { undoStore } from "./undoStore.svelte.js";
 import { entryKey, fieldOverrideKey, projectKey } from "../data/fieldKeys.js";
@@ -124,10 +125,10 @@ export function validateStoredProject(data: Record<string, unknown>): {
         )
       ) {
         const migrated: LocaFileEntry = {
-          id: typeof entry.id === "string" ? entry.id : crypto.randomUUID(),
+          id: typeof entry.id === "string" ? entry.id : generateUuid(),
           label: entry.label,
           values: (entry.values as LocaValue[]).map((v: LocaValue) => ({
-            id: typeof v.id === "string" ? v.id : crypto.randomUUID(),
+            id: typeof v.id === "string" ? v.id : generateUuid(),
             contentuid: v.contentuid,
             version: v.version,
             text: v.text,
@@ -1225,7 +1226,7 @@ class ConfigStore {
     updated.set(raceEntryUuid, { raceTagName, raceTagUuid, reallyTagName, reallyTagUuid });
     this.osirisGoalEntries = updated;
     if (!this.osirisGoalFileUuid) {
-      this.osirisGoalFileUuid = crypto.randomUUID();
+      this.osirisGoalFileUuid = generateUuid();
     }
     this.#markDirty();
   }

@@ -36,6 +36,7 @@
   import RacePresetPanel from "./manual-entry/RacePresetPanel.svelte";
   import { buildFormState, encodeFormState } from "../lib/utils/formInit.js";
   import { parseHandleVersion, isContentHandle, resolveLoca } from "../lib/utils/localizationManager.js";
+  import { generateUuid } from "../lib/utils/uuid.js";
   import {
     computeSpellIdOptions, computeSpellFieldKeys, combinedSpellIdOptions as computeCombinedSpellIdOptions,
     getListItemsPlaceholder, getListItemsLabel, computeListItemsOptions,
@@ -70,15 +71,6 @@
   } = $props();
 
   // ---- Core identity fields ----
-
-  /** Generate a random v4 UUID. */
-  function generateUuid(): string {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 0x0f);
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  }
 
   // Decoders/encoders + color helpers imported from fieldCodec.ts (AIP-06/07)
   const _init = untrack(() => buildFormState({

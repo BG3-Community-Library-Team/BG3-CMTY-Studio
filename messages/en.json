@@ -471,6 +471,8 @@
   "meta_lsx_uuid_warning_message": "Changing the UUID or Folder may cause issues for players who update from versions prior to this change. Their mod managers may treat this as a different mod entirely.",
   "meta_lsx_uuid_warning_proceed": "Proceed",
   "meta_lsx_no_mod_loaded": "No mod loaded",
+  "meta_lsx_saved_title": "meta.lsx saved",
+  "meta_lsx_saved_message": "Saved to Mods/{folder}/meta.lsx",
 
   "multiselect_clear_all": "Clear all",
   "multiselect_no_matching": "No matching options.",
@@ -692,7 +694,7 @@
   "entry_row_show_diff": "show diff",
   "entry_row_hide_diff": "hide diff",
   "entry_row_vanilla_tooltip": "Vanilla entry — click Edit to override",
-  "entry_row_disabled_tooltip": "Commented out",
+  "entry_row_disabled_tooltip": "This entry will be commented out in the .lsx file",
   "entry_row_expand_aria": "Expand entry {name}",
   "entry_row_collapse_aria": "Collapse editing {name}",
   "entry_row_hidden_tooltip": "Hidden from Player — click to unhide",
@@ -732,7 +734,7 @@
   "scan_staging_population_failed_detail": "Could not populate staging from mod files: {error}",
   "scan_staging_integrity": "Staging integrity issue",
   "scan_staging_recreation_failed": "Staging recreation failed",
-  "scan_loca_map_empty": "Localization map is empty — loca comboboxes will have no vanilla suggestions. Ensure vanilla data has been unpacked (english.pak → localization.yaml).",
+  "scan_loca_map_empty": "Localization map is empty — loca comboboxes will have no vanilla suggestions. Ensure vanilla data has been unpacked.",
   "scan_loca_parse_issues_title": "Localization parse issues",
   "scan_loca_parse_issues_detail": "{count} file(s) had parse errors — some entries may be missing.",
   "scan_config_import_warnings_title": "Config import warnings",
@@ -789,5 +791,15 @@
   "import_count_imported": "{count} imported",
   "import_count_already_loaded": "{count} already loaded",
   "import_count_failed": "{count} failed",
-  "import_count_inactive": "{count} inactive"
+  "import_count_inactive": "{count} inactive",
+
+  "tag_tooltip_new": "New: This entry has been introduced by the active mod",
+  "tag_tooltip_edit": "Edited: This entry differs from the mod's unpacked files",
+  "tag_tooltip_dup": "Duplicate: This entry matches the mod's unpacked files exactly",
+  "tag_tooltip_imp": "Imported: Entries from a pre-existing configuration file",
+  "tag_tooltip_warn": "Warning: This entry has no actionable changes and will be skipped in output",
+  "tag_tooltip_err": "Error: This entry has configuration errors that must be fixed",
+  "tag_tooltip_mod": "Modified: This entry has unsaved changes",
+  "tag_tooltip_ovrd": "Override: This entry overrides vanilla or loaded mod data",
+  "tag_tooltip_base": "Base: Unmodified vanilla game entry"
 }

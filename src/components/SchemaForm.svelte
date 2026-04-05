@@ -5,6 +5,7 @@
   import X from "@lucide/svelte/icons/x";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import { m } from "../paraglide/messages.js";
+  import { generateUuid } from "../lib/utils/uuid.js";
 
   let {
     section,
@@ -59,7 +60,7 @@
       }
     }
     if (!init["UUID"] && !init["MapKey"]) {
-      init["UUID"] = crypto.randomUUID();
+      init["UUID"] = generateUuid();
     }
     return init;
   }
@@ -102,8 +103,8 @@
     onsave(attrs, selectedNodeId, attrTypes);
   }
 
-  function generateUuid(field: string = "UUID") {
-    values[field] = crypto.randomUUID();
+  function fillUuidField(field: string = "UUID") {
+    values[field] = generateUuid();
   }
 </script>
 
@@ -142,7 +143,7 @@
           <button
             type="button"
             class="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--th-accent-600)] text-white hover:opacity-90"
-            onclick={() => generateUuid()}
+            onclick={() => fillUuidField()}
             title={m.schema_form_generate_uuid()}
           >
             <Shuffle size={10} />
@@ -180,7 +181,7 @@
               <button
                 type="button"
                 class="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--th-accent-600)] text-white hover:opacity-90"
-                onclick={() => generateUuid(attr.name)}
+                onclick={() => fillUuidField(attr.name)}
                 title={m.schema_form_generate_uuid()}
               >
                 <Shuffle size={10} />
@@ -249,7 +250,7 @@
               <button
                 type="button"
                 class="absolute right-1 top-1/2 -translate-y-1/2 text-xs px-1.5 py-0.5 rounded bg-violet-700/50 text-violet-300 hover:opacity-90"
-                onclick={() => generateUuid(attr.name)}
+                onclick={() => fillUuidField(attr.name)}
                 title={m.schema_form_generate_uuid()}
               >
                 <Shuffle size={12} />

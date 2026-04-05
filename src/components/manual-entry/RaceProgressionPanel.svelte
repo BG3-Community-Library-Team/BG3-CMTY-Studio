@@ -12,6 +12,7 @@
   import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { tooltip } from "../../lib/actions/tooltip.js";
+  import { generateUuid } from "../../lib/utils/uuid.js";
 
   let {
     raceUuid,
@@ -158,7 +159,7 @@
     const level = String(newLevel ?? '').trim();
     if (!level || Number(level) < 1) return;
     subforms = [...subforms, {
-      id: `temp-${crypto.randomUUID()}`,
+      id: `temp-${generateUuid()}`,
       level,
       name: '',
       boosts: '',
@@ -214,7 +215,7 @@
 
       const fields: Record<string, string> = {
         UUID: sub.id.startsWith('temp-') || sub.id.startsWith('existing-')
-          ? crypto.randomUUID()
+          ? generateUuid()
           : sub.id,
         TableUUID: progressionTableUuid,
         ProgressionType: '2',

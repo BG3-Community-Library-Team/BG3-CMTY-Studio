@@ -10,6 +10,7 @@
 
   import X from "@lucide/svelte/icons/x";
   import Plus from "@lucide/svelte/icons/plus";
+  import { generateUuid } from "../../lib/utils/uuid.js";
 
   let {
     raceName,
@@ -246,7 +247,7 @@
     const newUuids: string[] = [];
 
     if (showRaceTag && tag1Valid) {
-      const uuid = crypto.randomUUID();
+      const uuid = generateUuid();
       newUuids.push(uuid);
       tagsToCreate.push({
         section: 'Tags',
@@ -262,7 +263,7 @@
     }
 
     if (showReallyTag && tag2Valid) {
-      const uuid = crypto.randomUUID();
+      const uuid = generateUuid();
       newUuids.push(uuid);
       tagsToCreate.push({
         section: 'Tags',

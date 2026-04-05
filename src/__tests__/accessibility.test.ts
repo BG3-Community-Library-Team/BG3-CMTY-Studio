@@ -6,19 +6,6 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
-// Polyfill localStorage for node test environment
-if (typeof globalThis.localStorage === "undefined") {
-  const store = new Map<string, string>();
-  (globalThis as any).localStorage = {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => store.set(key, String(value)),
-    removeItem: (key: string) => store.delete(key),
-    clear: () => store.clear(),
-    get length() { return store.size; },
-    key: (i: number) => [...store.keys()][i] ?? null,
-  };
-}
-
 // ── Mock matchMedia ──────────────────────────────────────────────────
 // motion.svelte.ts reads window.matchMedia at module load time,
 // so we must set up the mock before importing the module.

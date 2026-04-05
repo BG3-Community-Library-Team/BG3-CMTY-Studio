@@ -7,13 +7,14 @@
  *
  * Section-agnostic — works for Races, Origins, Backgrounds, Feats, etc.
  */
+import { generateUuid } from "./uuid.js";
 
 /**
  * Generate a BG3-format content handle.
  * Format: h{8hex}g{4hex}g{4hex}g{4hex}g{12hex}
  */
 export function generateContentHandle(): string {
-  const uuid = crypto.randomUUID();
+  const uuid = generateUuid();
   const parts = uuid.split("-");
   return `h${parts[0]}g${parts[1]}g${parts[2]}g${parts[3]}g${parts[4]}`;
 }

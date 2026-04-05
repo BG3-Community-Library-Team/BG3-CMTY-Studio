@@ -65,8 +65,6 @@ licensed under permissive terms.
 | [@vitest/coverage-v8](https://www.npmjs.com/package/@vitest/coverage-v8) | MIT | Test coverage provider |
 | [fast-check](https://www.npmjs.com/package/fast-check) | MIT | Property-based testing |
 | [yaml](https://www.npmjs.com/package/yaml) | ISC | YAML parsing (test fixtures) |
-| [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) | MIT | SQLite for scripts/tests |
-| [fast-xml-parser](https://www.npmjs.com/package/fast-xml-parser) | MIT | XML parsing for scripts/tests |
 | [rollup-plugin-visualizer](https://www.npmjs.com/package/rollup-plugin-visualizer) | MIT | Bundle analysis |
 
 ## License Summary

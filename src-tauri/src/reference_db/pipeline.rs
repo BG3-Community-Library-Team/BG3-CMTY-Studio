@@ -1708,6 +1708,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires unpacked BG3 game data in UnpackedData/"]
     fn test_pipeline_shaped_lsfx_fixture_builds_reference_db() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -1760,6 +1761,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires unpacked BG3 game data in UnpackedData/"]
     fn test_pipeline_shaped_fixture_builds_reference_db() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()

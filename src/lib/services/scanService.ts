@@ -153,7 +153,7 @@ export async function loadVanillaData(): Promise<void> {
         }
         modStore.localizationMap = map;
         if (result.entries.length === 0) {
-          console.warn("[Vanilla] Localization map is empty — loca comboboxes will have no vanilla suggestions. Ensure vanilla data has been unpacked (english.pak → localization.yaml).");
+          console.warn("[Vanilla] Localization map is empty — loca comboboxes will have no vanilla suggestions. Ensure vanilla data has been unpacked.");
         }
         if (result.warnings.length > 0) {
           for (const w of result.warnings) console.warn("[Vanilla Loca]", w);

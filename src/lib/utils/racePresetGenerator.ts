@@ -8,6 +8,7 @@
  *   BodyType:  0 = Masculine, 1 = Feminine   (sex / gender presentation)
  *   BodyShape: 0 = Regular,   1 = Strong     (body build)
  */
+import { generateUuid } from "./uuid.js";
 
 export interface PresetGeneratorInput {
   raceUuid: string;
@@ -59,8 +60,8 @@ export function generatePresets(input: PresetGeneratorInput): GeneratedEntry[] {
 
   for (const target of targets) {
     for (const body of input.bodyMatrix) {
-      const presetUuid = crypto.randomUUID();
-      const templateUuid = crypto.randomUUID();
+      const presetUuid = generateUuid();
+      const templateUuid = generateUuid();
       const sex = sexSuffix(body.type);
       const build = buildLabel(body.shape);
 
@@ -123,8 +124,8 @@ export function generateDreamGuardianEntries(input: {
   const NULL_GUID = "00000000-0000-0000-0000-000000000000";
 
   for (const body of input.bodyMatrix) {
-    const dgTemplateUuid = crypto.randomUUID();
-    const dgPresetUuid = crypto.randomUUID();
+    const dgTemplateUuid = generateUuid();
+    const dgPresetUuid = generateUuid();
     const sex = sexSuffix(body.type);
     const parentTemplate =
       body.type === 0 ? VANILLA_DG_PARENTS.male : VANILLA_DG_PARENTS.female;
