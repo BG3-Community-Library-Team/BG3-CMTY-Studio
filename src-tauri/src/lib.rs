@@ -3,6 +3,7 @@ pub mod commands;
 pub mod converters;
 pub mod db_manager;
 pub mod error;
+pub mod export;
 pub mod logging;
 pub mod models;
 pub mod pak;
