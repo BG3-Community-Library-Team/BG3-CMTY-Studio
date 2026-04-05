@@ -3,7 +3,7 @@ name = "bg3-cmty-studio"
 default-run = "bg3-cmty-studio"
 version = "1.0.0"
 edition = "2021"
-rust-version = "1.71"
+rust-version = "1.80"
 license = "MIT"
 
 [dependencies]
