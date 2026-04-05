@@ -137,7 +137,7 @@
               modStore.selectedModPath = path;
               await scanAndImport(path);
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             toastStore.error(m.app_open_scan_failed(), getErrorMessage(e));
           }
         },

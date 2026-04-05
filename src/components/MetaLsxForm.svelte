@@ -21,6 +21,7 @@
   import MultiSelectCombobox from "./MultiSelectCombobox.svelte";
   import SingleSelectCombobox from "./SingleSelectCombobox.svelte";
   import { m } from "../paraglide/messages.js";
+  import { getErrorMessage } from "../lib/types/index.js";
   import { generateUuid } from "../lib/utils/uuid.js";
 
   let meta = $derived(modStore.scanResult?.mod_meta);
@@ -352,8 +353,8 @@
       const metaPath = `${modPath}/Mods/${folder}/meta.lsx`;
       await saveConfig(xml, metaPath, true);
       toastStore.success(m.meta_lsx_saved_title(), m.meta_lsx_saved_message({ folder }));
-    } catch (e: any) {
-      toastStore.error("Save failed", String(e?.message ?? e));
+    } catch (e: unknown) {
+      toastStore.error(m.meta_lsx_save_failed(), getErrorMessage(e));
     } finally {
       isSaving = false;
     }

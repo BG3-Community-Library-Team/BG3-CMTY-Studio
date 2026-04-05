@@ -88,4 +88,14 @@ describe("parseRawSelectors", () => {
     expect(result[0].fn).toBe("SelectSpells");
     expect(result[0].params.Guid).toBe("");
   });
+
+  it("maps SelectAbilityBonus 3rd param to BonusType, not SelectorId (CQ-03)", () => {
+    const result = parseRawSelectors("SelectAbilityBonus(some-guid,2,AbilityBonus)");
+    expect(result).toHaveLength(1);
+    expect(result[0].fn).toBe("SelectAbilityBonus");
+    expect(result[0].params.Guid).toBe("some-guid");
+    expect(result[0].params.Amount).toBe("2");
+    expect(result[0].params.BonusType).toBe("AbilityBonus");
+    expect(result[0].params.SelectorId).toBe("");
+  });
 });

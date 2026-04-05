@@ -473,6 +473,7 @@
   "meta_lsx_no_mod_loaded": "No mod loaded",
   "meta_lsx_saved_title": "meta.lsx saved",
   "meta_lsx_saved_message": "Saved to Mods/{folder}/meta.lsx",
+  "meta_lsx_save_failed": "Save failed",
 
   "multiselect_clear_all": "Clear all",
   "multiselect_no_matching": "No matching options.",
@@ -635,6 +636,8 @@
   "app_config_saved": "Config saved",
   "app_saved_to": "Saved to {folder}/ScriptExtender/",
   "app_save_failed": "Save failed",
+  "app_persist_failed": "Save failed",
+  "app_persist_failed_desc": "Project data could not be saved to local storage. Your changes may be lost if you close the app.",
   "app_cut": "Cut",
   "app_paste": "Paste",
   "app_select_all": "Select All",

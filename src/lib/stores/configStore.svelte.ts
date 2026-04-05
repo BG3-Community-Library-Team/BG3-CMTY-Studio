@@ -10,7 +10,9 @@ import type {
 import { SECTIONS_ORDERED } from "../types/index.js";
 import { generateUuid } from "../utils/uuid.js";
 import { modStore } from "./modStore.svelte.js";
+import { toastStore } from "./toastStore.svelte.js";
 import { undoStore } from "./undoStore.svelte.js";
+import { m } from "../../paraglide/messages.js";
 import { entryKey, fieldOverrideKey, projectKey } from "../data/fieldKeys.js";
 import { validateEntry } from "../utils/validation.js";
 
@@ -987,6 +989,8 @@ class ConfigStore {
     this.previewStale = false;
     this.isDirty = false;
     this.mutationCount = 0;
+    this.autoLocaEntries = new Map();
+    this.locaEntries = [];
     this.osirisGoalEntries = new Map();
     this.osirisGoalFileUuid = '';
   }
@@ -1088,6 +1092,7 @@ class ConfigStore {
         oldAutoEntryOverrides[key] = { ...this.autoEntryOverrides[key] };
       }
     }
+    const oldAutoLocaEntries = new Map(this.autoLocaEntries);
 
     // Perform mutation: enable all (remove from disabled map)
     if (sectionResult) {
@@ -1118,7 +1123,8 @@ class ConfigStore {
     }
     this.#markDirty();
 
-    // Capture post-reset manual entries for redo
+    // Capture post-reset state for redo
+    const resetAutoLocaEntries = new Map(this.autoLocaEntries);
     const resetManualEntries = this.manualEntries
       .filter(e => e.section === section)
       .map(e => ({ ...e, fields: { ...e.fields } }));
@@ -1145,6 +1151,8 @@ class ConfigStore {
         for (const [k, fields] of Object.entries(oldAutoEntryOverrides)) {
           this.autoEntryOverrides[k] = { ...fields };
         }
+        // Restore auto loca entries
+        this.autoLocaEntries = oldAutoLocaEntries;
         this.#markDirty();
       },
       redo: () => {
@@ -1166,6 +1174,7 @@ class ConfigStore {
         for (const k of Object.keys(this.autoEntryOverrides)) {
           if (k.startsWith(section + "::")) delete this.autoEntryOverrides[k];
         }
+        this.autoLocaEntries = resetAutoLocaEntries;
         this.#markDirty();
       },
     });
@@ -1262,7 +1271,10 @@ class ConfigStore {
     try {
       const key = projectKey(modPath);
       localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) { console.warn("Project persistence failed:", e); }
+    } catch (e) {
+      console.warn("Project persistence failed:", e);
+      toastStore.error(m.app_persist_failed(), m.app_persist_failed_desc());
+    }
   }
 
   /** Restore project state from localStorage for a given mod path.

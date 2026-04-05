@@ -14,7 +14,7 @@
 
   function handleError(error: unknown) {
     console.error(`[ErrorBoundary:${name}]`, error);
-    toastStore.error(`${name} crashed`, String(error));
+    toastStore.error(m.app_unexpected_error(), `${name}: ${String(error)}`);
   }
 </script>
 

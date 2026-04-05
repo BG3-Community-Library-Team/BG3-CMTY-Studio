@@ -1482,7 +1482,12 @@ async fn cmd_export_mod(
             file_errors: HashMap::new(),
         };
 
-        // Write LSX files
+        // Pending write: (final_path, tmp_path, content, report_key, entry_count, backed_up)
+        let mut pending: Vec<(PathBuf, PathBuf, String, String, usize, bool)> = Vec::new();
+
+        // ── Phase 1: Validate, create dirs, backup, generate content ──
+
+        // LSX files
         for spec in &lsx_files {
             let path = PathBuf::from(&spec.output_path);
 
@@ -1505,7 +1510,7 @@ async fn cmd_export_mod(
                 }
             }
 
-            // Backup existing file
+            // Backup existing file before any writes
             let backed_up = if backup && path.exists() {
                 let bak_path = path.with_extension("lsx.bak");
                 match fs::copy(&path, &bak_path) {
@@ -1520,7 +1525,7 @@ async fn cmd_export_mod(
                 false
             };
 
-            // Convert entries and write
+            // Generate LSX content
             let lsx_entries: Vec<LsxEntry> = spec.entries.iter().map(|e| {
                 lsx_writer::reconstruct_lsx_entry(
                     &e.uuid, &e.node_id, &e.raw_attributes, &e.raw_attribute_types, &e.raw_children,
@@ -1528,29 +1533,14 @@ async fn cmd_export_mod(
             }).collect();
 
             let xml = lsx_writer::entries_to_lsx(&lsx_entries, &spec.region_id);
-            let bytes = xml.len();
-
-            match fs::write(&path, &xml) {
-                Ok(()) => {
-                    result.files.push(ExportedFile {
-                        path: spec.output_path.clone(),
-                        entry_count: spec.entries.len(),
-                        bytes_written: bytes,
-                        backed_up,
-                    });
-                }
-                Err(e) => {
-                    result.file_errors.entry(spec.output_path.clone()).or_default()
-                        .push(format!("Write failed: {}", e));
-                }
-            }
+            let tmp_path = path.with_extension("lsx.cmty_tmp");
+            pending.push((path, tmp_path, xml, spec.output_path.clone(), spec.entries.len(), backed_up));
         }
 
-        // Write CF config if provided
+        // CF config file
         if let (Some(content), Some(cfg_path)) = (config_content, config_path) {
             let path = PathBuf::from(&cfg_path);
 
-            // Validate extension
             let ext_ok = match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
                 Some("yaml" | "json") => true,
                 _ => false,
@@ -1560,42 +1550,83 @@ async fn cmd_export_mod(
                 result.file_errors.entry(cfg_path.clone()).or_default()
                     .push("Skipped: not a .yaml or .json file".to_string());
             } else {
+                let mut skip_config = false;
+
                 if let Some(parent) = path.parent() {
                     if let Err(e) = fs::create_dir_all(parent) {
                         result.file_errors.entry(cfg_path.clone()).or_default()
                             .push(format!("Failed to create directory: {}", e));
-                        return Ok(result);
+                        skip_config = true;
                     }
                 }
 
-                let backed_up = if backup && path.exists() {
-                    let bak_path = path.with_extension("bak");
-                    match fs::copy(&path, &bak_path) {
-                        Ok(_) => true,
-                        Err(e) => {
-                            result.file_errors.entry(cfg_path.clone()).or_default()
-                                .push(format!("Backup failed: {}", e));
-                            return Ok(result);
+                if !skip_config {
+                    let backed_up = if backup && path.exists() {
+                        let bak_path = path.with_extension("bak");
+                        match fs::copy(&path, &bak_path) {
+                            Ok(_) => true,
+                            Err(e) => {
+                                result.file_errors.entry(cfg_path.clone()).or_default()
+                                    .push(format!("Backup failed: {}", e));
+                                skip_config = true;
+                                false
+                            }
                         }
-                    }
-                } else {
-                    false
-                };
+                    } else {
+                        false
+                    };
 
-                let bytes = content.len();
-                match fs::write(&path, &content) {
-                    Ok(()) => {
-                        result.files.push(ExportedFile {
-                            path: cfg_path,
-                            entry_count: 0, // config doesn't have a meaningful entry count
-                            bytes_written: bytes,
-                            backed_up,
-                        });
+                    if !skip_config {
+                        let ext_str = path.extension().and_then(|e| e.to_str()).unwrap_or("tmp");
+                        let tmp_ext = format!("{}.cmty_tmp", ext_str);
+                        let tmp_path = path.with_extension(&tmp_ext);
+                        pending.push((path, tmp_path, content, cfg_path, 0, backed_up));
                     }
-                    Err(e) => {
-                        result.file_errors.entry(cfg_path.clone()).or_default()
-                            .push(format!("Write failed: {}", e));
-                    }
+                }
+            }
+        }
+
+        // ── Phase 2: Write all files to .cmty_tmp temps ──
+        let mut tmp_written: Vec<PathBuf> = Vec::new();
+        let mut write_failed = false;
+
+        for (_, tmp_path, content, key, _, _) in &pending {
+            match fs::write(tmp_path, content) {
+                Ok(()) => {
+                    tmp_written.push(tmp_path.clone());
+                }
+                Err(e) => {
+                    result.file_errors.entry(key.clone()).or_default()
+                        .push(format!("Write failed: {}", e));
+                    write_failed = true;
+                    break;
+                }
+            }
+        }
+
+        // If any temp write failed, clean up all temps and return
+        if write_failed {
+            for tmp in &tmp_written {
+                let _ = fs::remove_file(tmp);
+            }
+            return Ok(result);
+        }
+
+        // ── Phase 3: Rename all .cmty_tmp → final (atomic per-file) ──
+        for (final_path, tmp_path, content, key, entry_count, backed_up) in &pending {
+            match fs::rename(tmp_path, final_path) {
+                Ok(()) => {
+                    result.files.push(ExportedFile {
+                        path: key.clone(),
+                        entry_count: *entry_count,
+                        bytes_written: content.len(),
+                        backed_up: *backed_up,
+                    });
+                }
+                Err(e) => {
+                    result.file_errors.entry(key.clone()).or_default()
+                        .push(format!("Rename failed (temp file preserved at {}): {}",
+                            tmp_path.display(), e));
                 }
             }
         }

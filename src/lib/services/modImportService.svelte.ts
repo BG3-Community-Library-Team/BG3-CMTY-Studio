@@ -142,7 +142,7 @@ class ModImportService {
         console.warn("Disk size check failed:", p, e);
         this.modDiskSizes = { ...this.modDiskSizes, [p]: m.import_disk_size_unavailable() };
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn("Failed to restore mod scan:", p, e);
       settingsStore.removeAdditionalModPath(p);
     }
@@ -219,7 +219,7 @@ class ModImportService {
         console.warn("Disk size check failed:", p, e);
         this.modDiskSizes = { ...this.modDiskSizes, [p]: m.import_disk_size_unavailable() };
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn("Failed to process additional mod:", e);
     } finally {
       this.pendingModPaths = this.pendingModPaths.filter(x => x !== p);
@@ -355,8 +355,8 @@ class ModImportService {
       const inactive = paks.length - filteredPaks.length;
       if (activeFolders && inactive > 0) parts.push(m.import_count_inactive({ count: String(inactive) }));
       this.loadOrderStatus = m.import_load_order_complete({ summary: parts.join(", ") });
-    } catch (e: any) {
-      this.loadOrderStatus = m.import_load_order_error({ error: e.message || String(e) });
+    } catch (e: unknown) {
+      this.loadOrderStatus = m.import_load_order_error({ error: e instanceof Error ? e.message : String(e) });
       console.error("Import from load order failed:", e);
     } finally {
       this.isImportingLoadOrder = false;

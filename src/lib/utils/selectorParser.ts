@@ -41,7 +41,7 @@ const POSITIONAL_PARAMS: Record<string, (keyof SelectorParamValues)[]> = {
   AddSpells:             ["Guid", "SelectorId", "CastingAbility", "ActionResource", "PrepareType", "CooldownType"],
   SelectSkills:          ["Guid", "Amount", "SelectorId"],
   SelectAbilities:       ["Guid", "Amount", "SelectorId"],
-  SelectAbilityBonus:    ["Guid", "Amount", "SelectorId"],
+  SelectAbilityBonus:    ["Guid", "Amount", "BonusType", "Amounts"],
   SelectEquipment:       ["Guid", "Amount", "SelectorId"],
   SelectSkillsExpertise: ["Guid", "Amount", "LimitToProficiency", "SelectorId"],
   SelectPassives:        ["Guid", "Amount", "SelectorId"],

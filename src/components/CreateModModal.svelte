@@ -1,5 +1,6 @@
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
+  import { getErrorMessage } from "../lib/types/index.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { createModScaffold } from "../lib/utils/tauri.js";
@@ -39,8 +40,8 @@
       );
       await scanAndImport(result.mod_root);
       close();
-    } catch (e: any) {
-      toastStore.error(m.create_mod_failed_title(), String(e?.message ?? e));
+    } catch (e: unknown) {
+      toastStore.error(m.create_mod_failed_title(), getErrorMessage(e));
     } finally {
       isCreating = false;
     }

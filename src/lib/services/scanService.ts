@@ -293,8 +293,8 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
 
     // Load vanilla entries for combobox population (non-blocking)
     loadVanillaData();
-  } catch (e: any) {
-    modStore.error = typeof e === "string" ? e : e?.message ?? "Scan failed";
+  } catch (e: unknown) {
+    modStore.error = typeof e === "string" ? e : (e instanceof Error ? e.message : "Scan failed");
     modStore.scanResult = null;
     modStore.modStatEntries = [];
     toastStore.error(m.scan_failed(), modStore.error);

@@ -23,6 +23,8 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { createModScaffold } from "../lib/utils/tauri.js";
+  import { getErrorMessage } from "../lib/types/index.js";
+  import { m } from "../paraglide/messages.js";
   import { APP_VERSION } from "../lib/version.js";
 
   // ── Welcome page ──
@@ -59,8 +61,8 @@
       );
       await scanAndImport(result.mod_root);
       resetNewModForm();
-    } catch (e: any) {
-      toastStore.error("Create failed", String(e?.message ?? e));
+    } catch (e: unknown) {
+      toastStore.error(m.create_mod_failed_title(), getErrorMessage(e));
     } finally {
       isCreatingMod = false;
     }
