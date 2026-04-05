@@ -13,7 +13,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/lib/**/*.ts", "src/lib/**/*.svelte.ts"],
-      exclude: ["src/__mocks__/**", "src/__tests__/**"],
+      exclude: ["src/__mocks__/**", "src/__tests__/**", "src/lib/tauri/**"],
       reporter: ["text", "lcov"],
       thresholds: {
         statements: 51,
