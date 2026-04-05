@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [svelte()],
@@ -28,10 +29,10 @@ export default defineConfig({
     conditions: ["browser"],
     alias: {
       // Stub Tauri APIs so tests can import modules that reference them
-      "@tauri-apps/api/core": new URL("./src/__mocks__/tauri-api.ts", import.meta.url).pathname.slice(1),
-      "@tauri-apps/api/event": new URL("./src/__mocks__/tauri-event.ts", import.meta.url).pathname.slice(1),
-      "@tauri-apps/plugin-dialog": new URL("./src/__mocks__/tauri-plugin.ts", import.meta.url).pathname.slice(1),
-      "@tauri-apps/plugin-shell": new URL("./src/__mocks__/tauri-plugin.ts", import.meta.url).pathname.slice(1),
+      "@tauri-apps/api/core": fileURLToPath(new URL("./src/__mocks__/tauri-api.ts", import.meta.url)),
+      "@tauri-apps/api/event": fileURLToPath(new URL("./src/__mocks__/tauri-event.ts", import.meta.url)),
+      "@tauri-apps/plugin-dialog": fileURLToPath(new URL("./src/__mocks__/tauri-plugin.ts", import.meta.url)),
+      "@tauri-apps/plugin-shell": fileURLToPath(new URL("./src/__mocks__/tauri-plugin.ts", import.meta.url)),
     },
   },
 });

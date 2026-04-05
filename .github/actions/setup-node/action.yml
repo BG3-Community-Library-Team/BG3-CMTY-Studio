@@ -1,11 +1,11 @@
 name: 'Setup Node.js'
-description: 'Install Node.js 20, restore npm cache, and install dependencies'
+description: 'Install Node.js 24, restore npm cache, and install dependencies'
 runs:
   using: composite
   steps:
     - uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '24'
         cache: 'npm'
     - run: npm ci
       shell: bash

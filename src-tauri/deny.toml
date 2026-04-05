@@ -65,6 +65,9 @@ ignore = [
     { id = "RUSTSEC-2025-0081", reason = "unic-char-property — Tauri transitive via kuchikiki/selectors" },
     { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — Tauri transitive via kuchikiki/selectors" },
     { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — Tauri transitive via kuchikiki/selectors" },
+    # Unmaintained transitive deps surfaced by cross-platform targets (Linux GTK3 bindings)
+    { id = "RUSTSEC-2024-0413", reason = "atk (gtk-rs GTK3) — Tauri transitive on Linux, no upgrade available" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error — Tauri transitive, no upgrade available" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
