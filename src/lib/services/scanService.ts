@@ -1,5 +1,6 @@
 import { modStore } from "../stores/modStore.svelte.js";
 import { configStore } from "../stores/configStore.svelte.js";
+import { projectStore } from "../stores/projectStore.svelte.js";
 import { settingsStore } from "../stores/settingsStore.svelte.js";
 import { toastStore } from "../stores/toastStore.svelte.js";
 import { schemaStore } from "../stores/schemaStore.svelte.js";
@@ -267,6 +268,9 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
     const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
     await rehydrateStaging(modPath, modName);
+
+    // Hydrate projectStore from the freshly-populated staging DB
+    await projectStore.hydrate();
 
     // Load previewable text files from mod directory (non-blocking)
     listModFiles(modPath).then(files => { modStore.modFiles = files; }).catch(err => console.warn("Failed to list mod files:", err));

@@ -701,6 +701,58 @@ pub async fn cmd_staging_set_meta(
     .await
 }
 
+/// G3: Create an undo snapshot (boundary marker) in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_snapshot(
+    staging_db_path: String,
+    label: String,
+) -> Result<i64, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_snapshot(&conn, &label)
+    })
+    .await
+}
+
+/// G3: Undo the last mutation group in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_undo(
+    staging_db_path: String,
+) -> Result<Vec<reference_db::staging::UndoReplayEntry>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_undo(&conn)
+    })
+    .await
+}
+
+/// G3: Redo the next mutation group in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_redo(
+    staging_db_path: String,
+) -> Result<Vec<reference_db::staging::UndoReplayEntry>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_redo(&conn)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

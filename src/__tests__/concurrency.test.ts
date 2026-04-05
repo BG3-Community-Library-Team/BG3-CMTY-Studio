@@ -14,6 +14,14 @@ const mockScanMod = vi.fn();
 const noopAsync = () => vi.fn().mockResolvedValue(null);
 const noopAsyncArr = () => vi.fn().mockResolvedValue([]);
 
+vi.mock("../lib/stores/projectStore.svelte.js", () => ({
+  projectStore: {
+    hydrate: vi.fn().mockResolvedValue(undefined),
+    reset: vi.fn(),
+    sections: [],
+  },
+}));
+
 vi.mock("../lib/utils/tauri.js", () => ({
   scanMod: (...args: any[]) => mockScanMod(...args),
   getStatEntries: noopAsyncArr(),

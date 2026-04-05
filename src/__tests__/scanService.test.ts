@@ -27,6 +27,14 @@ const mockQuerySectionEntries = vi.fn().mockResolvedValue([]);
 const noopAsync = () => vi.fn().mockResolvedValue(null);
 const noopAsyncArr = () => vi.fn().mockResolvedValue([]);
 
+vi.mock("../lib/stores/projectStore.svelte.js", () => ({
+  projectStore: {
+    hydrate: vi.fn().mockResolvedValue(undefined),
+    reset: vi.fn(),
+    sections: [],
+  },
+}));
+
 vi.mock("../lib/utils/tauri.js", () => ({
   // Functions under test â€” controlled per-test
   scanMod: (...args: any[]) => mockScanMod(...args),

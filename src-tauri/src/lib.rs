@@ -1914,6 +1914,9 @@ pub fn run() {
             commands::db::cmd_staging_get_row,
             commands::db::cmd_staging_get_meta,
             commands::db::cmd_staging_set_meta,
+            commands::db::cmd_staging_snapshot,
+            commands::db::cmd_staging_undo,
+            commands::db::cmd_staging_redo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

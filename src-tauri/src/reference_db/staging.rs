@@ -409,6 +409,14 @@ pub fn staging_upsert_row(
         })?
         .clone();
 
+    // Undo: capture before state
+    let journal_active = undo_journal_exists(conn);
+    let old_row_json = if journal_active {
+        capture_row_as_json(conn, table, &pk_col, &pk_value)?
+    } else {
+        None
+    };
+
     // Check if row already exists
     let existing_is_new: Option<bool> = {
         let sql = format!(
@@ -497,6 +505,15 @@ pub fn staging_upsert_row(
             .map_err(|e| format!("Insert row: {}", e))?;
     }
 
+    // Undo: record change
+    if journal_active {
+        let new_row_json = capture_row_as_json(conn, table, &pk_col, &pk_value)?;
+        staging_record_change(
+            conn, "upsert", table, &pk_value,
+            old_row_json.as_deref(), new_row_json.as_deref(),
+        )?;
+    }
+
     Ok(UpsertResult {
         pk_value,
         was_insert,
@@ -512,6 +529,14 @@ pub fn staging_mark_deleted(
 ) -> Result<bool, String> {
     validate_staging_table(conn, table)?;
     let pk_col = get_pk_column(conn, table)?;
+
+    // Undo: capture before state
+    let journal_active = undo_journal_exists(conn);
+    let old_row_json = if journal_active {
+        capture_row_as_json(conn, table, &pk_col, pk)?
+    } else {
+        None
+    };
 
     let is_new: Option<bool> = {
         let sql = format!(
@@ -534,6 +559,10 @@ pub fn staging_mark_deleted(
             let sql = format!("DELETE FROM \"{}\" WHERE \"{}\" = ?1", table, pk_col);
             conn.execute(&sql, [pk])
                 .map_err(|e| format!("Hard delete: {}", e))?;
+            // Undo: record hard delete (new_row = None since row is gone)
+            if journal_active {
+                staging_record_change(conn, "delete", table, pk, old_row_json.as_deref(), None)?;
+            }
             Ok(true)
         }
         Some(false) => {
@@ -544,6 +573,11 @@ pub fn staging_mark_deleted(
             );
             conn.execute(&sql, [pk])
                 .map_err(|e| format!("Soft delete: {}", e))?;
+            // Undo: record soft delete
+            if journal_active {
+                let new_row_json = capture_row_as_json(conn, table, &pk_col, pk)?;
+                staging_record_change(conn, "mark_deleted", table, pk, old_row_json.as_deref(), new_row_json.as_deref())?;
+            }
             Ok(true)
         }
     }
@@ -558,6 +592,14 @@ pub fn staging_unmark_deleted(
     validate_staging_table(conn, table)?;
     let pk_col = get_pk_column(conn, table)?;
 
+    // Undo: capture before state
+    let journal_active = undo_journal_exists(conn);
+    let old_row_json = if journal_active {
+        capture_row_as_json(conn, table, &pk_col, pk)?
+    } else {
+        None
+    };
+
     let sql = format!(
         "UPDATE \"{}\" SET \"_is_deleted\" = 0 WHERE \"{}\" = ?1",
         table, pk_col
@@ -565,7 +607,18 @@ pub fn staging_unmark_deleted(
     let affected = conn
         .execute(&sql, [pk])
         .map_err(|e| format!("Undelete: {}", e))?;
-    Ok(affected > 0)
+    let result = affected > 0;
+
+    // Undo: record state change
+    if journal_active && result {
+        let new_row_json = capture_row_as_json(conn, table, &pk_col, pk)?;
+        staging_record_change(
+            conn, "unmark_deleted", table, pk,
+            old_row_json.as_deref(), new_row_json.as_deref(),
+        )?;
+    }
+
+    Ok(result)
 }
 
 /// A single operation in a batch write.
@@ -1017,6 +1070,549 @@ fn load_embedded_schema(
         .map_err(|e| format!("Load embedded schema: {}", e))?;
 
     rmp_serde::from_slice(&blob).map_err(|e| format!("Deserialize schema: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Undo Journal System
+// ---------------------------------------------------------------------------
+
+/// Entry returned after an undo/redo replay, for frontend cache invalidation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UndoReplayEntry {
+    pub table_name: String,
+    pub pk_value: String,
+    pub action: String,
+}
+
+/// Ensure the `_staging_undo_journal` table exists (lazy creation).
+pub fn ensure_undo_journal_table(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS _staging_undo_journal (
+            id INTEGER PRIMARY KEY,
+            label TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            pk_value TEXT NOT NULL,
+            old_row TEXT,
+            new_row TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )
+    .map_err(|e| format!("Create undo journal: {}", e))
+}
+
+/// Record a change in the undo journal. Called by staging write functions.
+pub fn staging_record_change(
+    conn: &Connection,
+    label: &str,
+    table_name: &str,
+    pk_value: &str,
+    old_row: Option<&str>,
+    new_row: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO _staging_undo_journal (label, table_name, pk_value, old_row, new_row) \
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![label, table_name, pk_value, old_row, new_row],
+    )
+    .map_err(|e| format!("Record undo change: {}", e))?;
+    Ok(())
+}
+
+/// Create a boundary marker (snapshot) in the undo journal.
+///
+/// Call this between mutation groups. If the undo pointer is behind the latest
+/// journal entry (i.e. user undid then edited), redo history is pruned.
+pub fn staging_snapshot(conn: &Connection, label: &str) -> Result<i64, String> {
+    ensure_undo_journal_table(conn)?;
+    ensure_staging_authoring_table(conn)?;
+
+    let pointer = get_undo_pointer(conn)?;
+
+    // Prune redo entries only if there are boundary markers after the pointer
+    // (indicates undone groups whose redo history should be discarded).
+    // Mutation entries between the pointer and here belong to the current
+    // group and must be preserved.
+    if let Some(ptr) = pointer {
+        let redo_boundary_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _staging_undo_journal \
+                 WHERE id > ?1 AND table_name = '__boundary__'",
+                [ptr],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Check redo boundaries: {}", e))?;
+
+        if redo_boundary_count > 0 {
+            conn.execute(
+                "DELETE FROM _staging_undo_journal WHERE id > ?1",
+                [ptr],
+            )
+            .map_err(|e| format!("Prune redo: {}", e))?;
+        }
+    }
+
+    // Insert boundary marker
+    conn.execute(
+        "INSERT INTO _staging_undo_journal (label, table_name, pk_value, old_row, new_row) \
+         VALUES (?1, '__boundary__', '', NULL, NULL)",
+        [label],
+    )
+    .map_err(|e| format!("Insert boundary: {}", e))?;
+
+    let boundary_id = conn.last_insert_rowid();
+    staging_set_meta(conn, "undo_pointer", &boundary_id.to_string())?;
+
+    Ok(boundary_id)
+}
+
+/// Undo the last mutation group.
+///
+/// Finds all journal entries between the current boundary (undo_pointer) and
+/// the previous boundary, replays them in reverse order (applying `old_row`),
+/// and moves the pointer back.
+pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
+    ensure_undo_journal_table(conn)?;
+    ensure_staging_authoring_table(conn)?;
+
+    let pointer = match get_undo_pointer(conn)? {
+        Some(p) => p,
+        None => return Ok(vec![]),
+    };
+
+    // Find previous boundary
+    let prev_boundary: Option<i64> = conn
+        .query_row(
+            "SELECT MAX(id) FROM _staging_undo_journal \
+             WHERE id < ?1 AND table_name = '__boundary__'",
+            [pointer],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Find prev boundary: {}", e))?
+        .flatten();
+
+    let lower = prev_boundary.unwrap_or(0);
+
+    // Get entries between previous boundary and current pointer (the group)
+    let entries: Vec<(String, String, Option<String>, Option<String>)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT table_name, pk_value, old_row, new_row \
+                 FROM _staging_undo_journal \
+                 WHERE id > ?1 AND id < ?2 AND table_name != '__boundary__' \
+                 ORDER BY id DESC",
+            )
+            .map_err(|e| format!("Query undo entries: {}", e))?;
+
+        let result = stmt.query_map(rusqlite::params![lower, pointer], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Map undo entries: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Collect undo entries: {}", e))?;
+        result
+    };
+
+    if entries.is_empty() {
+        // Empty group — still move pointer so further undos can reach earlier groups
+        match prev_boundary {
+            Some(b) => staging_set_meta(conn, "undo_pointer", &b.to_string())?,
+            None => {
+                conn.execute(
+                    "DELETE FROM _staging_authoring WHERE key = 'undo_pointer'",
+                    [],
+                )
+                .map_err(|e| format!("Clear undo pointer: {}", e))?;
+            }
+        }
+        return Ok(vec![]);
+    }
+
+    let schema = load_embedded_schema(conn)?;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Begin undo transaction: {}", e))?;
+
+    let mut replayed = Vec::new();
+    for (table_name, pk_value, old_row, new_row) in &entries {
+        let action = replay_undo_entry(
+            &tx,
+            &schema,
+            table_name,
+            pk_value,
+            old_row.as_deref(),
+            new_row.as_deref(),
+        )?;
+        replayed.push(UndoReplayEntry {
+            table_name: table_name.clone(),
+            pk_value: pk_value.clone(),
+            action,
+        });
+    }
+
+    // Update pointer inside transaction for atomicity
+    match prev_boundary {
+        Some(b) => staging_set_meta(&tx, "undo_pointer", &b.to_string())?,
+        None => {
+            tx.execute(
+                "DELETE FROM _staging_authoring WHERE key = 'undo_pointer'",
+                [],
+            )
+            .map_err(|e| format!("Clear undo pointer: {}", e))?;
+        }
+    }
+
+    tx.commit().map_err(|e| format!("Commit undo: {}", e))?;
+
+    Ok(replayed)
+}
+
+/// Redo the next mutation group.
+///
+/// Finds the next boundary after the current pointer, gets entries between
+/// the pointer and that boundary, replays them forward (applying `new_row`).
+pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
+    ensure_undo_journal_table(conn)?;
+    ensure_staging_authoring_table(conn)?;
+
+    let pointer_val = get_undo_pointer(conn)?.unwrap_or(0);
+
+    // Find next boundary after current pointer
+    let next_boundary: Option<i64> = conn
+        .query_row(
+            "SELECT MIN(id) FROM _staging_undo_journal \
+             WHERE id > ?1 AND table_name = '__boundary__'",
+            [pointer_val],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Find next boundary: {}", e))?
+        .flatten();
+
+    let next_boundary = match next_boundary {
+        Some(b) => b,
+        None => return Ok(vec![]),
+    };
+
+    // Entries between current pointer and next boundary
+    let entries: Vec<(String, String, Option<String>, Option<String>)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT table_name, pk_value, old_row, new_row \
+                 FROM _staging_undo_journal \
+                 WHERE id > ?1 AND id < ?2 AND table_name != '__boundary__' \
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| format!("Query redo entries: {}", e))?;
+
+        let result = stmt.query_map(rusqlite::params![pointer_val, next_boundary], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Map redo entries: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Collect redo entries: {}", e))?;
+        result
+    };
+
+    if entries.is_empty() {
+        // Empty group — move pointer forward anyway
+        staging_set_meta(conn, "undo_pointer", &next_boundary.to_string())?;
+        return Ok(vec![]);
+    }
+
+    let schema = load_embedded_schema(conn)?;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Begin redo transaction: {}", e))?;
+
+    let mut replayed = Vec::new();
+    for (table_name, pk_value, old_row, new_row) in &entries {
+        let action = replay_redo_entry(
+            &tx,
+            &schema,
+            table_name,
+            pk_value,
+            old_row.as_deref(),
+            new_row.as_deref(),
+        )?;
+        replayed.push(UndoReplayEntry {
+            table_name: table_name.clone(),
+            pk_value: pk_value.clone(),
+            action,
+        });
+    }
+
+    staging_set_meta(&tx, "undo_pointer", &next_boundary.to_string())?;
+    tx.commit().map_err(|e| format!("Commit redo: {}", e))?;
+
+    Ok(replayed)
+}
+
+// ---------------------------------------------------------------------------
+// Undo journal internal helpers
+// ---------------------------------------------------------------------------
+
+/// Check if the undo journal table exists.
+fn undo_journal_exists(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_staging_undo_journal'",
+        [],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
+/// Get the current undo pointer from meta.
+fn get_undo_pointer(conn: &Connection) -> Result<Option<i64>, String> {
+    let val = staging_get_meta(conn, "undo_pointer")?;
+    match val {
+        Some(s) => {
+            let id: i64 = s
+                .parse()
+                .map_err(|_| format!("Invalid undo_pointer: {}", s))?;
+            Ok(Some(id))
+        }
+        None => {
+            // Default to max boundary id
+            let max_boundary: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(id), 0) FROM _staging_undo_journal \
+                     WHERE table_name = '__boundary__'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Query max boundary: {}", e))?;
+
+            if max_boundary == 0 {
+                Ok(None)
+            } else {
+                Ok(Some(max_boundary))
+            }
+        }
+    }
+}
+
+/// Capture a row's current state as a JSON string. Returns None if not found.
+fn capture_row_as_json(
+    conn: &Connection,
+    table: &str,
+    pk_col: &str,
+    pk_value: &str,
+) -> Result<Option<String>, String> {
+    let sql = format!(
+        "SELECT * FROM \"{}\" WHERE \"{}\" = ?1",
+        table, pk_col
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Capture row prep: {}", e))?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).unwrap().to_string())
+        .collect();
+
+    let result = stmt
+        .query_row([pk_value], |row| {
+            let mut map = serde_json::Map::new();
+            for (i, name) in col_names.iter().enumerate() {
+                let val: rusqlite::types::Value = row.get(i)?;
+                map.insert(name.clone(), sqlite_value_to_json(val));
+            }
+            Ok(map)
+        })
+        .optional()
+        .map_err(|e| format!("Capture row query: {}", e))?;
+
+    match result {
+        Some(map) => {
+            let json = serde_json::to_string(&serde_json::Value::Object(map))
+                .map_err(|e| format!("Serialize captured row: {}", e))?;
+            Ok(Some(json))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Replay an undo entry: apply old_row state to reverse the change.
+fn replay_undo_entry(
+    conn: &Connection,
+    schema: &DiscoveredSchema,
+    table_name: &str,
+    pk_value: &str,
+    old_row: Option<&str>,
+    new_row: Option<&str>,
+) -> Result<String, String> {
+    let pk_col = schema
+        .tables
+        .get(table_name)
+        .map(|ts| ts.pk_strategy.pk_column().to_string())
+        .unwrap_or_else(|| "UUID".to_string());
+
+    match (old_row, new_row) {
+        (None, Some(_)) => {
+            // Was an INSERT → undo by DELETE
+            let sql = format!(
+                "DELETE FROM \"{}\" WHERE \"{}\" = ?1",
+                table_name, pk_col
+            );
+            conn.execute(&sql, [pk_value])
+                .map_err(|e| format!("Undo delete {}.{}: {}", table_name, pk_value, e))?;
+            Ok("delete".to_string())
+        }
+        (Some(old), None) => {
+            // Was a DELETE → undo by INSERT old_row back
+            insert_row_from_json(conn, table_name, old)?;
+            Ok("insert".to_string())
+        }
+        (Some(old), Some(_)) => {
+            // Was an UPDATE → undo by restoring old_row
+            update_row_from_json(conn, table_name, &pk_col, pk_value, old)?;
+            Ok("update".to_string())
+        }
+        (None, None) => Err(format!(
+            "Invalid journal entry: both old_row and new_row are NULL for {}.{}",
+            table_name, pk_value
+        )),
+    }
+}
+
+/// Replay a redo entry: apply new_row state to re-apply the change.
+fn replay_redo_entry(
+    conn: &Connection,
+    schema: &DiscoveredSchema,
+    table_name: &str,
+    pk_value: &str,
+    old_row: Option<&str>,
+    new_row: Option<&str>,
+) -> Result<String, String> {
+    let pk_col = schema
+        .tables
+        .get(table_name)
+        .map(|ts| ts.pk_strategy.pk_column().to_string())
+        .unwrap_or_else(|| "UUID".to_string());
+
+    match (old_row, new_row) {
+        (None, Some(new)) => {
+            // Was an INSERT → redo by INSERT
+            insert_row_from_json(conn, table_name, new)?;
+            Ok("insert".to_string())
+        }
+        (Some(_), None) => {
+            // Was a DELETE → redo by DELETE
+            let sql = format!(
+                "DELETE FROM \"{}\" WHERE \"{}\" = ?1",
+                table_name, pk_col
+            );
+            conn.execute(&sql, [pk_value])
+                .map_err(|e| format!("Redo delete {}.{}: {}", table_name, pk_value, e))?;
+            Ok("delete".to_string())
+        }
+        (Some(_), Some(new)) => {
+            // Was an UPDATE → redo by applying new_row
+            update_row_from_json(conn, table_name, &pk_col, pk_value, new)?;
+            Ok("update".to_string())
+        }
+        (None, None) => Err(format!(
+            "Invalid journal entry: both old_row and new_row are NULL for {}.{}",
+            table_name, pk_value
+        )),
+    }
+}
+
+/// Insert a row from a JSON string.
+fn insert_row_from_json(conn: &Connection, table: &str, json: &str) -> Result<(), String> {
+    let map: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for insert: {}", e))?;
+
+    let cols: Vec<String> = map.keys().map(|k| format!("\"{}\"", k)).collect();
+    let placeholders: Vec<String> = (1..=map.len()).map(|i| format!("?{}", i)).collect();
+    let sql = format!(
+        "INSERT OR REPLACE INTO \"{}\" ({}) VALUES ({})",
+        table,
+        cols.join(", "),
+        placeholders.join(", "),
+    );
+
+    let values: Vec<Box<dyn rusqlite::types::ToSql>> =
+        map.values().map(json_value_to_sql).collect();
+    let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|b| b.as_ref()).collect();
+
+    conn.execute(&sql, refs.as_slice())
+        .map_err(|e| format!("Insert from JSON into {}: {}", table, e))?;
+    Ok(())
+}
+
+/// Update a row from a JSON string. Sets all columns except the PK.
+fn update_row_from_json(
+    conn: &Connection,
+    table: &str,
+    pk_col: &str,
+    pk_value: &str,
+    json: &str,
+) -> Result<(), String> {
+    let map: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for update: {}", e))?;
+
+    let set_clauses: Vec<String> = map
+        .keys()
+        .filter(|k| k.as_str() != pk_col)
+        .map(|k| format!("\"{}\" = ?", k))
+        .collect();
+
+    if set_clauses.is_empty() {
+        return Ok(());
+    }
+
+    let sql = format!(
+        "UPDATE \"{}\" SET {} WHERE \"{}\" = ?",
+        table,
+        set_clauses.join(", "),
+        pk_col,
+    );
+
+    let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = map
+        .iter()
+        .filter(|(k, _)| k.as_str() != pk_col)
+        .map(|(_, v)| json_value_to_sql(v))
+        .collect();
+    values.push(Box::new(pk_value.to_string()));
+
+    let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|b| b.as_ref()).collect();
+
+    conn.execute(&sql, refs.as_slice())
+        .map_err(|e| format!("Update from JSON in {}: {}", table, e))?;
+    Ok(())
+}
+
+/// Convert a serde_json::Value to a boxed ToSql parameter.
+fn json_value_to_sql(val: &serde_json::Value) -> Box<dyn rusqlite::types::ToSql> {
+    match val {
+        serde_json::Value::Null => Box::new(Option::<String>::None),
+        serde_json::Value::Bool(b) => Box::new(if *b { 1i64 } else { 0i64 }),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Box::new(i)
+            } else if let Some(f) = n.as_f64() {
+                Box::new(f)
+            } else {
+                Box::new(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Box::new(s.clone()),
+        other => Box::new(other.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -1632,5 +2228,358 @@ mod tests {
         let err = staging_upsert_row(&conn, "bogus_table", &cols, true);
         assert!(err.is_err());
         assert!(err.unwrap_err().contains("not found in staging schema"));
+    }
+
+    // -------------------------------------------------------------------
+    // Undo journal tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn undo_journal_table_created() {
+        let conn = setup_test_staging_db();
+        ensure_undo_journal_table(&conn).unwrap();
+
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_staging_undo_journal'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "Journal table should exist");
+    }
+
+    #[test]
+    fn snapshot_creates_boundary_marker() {
+        let conn = setup_test_staging_db();
+        let id = staging_snapshot(&conn, "test snapshot").unwrap();
+        assert!(id > 0);
+
+        let (table_name, pk_value, label): (String, String, String) = conn
+            .query_row(
+                "SELECT table_name, pk_value, label FROM _staging_undo_journal WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(table_name, "__boundary__");
+        assert_eq!(pk_value, "");
+        assert_eq!(label, "test snapshot");
+    }
+
+    #[test]
+    fn record_change_stores_journal_entry() {
+        let conn = setup_test_staging_db();
+        ensure_undo_journal_table(&conn).unwrap();
+
+        staging_record_change(
+            &conn, "upsert", "test_entries", "uuid-1",
+            None, Some("{\"UUID\":\"uuid-1\"}"),
+        )
+        .unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _staging_undo_journal WHERE table_name != '__boundary__'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn undo_reverts_insert() {
+        let conn = setup_test_staging_db();
+
+        // Create journal and first snapshot
+        staging_snapshot(&conn, "before insert").unwrap();
+
+        // Insert a row (auto-records journal entry since journal table exists)
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "undo-test-1".to_string());
+        cols.insert("Name".to_string(), "TestName".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+
+        // Close the group
+        staging_snapshot(&conn, "after insert").unwrap();
+
+        // Verify row exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'undo-test-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "Row should exist before undo");
+
+        // Undo
+        let replayed = staging_undo(&conn).unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].table_name, "test_entries");
+        assert_eq!(replayed[0].action, "delete");
+
+        // Verify row is gone
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'undo-test-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "Row should be gone after undo");
+    }
+
+    #[test]
+    fn redo_restores_insert() {
+        let conn = setup_test_staging_db();
+
+        staging_snapshot(&conn, "before insert").unwrap();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "redo-test-1".to_string());
+        cols.insert("Name".to_string(), "RedoName".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+        staging_snapshot(&conn, "after insert").unwrap();
+
+        // Undo
+        staging_undo(&conn).unwrap();
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'redo-test-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Redo
+        let replayed = staging_redo(&conn).unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].action, "insert");
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'redo-test-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "Row should be restored after redo");
+    }
+
+    #[test]
+    fn undo_reverts_update() {
+        let conn = setup_test_staging_db();
+
+        // Pre-populate a row
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('upd-1', 'Original')",
+            [],
+        )
+        .unwrap();
+
+        staging_snapshot(&conn, "before update").unwrap();
+
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "upd-1".to_string());
+        cols.insert("Name".to_string(), "Modified".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, false).unwrap();
+
+        staging_snapshot(&conn, "after update").unwrap();
+
+        // Verify updated
+        let name: String = conn
+            .query_row(
+                "SELECT \"Name\" FROM test_entries WHERE \"UUID\" = 'upd-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Modified");
+
+        // Undo
+        let replayed = staging_undo(&conn).unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].action, "update");
+
+        // Verify restored
+        let name: String = conn
+            .query_row(
+                "SELECT \"Name\" FROM test_entries WHERE \"UUID\" = 'upd-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Original");
+    }
+
+    #[test]
+    fn undo_restores_soft_deleted_row() {
+        let conn = setup_test_staging_db();
+
+        // Insert a vanilla row (not new)
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_new\") VALUES ('del-1', 'ToDelete', 0)",
+            [],
+        )
+        .unwrap();
+
+        staging_snapshot(&conn, "before delete").unwrap();
+        staging_mark_deleted(&conn, "test_entries", "del-1").unwrap();
+        staging_snapshot(&conn, "after delete").unwrap();
+
+        // Verify soft deleted
+        let is_deleted: i32 = conn
+            .query_row(
+                "SELECT \"_is_deleted\" FROM test_entries WHERE \"UUID\" = 'del-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_deleted, 1);
+
+        // Undo
+        staging_undo(&conn).unwrap();
+
+        let is_deleted: i32 = conn
+            .query_row(
+                "SELECT \"_is_deleted\" FROM test_entries WHERE \"UUID\" = 'del-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_deleted, 0, "Row should be undeleted after undo");
+    }
+
+    #[test]
+    fn undo_after_hard_delete_restores_row() {
+        let conn = setup_test_staging_db();
+
+        // Insert a new row (will be hard-deleted)
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_new\") VALUES ('hdel-1', 'NewRow', 1)",
+            [],
+        )
+        .unwrap();
+
+        staging_snapshot(&conn, "before hard delete").unwrap();
+        staging_mark_deleted(&conn, "test_entries", "hdel-1").unwrap();
+        staging_snapshot(&conn, "after hard delete").unwrap();
+
+        // Verify gone
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'hdel-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Undo
+        staging_undo(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'hdel-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "Row should be restored after undo of hard delete");
+    }
+
+    #[test]
+    fn multiple_sequential_undos() {
+        let conn = setup_test_staging_db();
+
+        // Group 1: insert row A
+        staging_snapshot(&conn, "start 1").unwrap();
+        let mut cols_a = HashMap::new();
+        cols_a.insert("UUID".to_string(), "seq-a".to_string());
+        cols_a.insert("Name".to_string(), "A".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols_a, true).unwrap();
+        staging_snapshot(&conn, "end 1").unwrap();
+
+        // Group 2: insert row B
+        let mut cols_b = HashMap::new();
+        cols_b.insert("UUID".to_string(), "seq-b".to_string());
+        cols_b.insert("Name".to_string(), "B".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols_b, true).unwrap();
+        staging_snapshot(&conn, "end 2").unwrap();
+
+        // Both rows exist
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Undo group 2
+        let r1 = staging_undo(&conn).unwrap();
+        assert_eq!(r1.len(), 1);
+        assert_eq!(r1[0].pk_value, "seq-b");
+
+        // Only row A remains
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Undo group 1
+        let r2 = staging_undo(&conn).unwrap();
+        assert_eq!(r2.len(), 1);
+        assert_eq!(r2[0].pk_value, "seq-a");
+
+        // No rows
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn snapshot_after_undo_prunes_redo_history() {
+        let conn = setup_test_staging_db();
+
+        // Group 1: insert row
+        staging_snapshot(&conn, "start 1").unwrap();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "prune-1".to_string());
+        cols.insert("Name".to_string(), "First".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+        staging_snapshot(&conn, "end 1").unwrap();
+
+        // Undo group 1
+        staging_undo(&conn).unwrap();
+
+        // Now create a new group (should prune redo history)
+        staging_snapshot(&conn, "new start").unwrap();
+        cols.insert("UUID".to_string(), "prune-2".to_string());
+        cols.insert("Name".to_string(), "Second".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+        staging_snapshot(&conn, "new end").unwrap();
+
+        // Redo should return empty (redo history was pruned)
+        let redo_result = staging_redo(&conn).unwrap();
+        assert!(redo_result.is_empty(), "Redo should be empty after prune");
+    }
+
+    #[test]
+    fn undo_with_no_journal_returns_empty() {
+        let conn = setup_test_staging_db();
+        ensure_undo_journal_table(&conn).unwrap();
+
+        let result = staging_undo(&conn).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn redo_with_nothing_to_redo_returns_empty() {
+        let conn = setup_test_staging_db();
+        ensure_undo_journal_table(&conn).unwrap();
+
+        let result = staging_redo(&conn).unwrap();
+        assert!(result.is_empty());
     }
 }

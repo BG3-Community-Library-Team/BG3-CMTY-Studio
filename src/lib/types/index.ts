@@ -340,3 +340,5 @@ export interface AnchorGroup {
   entry_uuids: string[];
   lines_saved: number;
 }
+
+export * from "./entryRow.js";

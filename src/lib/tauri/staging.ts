@@ -122,3 +122,30 @@ export async function stagingSetMeta(
 ): Promise<void> {
   return invoke("cmd_staging_set_meta", { stagingDbPath, key, value });
 }
+
+// === Undo API ===
+
+export interface UndoReplayEntry {
+  table_name: string;
+  pk_value: string;
+  action: string;
+}
+
+export async function stagingSnapshot(
+  stagingDbPath: string,
+  label: string,
+): Promise<number> {
+  return invoke("cmd_staging_snapshot", { stagingDbPath, label });
+}
+
+export async function stagingUndo(
+  stagingDbPath: string,
+): Promise<UndoReplayEntry[]> {
+  return invoke("cmd_staging_undo", { stagingDbPath });
+}
+
+export async function stagingRedo(
+  stagingDbPath: string,
+): Promise<UndoReplayEntry[]> {
+  return invoke("cmd_staging_redo", { stagingDbPath });
+}
