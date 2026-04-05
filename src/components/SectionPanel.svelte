@@ -515,7 +515,7 @@
                 if (!uuid) return;
                 const regionId = getRegionId(sectionResult.section as Section);
                 const nodeId = result["_nodeType"] ?? regionId.replace(/s$/, "");
-                // Extract only LSX-worthy identity attributes (not CF config fields)
+                // Extract only LSX-worthy identity attributes
                 const lsxAttrs: Record<string, string> = {};
                 if (result.UUID) lsxAttrs["UUID"] = result.UUID;
                 if (result.Name) lsxAttrs["Name"] = result.Name;

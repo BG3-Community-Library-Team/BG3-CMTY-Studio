@@ -261,9 +261,6 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Merge imported entries with auto-detected entries (disable covered auto entries)
     configStore.mergeImportedWithAuto();
 
-    // Scan summary disabled (user can open via command palette if needed)
-    // modStore.showScanSummary = true;
-
     const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
     toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
 

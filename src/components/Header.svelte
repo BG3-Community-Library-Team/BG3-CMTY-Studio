@@ -1,7 +1,6 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import Info from "@lucide/svelte/icons/info";
-  import ClipboardList from "@lucide/svelte/icons/clipboard-list";
   import FileText from "@lucide/svelte/icons/file-text";
   import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
@@ -99,11 +98,6 @@
   <!-- Separator + context links when scan result exists -->
   {#if modStore.scanResult}
     <div class="w-px h-4 bg-[var(--th-border-600)]"></div>
-    <button
-      class="text-[var(--th-text-sky-400)] hover:text-[var(--th-text-sky-300)] cursor-pointer whitespace-nowrap"
-      onclick={() => modStore.showScanSummary = true}
-      title={m.header_scan_summary_title()}
-    ><ClipboardList class="w-3.5 h-3.5 inline -mt-0.5" /> {m.header_scan_summary_label()}</button>
     {#if modStore.scanResult?.existing_config_path != null}
       <button
         class="text-[var(--th-text-sky-400)] hover:text-[var(--th-text-sky-300)] cursor-pointer whitespace-nowrap"

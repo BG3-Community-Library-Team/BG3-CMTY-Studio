@@ -291,7 +291,7 @@
       </button>
       <button
         class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded text-xs font-bold
-               bg-[var(--th-bg-700)] text-[var(--th-text-300)] hover:bg-[var(--th-bg-600)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+               bg-red-700 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         onclick={handleReset}
         disabled={dataOperationStore.isRunning}
       >
@@ -364,20 +364,6 @@
     {#if dbSizeDisplay}
       <p class="text-xs text-center text-[var(--th-text-500)]">{m.loaded_data_db_size()} <strong class="text-[var(--th-text-300)]">{dbSizeDisplay}</strong></p>
     {/if}
-
-    <!-- Honor mode toggle -->
-    <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-      <input
-        type="checkbox"
-        class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-        checked={settingsStore.enableHonorMode}
-        onchange={(e: Event) => settingsStore.setEnableHonorMode((e.target as HTMLInputElement).checked)}
-      />
-      <div>
-        <span class="text-xs text-[var(--th-text-200)]">{m.loaded_data_honor_mode()}</span>
-        <p class="text-xs text-[var(--th-text-500)]">{m.loaded_data_honor_mode_desc()}</p>
-      </div>
-    </label>
 
     <div class="border-t border-[var(--th-border-700)] pt-3">
       <div class="flex items-center justify-between">

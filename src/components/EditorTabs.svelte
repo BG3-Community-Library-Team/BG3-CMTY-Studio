@@ -428,37 +428,6 @@
         </div>
       {/if}
 
-    {:else if activeTab.type === "cf-config"}
-      <!-- CF Config tab — display config with syntax highlighting -->
-      {@const previewText = configStore.previewText}
-      {@const format = configStore.format}
-      {#if previewText.trim()}
-        <div class="h-full flex flex-col overflow-hidden">
-          <div class="flex items-center gap-2 px-4 py-2 bg-[var(--th-bg-900)] border-b border-[var(--th-border-800)] shrink-0">
-            <FileCode size={14} class="text-[var(--th-accent-500)]" />
-            <span class="text-xs font-medium text-[var(--th-text-200)]">
-              CompatibilityFrameworkConfig.{format === "Yaml" ? "yaml" : "json"}
-            </span>
-            <span class="text-[10px] text-[var(--th-text-500)] ml-auto">{format}</span>
-          </div>
-          <div class="flex-1 overflow-auto scrollbar-thin">
-            <pre class="config-preview-code">{#each previewText.split("\n") as line, i}<span class="line-number">{String(i + 1).padStart(4, " ")}</span>  {@html highlightLine(line, format)}{"\n"}{/each}</pre>
-          </div>
-        </div>
-      {:else}
-        <div class="empty-tab">
-          <FileCode size={32} class="text-[var(--th-text-600)] opacity-30" />
-          <p class="text-sm text-[var(--th-text-300)] mt-2">No config output generated yet.</p>
-          <p class="text-xs text-[var(--th-text-600)]">Enable entries and configure settings to generate a preview.</p>
-          <button
-            class="mt-3 px-3 py-1.5 text-xs rounded bg-[var(--th-accent-500)] text-white hover:opacity-90"
-            onclick={() => uiStore.previewCollapsed = false}
-          >
-            Open Output Panel
-          </button>
-        </div>
-      {/if}
-
     {:else if activeTab.type === "meta-lsx"}
       <!-- Meta.lsx form -->
       <MetaLsxForm />

@@ -12,7 +12,7 @@ const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["explorer", "search", "loade
 export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "notifications";
 
 export interface EditorTab {
-  /** Unique key for the tab — file path or special key like "cf-config" */
+  /** Unique key for the tab — file path or special key */
   id: string;
   /** Display label for the tab */
   label: string;
@@ -23,7 +23,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "cf-config" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */

@@ -29,16 +29,15 @@
 
   // ── File type badge colors ──
   const EXT_BADGE_COLORS: Record<string, string> = {
-    yaml: "#22c55e", yml: "#22c55e",
-    json: "#3b82f6",
-    lua: "#a855f7",
-    md: "#6b7280",
-    txt: "#6b7280",
-    xml: "#f97316",
-    cfg: "#eab308",
+    yaml: "var(--th-badge-yaml)", yml: "var(--th-badge-yaml)",
+    json: "var(--th-badge-json)",
+    lua: "var(--th-badge-lua)",
+    md: "var(--th-badge-md)",
+    txt: "var(--th-badge-txt)",
+    xml: "var(--th-badge-xml)",
+    cfg: "var(--th-badge-cfg)",
   };
-  const CF_BADGE_COLOR = "#0ea5e9";
-  const EXT_BADGE_FALLBACK = "#6b7280";
+  const EXT_BADGE_FALLBACK = "var(--th-badge-fallback)";
 
   /** A node in the mod file tree. */
   interface FileTreeNode {
@@ -133,7 +132,7 @@
   let ctxNode = $state<FolderNode | undefined>(undefined);
 
   /** Resolve a filesystem path for a tree node, relative to the mod root. */
-  function resolveNodePath(nodeKey: string, kind: "root" | "public-folder" | "public-child" | "stats" | "stats-child" | "mods" | "meta" | "cf-config" | "additional"): string {
+  function resolveNodePath(nodeKey: string, kind: "root" | "public-folder" | "public-child" | "stats" | "stats-child" | "mods" | "meta" | "additional"): string {
     const base = modStore.selectedModPath;
     if (!base) return "";
     switch (kind) {
@@ -144,7 +143,6 @@
       case "stats": return `${base}/Public/${modFolder}/Stats/Generated/Data`;
       case "stats-child": return `${base}/Public/${modFolder}/Stats/Generated/Data/${nodeKey}`;
       case "mods": return `${base}/Mods/${modFolder}`;
-      case "cf-config": return `${base}/Mods/${modFolder}/ScriptExtender`;
       case "additional": return `${base}/Public/${modFolder}/${nodeKey}`;
       default: return base;
     }
@@ -364,7 +362,6 @@
     if (tab.type === "section") return tab.category ?? "";
     if (tab.type === "lsx-file") return tab.category ?? "";
     if (tab.type === "meta-lsx") return "meta.lsx";
-    if (tab.type === "cf-config") return "cf-config";
     if (tab.type === "file-preview") return `file:${tab.filePath ?? ""}`;
     return "";
   });
@@ -384,8 +381,6 @@
 
   /** Prefix to re-add to stripped file tree relPaths for IPC calls. */
   let modsFilePrefix = $derived(modFolder ? `Mods/${modFolder}/` : "");
-
-  const CF_CONFIG_RE = /^CompatibilityFrameworkConfig\.(yaml|yml|json)$/i;
 
   /** Open a mod file in a file-preview tab */
   function openFilePreview(fileNode: FileTreeNode, preview = true): void {
@@ -728,9 +723,6 @@
                       <span class="w-3.5 shrink-0"></span>
                       <File size={14} class="text-[var(--th-text-emerald-400)]" />
                       <span class="node-label truncate">{node.name}</span>
-                      {#if CF_CONFIG_RE.test(node.name)}
-                        <span class="ext-badge" style="background: {CF_BADGE_COLOR}">CF</span>
-                      {/if}
                       {#if node.extension}
                         <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
                       {/if}

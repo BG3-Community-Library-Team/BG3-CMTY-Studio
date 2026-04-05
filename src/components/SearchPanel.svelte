@@ -149,11 +149,10 @@
   let fileSearchVersion = 0;
 
   function navigateToFileResult(result: FileSearchResult) {
-    const isCfConfig = /^CompatibilityFrameworkConfig\.(yaml|yml|json)$/i.test(result.fileName);
     uiStore.openTab({
       id: `file:${result.filePath}`,
       label: result.fileName,
-      type: isCfConfig ? "cf-config" : "file-preview",
+      type: "file-preview",
       filePath: result.filePath,
       icon: "📄",
       preview: false,

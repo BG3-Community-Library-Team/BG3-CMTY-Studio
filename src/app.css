@@ -146,6 +146,16 @@ html {
   --th-border-structural: var(--th-border-600);
   /* Focus ring — theme-aware outline color for :focus-visible */
   --th-focus-ring: #38bdf8;
+  /* Badge colors for file type indicators */
+  --th-badge-yaml: #22c55e;
+  --th-badge-json: #3b82f6;
+  --th-badge-lua: #a855f7;
+  --th-badge-md: #6b7280;
+  --th-badge-txt: #6b7280;
+  --th-badge-xml: #f97316;
+  --th-badge-cfg: #eab308;
+  --th-badge-cf: #0ea5e9;
+  --th-badge-fallback: #6b7280;
 }
 
 /* P-01: Light, Solarized Dark/Light, High Contrast, Aubergine, Balance,
@@ -244,6 +254,16 @@ html {
   --th-sidebar-text-muted: var(--custom-sidebar-text-muted, #a1a1aa);
   --th-sidebar-border: var(--custom-sidebar-border, #3f3f46);
   --th-sidebar-highlight: var(--custom-sidebar-highlight, #27272a);
+  /* Badge colors */
+  --th-badge-yaml: var(--custom-badge-yaml, #22c55e);
+  --th-badge-json: var(--custom-badge-json, #3b82f6);
+  --th-badge-lua: var(--custom-badge-lua, #a855f7);
+  --th-badge-md: var(--custom-badge-md, #6b7280);
+  --th-badge-txt: var(--custom-badge-txt, #6b7280);
+  --th-badge-xml: var(--custom-badge-xml, #f97316);
+  --th-badge-cfg: var(--custom-badge-cfg, #eab308);
+  --th-badge-cf: var(--custom-badge-cf, #0ea5e9);
+  --th-badge-fallback: var(--custom-badge-fallback, #6b7280);
 }
 
 /* ===================================================================

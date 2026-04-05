@@ -5,7 +5,6 @@
   import FileCode from "@lucide/svelte/icons/file-code";
   import FileCode2 from "@lucide/svelte/icons/file-code-2";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
-  import Settings from "@lucide/svelte/icons/settings";
   import Home from "@lucide/svelte/icons/home";
   import Cog from "@lucide/svelte/icons/cog";
   import Languages from "@lucide/svelte/icons/languages";
@@ -16,7 +15,6 @@
     filteredSection: FileCode,
     group: FolderOpen,
     "lsx-file": FileCode2,
-    "cf-config": Settings,
     welcome: Home,
     "meta-lsx": Cog,
     localization: Languages,

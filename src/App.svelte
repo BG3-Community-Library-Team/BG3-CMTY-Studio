@@ -4,7 +4,6 @@
   import { modStore } from "./lib/stores/modStore.svelte.js";
   import SectionAccordion from "./components/SectionAccordion.svelte";
   import OutputSidebar from "./components/OutputSidebar.svelte";
-  import ScanSummaryModal from "./components/ScanSummaryModal.svelte";
   import FirstRunModal from "./components/FirstRunModal.svelte";
   import CreateModModal from "./components/CreateModModal.svelte";
   import PanelSplitter from "./components/PanelSplitter.svelte";
@@ -21,7 +20,7 @@
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
   import DuplicateModModal from "./components/DuplicateModModal.svelte";
   import { modImportService, type DuplicatePromptFn } from "./lib/services/modImportService.svelte.js";
-  import { saveConfig, detectGameDataPath, type ModMetaInfo } from "./lib/utils/tauri.js";
+  import { detectGameDataPath, type ModMetaInfo } from "./lib/utils/tauri.js";
   import { onMount } from "svelte";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import XIcon from "@lucide/svelte/icons/x";
@@ -172,16 +171,6 @@
         execute: () => {
           configStore.toggleFormat();
           toastStore.success(m.app_config_converted(), m.app_now_outputting({ format: configStore.format }));
-        },
-      },
-      {
-        id: "action.scanSummary",
-        label: m.command_label_scan_summary(),
-        category: "action",
-        icon: "📋",
-        enabled: () => !!modStore.scanResult,
-        execute: () => {
-          modStore.showScanSummary = true;
         },
       },
       {
@@ -460,16 +449,6 @@
       }
       if (active?.type === "meta-lsx") {
         window.dispatchEvent(new CustomEvent("save-active-file"));
-      } else if ((active?.type === "cf-config" || active?.type === "section" || active?.type === "group" || active?.type === "filteredSection") && modStore.scanResult && configStore.previewText) {
-        const folder = modStore.scanResult.mod_meta.folder;
-        const ext = configStore.format === "Yaml" ? "yaml" : "json";
-        const outputPath = `${modStore.selectedModPath}/Mods/${folder}/ScriptExtender/CompatibilityFrameworkConfig.${ext}`;
-        saveConfig(configStore.previewText, outputPath, true)
-          .then(() => {
-            configStore.markClean();
-            toastStore.success(m.app_config_saved(), m.app_saved_to({ folder }));
-          })
-          .catch((err: any) => toastStore.error(m.app_save_failed(), getErrorMessage(err)));
       } else {
         // Generic dispatch — any tab component can listen for this
         window.dispatchEvent(new CustomEvent("save-active-file"));
@@ -727,10 +706,6 @@
   <!-- Status bar at bottom -->
   <StatusBar />
 </div>
-
-{#if modStore.showScanSummary}
-  <ScanSummaryModal onclose={() => modStore.showScanSummary = false} />
-{/if}
 
 <CreateModModal />
 

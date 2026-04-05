@@ -1,5 +1,5 @@
 /**
- * Parse an existing CompatibilityFrameworkConfig (YAML or JSON) into
+ * Parse an existing CF config (YAML or JSON) into
  * ManualEntry objects suitable for display in the section panels.
  *
  * Uses the `yaml` npm package (v2.x) for robust YAML parsing with full

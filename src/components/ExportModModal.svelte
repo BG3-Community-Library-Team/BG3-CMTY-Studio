@@ -1,6 +1,6 @@
 <!--
   ExportModModal: Confirmation dialog for multi-file mod export.
-  Shows a summary of all files to be written (LSX + CF config),
+  Shows a summary of all files to be written (LSX, localization, Osiris goals),
   with entry counts, backup option, and export/cancel actions.
 -->
 <script lang="ts">
@@ -16,7 +16,6 @@
   import FolderOutput from "@lucide/svelte/icons/folder-output";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import FileText from "@lucide/svelte/icons/file-text";
-  import Shield from "@lucide/svelte/icons/shield";
   import Languages from "@lucide/svelte/icons/languages";
   import ScrollText from "@lucide/svelte/icons/scroll-text";
   import { focusTrap } from "../lib/utils/focusTrap.js";
@@ -56,9 +55,6 @@
 
     return { specs, totalEntries };
   });
-
-  /** Whether CF config should be included. */
-  let hasCfConfig = $derived(configStore.previewText.trim().length > 0 && configStore.selectedCount > 0);
 
   /** Localization file specs (user-authored + auto-generated). */
   let locaSpecs = $derived.by(() => {
@@ -101,12 +97,6 @@
     return specs;
   });
 
-  let cfConfigPath = $derived.by((): string => {
-    if (!modPath || !modFolder) return "";
-    const ext = configStore.format === "Yaml" ? "yaml" : "json";
-    return `${modPath}/Mods/${modFolder}/ScriptExtender/CompatibilityFrameworkConfig.${ext}`;
-  });
-
   /** Osiris goal file spec for DB_RaceTags. */
   let osirisSpec = $derived.by((): { outputPath: string; content: string; label: string; count: number } | null => {
     if (!modPath || !modFolder || configStore.osirisGoalEntries.size === 0) return null;
@@ -128,7 +118,7 @@
   });
 
   /** Total file count for the export. */
-  let totalFiles = $derived(lsxFileSpecs.specs.length + (hasCfConfig ? 1 : 0) + locaSpecs.length + (osirisSpec ? 1 : 0));
+  let totalFiles = $derived(lsxFileSpecs.specs.length + locaSpecs.length + (osirisSpec ? 1 : 0));
 
   /** Shorten a path to just the relative portion under modPath. */
   function relativePath(fullPath: string): string {
@@ -150,8 +140,8 @@
     try {
       const result = await exportMod(
         lsxFileSpecs.specs,
-        hasCfConfig ? configStore.previewText : null,
-        hasCfConfig ? cfConfigPath : null,
+        null,
+        null,
         backup,
       );
 
@@ -263,17 +253,6 @@
             </span>
           </div>
         {/each}
-
-        <!-- CF Config -->
-        {#if hasCfConfig}
-          <div class="flex items-center gap-2 py-1.5 text-xs">
-            <Shield size={14} class="text-sky-400 shrink-0" />
-            <span class="text-[var(--th-text-200)] truncate flex-1" title={cfConfigPath}>
-              {relativePath(cfConfigPath)}
-            </span>
-            <span class="text-[var(--th-text-500)] shrink-0">{m.export_mod_cf_config_label()}</span>
-          </div>
-        {/if}
 
         <!-- Localization files -->
         {#each locaSpecs as loca}

@@ -52,9 +52,6 @@ class ModStore {
   /** Whether a re-diff is in progress. When true, SectionAccordion shows a loading indicator bar. */
   isRediffing: boolean = $state(false);
 
-  /** Whether to show the post-scan summary modal. */
-  showScanSummary: boolean = $state(false);
-
   /** PF-027: Global entry filter (searches across all sections). */
   globalFilter: string = $state("");
 

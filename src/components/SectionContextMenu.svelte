@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { Section } from "../lib/types/index.js";
-  import { modStore } from "../lib/stores/modStore.svelte.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import Download from "@lucide/svelte/icons/download";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -20,21 +18,6 @@
     onexpand: () => void;
     oncollapse: () => void;
   } = $props();
-
-  let showExtractSub = $state(false);
-
-  /** Additional mods that contain this section (detected via listPakSections). */
-  let folderName = $derived(section as string);
-  let modsWithSection = $derived.by(() => {
-    const result: { name: string; path: string }[] = [];
-    for (const [modPath, sections] of modStore.modPakSections) {
-      if (sections.includes(folderName)) {
-        const name = modPath.split(/[\\/]/).pop() ?? modPath;
-        result.push({ name, path: modPath });
-      }
-    }
-    return result;
-  });
 
   function handleExpand() {
     onexpand();
@@ -91,48 +74,4 @@
     {m.section_context_collapse()}
   </button>
 
-  <!-- Separator -->
-  <div class="my-1 border-t border-[var(--th-border-700,#3f3f46)]/50"></div>
-
-  <!-- Extract from additional mods -->
-  {#if modsWithSection.length > 0}
-    <div class="my-1 border-t border-[var(--th-border-700,#3f3f46)]/50"></div>
-
-    <div
-      class="relative"
-      role="menuitem"
-      tabindex="-1"
-      onmouseenter={() => showExtractSub = true}
-      onmouseleave={() => showExtractSub = false}
-    >
-      <button
-        class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[var(--th-text-200)] hover:bg-[var(--th-bg-700,#27272a)] transition-colors"
-        onclick={() => showExtractSub = !showExtractSub}
-      >
-        <Download size={14} class="text-sky-400" />
-        {m.section_context_extract_files()}
-        <ChevronRight size={12} class="ml-auto text-[var(--th-text-500)]" />
-      </button>
-
-      {#if showExtractSub}
-        <div
-          class="absolute left-full top-0 ml-1 min-w-[180px] bg-[var(--th-bg-800,#1f1f23)] border border-[var(--th-border-700,#3f3f46)]
-                 rounded-lg shadow-xl shadow-black/40 py-1"
-          role="menu"
-        >
-          {#each modsWithSection as mod}
-            <button
-              class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[var(--th-text-200)] hover:bg-[var(--th-bg-700,#27272a)] transition-colors truncate"
-              onclick={() => { /* TODO: mod-specific extraction is no longer relevant, remove */ onclose(); }}
-              role="menuitem"
-              title={mod.path}
-            >
-              <Download size={14} class="text-amber-400 shrink-0" />
-              <span class="truncate">{mod.name}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
 </div>

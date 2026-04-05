@@ -45,8 +45,6 @@ interface StoredSettings {
   hasSeenFirstRunModal: boolean;
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean;
-  /** Use Honor-mode variant of the game databases */
-  enableHonorMode: boolean;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -74,7 +72,6 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   enableMazzleDocsSupport: false,
   hasSeenFirstRunModal: false,
   autoHideTabBar: false,
-  enableHonorMode: false,
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -191,9 +188,6 @@ class SettingsStore {
 
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean = $state(this.#initial.autoHideTabBar);
-
-  /** Use Honor-mode variant of the game databases */
-  enableHonorMode: boolean = $state(this.#initial.enableHonorMode);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);
@@ -390,11 +384,6 @@ class SettingsStore {
   setAdditionalModPaths(paths: string[]): void {
     this.additionalModPaths = paths.filter(Boolean);
     this.#schedulePersist("additionalModPaths");
-  }
-
-  setEnableHonorMode(enabled: boolean): void {
-    this.enableHonorMode = enabled;
-    this.#schedulePersist("enableHonorMode");
   }
 
   /** Increase text zoom by 10%, capped at 200% */

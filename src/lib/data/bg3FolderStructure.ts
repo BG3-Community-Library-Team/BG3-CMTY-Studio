@@ -516,12 +516,6 @@ export const BG3_MOD_STRUCTURE: FolderNode = {
             {
               name: "ScriptExtender",
               label: "Script Extender",
-              children: [
-                {
-                  name: "CompatibilityFrameworkConfig",
-                  label: "CF Config",
-                },
-              ],
             },
           ],
         },

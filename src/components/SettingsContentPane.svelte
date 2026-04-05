@@ -204,16 +204,7 @@
   {:else if uiStore.settingsSection === "dataHandling"}
     <h3 class="settings-section-title">{m.settings_data_handling_title()}</h3>
     <div class="space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.enableHonorMode}
-          onchange={(e) => { settingsStore.setEnableHonorMode((e.target as HTMLInputElement).checked); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_data_handling_honor_mode_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_data_handling_honor_mode_desc()}</p>
-        </div>
-      </label>
+      <!-- Honor mode toggle removed — backend always populates both databases -->
     </div>
 
   {:else if uiStore.settingsSection === "modConfig"}
