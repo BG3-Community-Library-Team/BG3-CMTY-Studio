@@ -4,4 +4,4 @@ import type { ExportedFile } from "./ExportedFile";
 /**
  * Result of a full mod export operation.
  */
-export type ExportModResult = { files: Array<ExportedFile>, errors: Array<string>, file_errors: { [key in string]?: Array<string> }, };
+export type ExportModResult = { files: Array<ExportedFile>, errors: Array<string>, file_errors: { [key in string]: Array<string> }, };

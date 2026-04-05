@@ -13,15 +13,15 @@ node_id: string,
 /**
  * Raw attributes from the mod's LSX entry (key → value).
  */
-raw_attributes: { [key in string]?: string }, 
+raw_attributes: { [key in string]: string }, 
 /**
  * LSX attribute types for each raw_attribute key (key → type string, e.g. "FixedString", "guid").
  */
-raw_attribute_types: { [key in string]?: string }, 
+raw_attribute_types: { [key in string]: string }, 
 /**
  * Raw children groups from the mod's LSX entry (group_id → list of object GUIDs).
  */
-raw_children: { [key in string]?: Array<string> }, 
+raw_children: { [key in string]: Array<string> }, 
 /**
  * True if this entry was commented out in the source .lsx file.
  */

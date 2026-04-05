@@ -3,4 +3,4 @@
 /**
  * An entry sent from the frontend for LSX preview/export.
  */
-export type LsxPreviewEntry = { uuid: string, node_id: string, raw_attributes: { [key in string]?: string }, raw_attribute_types: { [key in string]?: string }, raw_children: { [key in string]?: Array<string> }, };
+export type LsxPreviewEntry = { uuid: string, node_id: string, raw_attributes: { [key in string]: string }, raw_attribute_types: { [key in string]: string }, raw_children: { [key in string]: Array<string> }, };

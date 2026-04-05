@@ -5,7 +5,7 @@ import type { LsxChildGroup } from "./LsxChildGroup";
 /**
  * Represents a single entry parsed from an LSX file.
  */
-export type LsxEntry = { uuid: string, node_id: string, attributes: { [key in string]?: LsxAttribute }, children: Array<LsxChildGroup>, 
+export type LsxEntry = { uuid: string, node_id: string, attributes: { [key in string]: LsxAttribute }, children: Array<LsxChildGroup>, 
 /**
  * True if this entry was parsed from an XML comment (<!-- ... -->).
  */
