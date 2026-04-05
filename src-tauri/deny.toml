@@ -66,7 +66,17 @@ ignore = [
     { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — Tauri transitive via kuchikiki/selectors" },
     { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — Tauri transitive via kuchikiki/selectors" },
     # Unmaintained transitive deps surfaced by cross-platform targets (Linux GTK3 bindings)
-    { id = "RUSTSEC-2024-0413", reason = "atk (gtk-rs GTK3) — Tauri transitive on Linux, no upgrade available" },
+    # Entire gtk-rs GTK3 family — Tauri transitive on Linux, no upgrade until Tauri migrates to GTK4
+    { id = "RUSTSEC-2024-0411", reason = "gtk-rs GTK3 (gdk-pixbuf) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0412", reason = "gtk-rs GTK3 (cairo-rs) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0413", reason = "gtk-rs GTK3 (atk) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0414", reason = "gtk-rs GTK3 (pango) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0415", reason = "gtk-rs GTK3 (gdk) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0416", reason = "gtk-rs GTK3 (gdkx11) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0417", reason = "gtk-rs GTK3 (gtk) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0418", reason = "gtk-rs GTK3 (webkit2gtk) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0419", reason = "gtk-rs GTK3 (webkit2gtk-sys) — Tauri transitive on Linux" },
+    { id = "RUSTSEC-2024-0420", reason = "gtk-rs GTK3 (gtk3-macros) — Tauri transitive on Linux" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error — Tauri transitive, no upgrade available" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
