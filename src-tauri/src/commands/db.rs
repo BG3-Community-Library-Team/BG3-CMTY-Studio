@@ -75,13 +75,15 @@ pub async fn cmd_build_reference_db(
     unpacked_path: String,
     db_path: String,
 ) -> Result<reference_db::BuildSummary, AppError> {
+    // Validate inputs before entering the blocking closure
+    let unpacked = std::path::PathBuf::from(&unpacked_path);
+    if !unpacked.is_dir() {
+        return Err(AppError::not_found("source_dir_not_found")
+            .with_context("path", &unpacked_path));
+    }
     // Long-running: 20 minute timeout
     blocking_with_timeout(std::time::Duration::from_secs(1200), move || {
-        let unpacked = std::path::PathBuf::from(&unpacked_path);
         let db = std::path::PathBuf::from(&db_path);
-        if !unpacked.is_dir() {
-            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
-        }
         reference_db::build_reference_db(&unpacked, &db)
     })
     .await
@@ -193,12 +195,14 @@ pub async fn cmd_create_staging_db(
     schema_db_path: String,
     staging_db_path: String,
 ) -> Result<reference_db::staging::StagingSummary, AppError> {
+    // Validate inputs before entering the blocking closure
+    let schema_db = std::path::PathBuf::from(&schema_db_path);
+    if !schema_db.is_file() {
+        return Err(AppError::not_found("schema_db_not_found")
+            .with_context("path", &schema_db_path));
+    }
     blocking_with_timeout(std::time::Duration::from_secs(60), move || {
-        let schema_db = std::path::PathBuf::from(&schema_db_path);
         let staging_db = std::path::PathBuf::from(&staging_db_path);
-        if !schema_db.is_file() {
-            return Err(format!("Schema database not found: {}. Build ref_base.sqlite first.", schema_db_path));
-        }
         reference_db::staging::create_staging_db(&schema_db, &staging_db)
     })
     .await
@@ -211,15 +215,18 @@ pub async fn cmd_populate_staging_from_mod(
     staging_db_path: String,
     vacuum: bool,
 ) -> Result<reference_db::BuildSummary, AppError> {
+    // Validate inputs before entering the blocking closure
+    let mod_dir = std::path::PathBuf::from(&mod_path);
+    if !mod_dir.is_dir() {
+        return Err(AppError::not_found("mod_dir_not_found")
+            .with_context("path", &mod_path));
+    }
+    let staging_db = std::path::PathBuf::from(&staging_db_path);
+    if !staging_db.is_file() {
+        return Err(AppError::not_found("schema_db_not_found")
+            .with_context("path", &staging_db_path));
+    }
     blocking_with_timeout(std::time::Duration::from_secs(600), move || {
-        let mod_dir = std::path::PathBuf::from(&mod_path);
-        let staging_db = std::path::PathBuf::from(&staging_db_path);
-        if !mod_dir.is_dir() {
-            return Err(format!("Mod directory not found: {}", mod_path));
-        }
-        if !staging_db.is_file() {
-            return Err(format!("Staging database not found: {}. Create it first.", staging_db_path));
-        }
         let options = reference_db::BuildOptions { vacuum, ..Default::default() };
         reference_db::staging::populate_staging_from_mod(&mod_dir, &mod_name, &staging_db, &options)
     })
@@ -494,6 +501,202 @@ pub async fn cmd_clear_mods_db(
         }
 
         Ok(total_deleted)
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// Staging CRUD commands (F1–F6)
+// ---------------------------------------------------------------------------
+
+/// F1: Upsert a row in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_upsert_row(
+    staging_db_path: String,
+    table: String,
+    columns: std::collections::HashMap<String, String>,
+    is_new: bool,
+) -> Result<reference_db::staging::UpsertResult, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_upsert_row(&conn, &table, &columns, is_new)
+    })
+    .await
+}
+
+/// F2: Soft-delete (or hard-delete if _is_new) a row in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_mark_deleted(
+    staging_db_path: String,
+    table: String,
+    pk: String,
+) -> Result<bool, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_mark_deleted(&conn, &table, &pk)
+    })
+    .await
+}
+
+/// F2: Unmark a soft-deleted row in the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_unmark_deleted(
+    staging_db_path: String,
+    table: String,
+    pk: String,
+) -> Result<bool, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_unmark_deleted(&conn, &table, &pk)
+    })
+    .await
+}
+
+/// F3: Execute a batch of staging operations atomically.
+#[tauri::command]
+pub async fn cmd_staging_batch_write(
+    staging_db_path: String,
+    operations: Vec<reference_db::staging::StagingOperation>,
+) -> Result<reference_db::staging::StagingBatchResult, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_batch_write(&conn, &operations)
+    })
+    .await
+}
+
+/// F4: Query rows with changes (new, modified, or deleted).
+#[tauri::command]
+pub async fn cmd_staging_query_changes(
+    staging_db_path: String,
+    table: Option<String>,
+) -> Result<Vec<reference_db::staging::StagingChange>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_query_changes(&conn, table.as_deref())
+    })
+    .await
+}
+
+/// F5: List all staging sections with row count summaries.
+#[tauri::command]
+pub async fn cmd_staging_list_sections(
+    staging_db_path: String,
+) -> Result<Vec<reference_db::staging::StagingSectionSummary>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_list_sections(&conn)
+    })
+    .await
+}
+
+/// F5: Query all rows for a staging section.
+#[tauri::command]
+pub async fn cmd_staging_query_section(
+    staging_db_path: String,
+    table: String,
+    include_deleted: Option<bool>,
+) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_query_section(
+            &conn,
+            &table,
+            include_deleted.unwrap_or(false),
+        )
+    })
+    .await
+}
+
+/// F5: Get a single row by PK from a staging table.
+#[tauri::command]
+pub async fn cmd_staging_get_row(
+    staging_db_path: String,
+    table: String,
+    pk: String,
+) -> Result<Option<std::collections::HashMap<String, serde_json::Value>>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::staging_get_row(&conn, &table, &pk)
+    })
+    .await
+}
+
+/// F6: Get a meta value from `_staging_authoring`.
+#[tauri::command]
+pub async fn cmd_staging_get_meta(
+    staging_db_path: String,
+    key: String,
+) -> Result<Option<String>, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::ensure_staging_authoring_table(&conn)?;
+        reference_db::staging::staging_get_meta(&conn, &key)
+    })
+    .await
+}
+
+/// F6: Set a meta value in `_staging_authoring`.
+#[tauri::command]
+pub async fn cmd_staging_set_meta(
+    staging_db_path: String,
+    key: String,
+    value: String,
+) -> Result<(), AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        reference_db::staging::ensure_staging_authoring_table(&conn)?;
+        reference_db::staging::staging_set_meta(&conn, &key, &value)
     })
     .await
 }

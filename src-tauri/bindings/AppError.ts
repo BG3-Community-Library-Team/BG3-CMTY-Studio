@@ -7,4 +7,4 @@ import type { ErrorKind } from "./ErrorKind";
  * Frontend receives `{ kind: "NotFound", message: "..." }` and can
  * distinguish error categories programmatically instead of parsing strings.
  */
-export type AppError = { kind: ErrorKind, message: string, };
+export type AppError = { kind: ErrorKind, message: string, context: { [key in string]: string } | null, };

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 #[cfg(test)]
 use ts_rs::TS;
@@ -30,56 +32,65 @@ pub enum ErrorKind {
 pub struct AppError {
     pub kind: ErrorKind,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<HashMap<String, String>>,
 }
 
 impl AppError {
     pub fn not_found(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::NotFound, message: message.into() }
+        Self { kind: ErrorKind::NotFound, message: message.into(), context: None }
     }
 
     pub fn invalid_input(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::InvalidInput, message: message.into() }
+        Self { kind: ErrorKind::InvalidInput, message: message.into(), context: None }
     }
 
     pub fn io_error(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::IoError, message: message.into() }
+        Self { kind: ErrorKind::IoError, message: message.into(), context: None }
     }
 
     pub fn parse_error(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::ParseError, message: message.into() }
+        Self { kind: ErrorKind::ParseError, message: message.into(), context: None }
     }
 
     pub fn cache_error(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::CacheError, message: message.into() }
+        Self { kind: ErrorKind::CacheError, message: message.into(), context: None }
     }
 
     pub fn security(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::SecurityViolation, message: message.into() }
+        Self { kind: ErrorKind::SecurityViolation, message: message.into(), context: None }
     }
 
     pub fn task_panicked(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::TaskPanicked, message: message.into() }
+        Self { kind: ErrorKind::TaskPanicked, message: message.into(), context: None }
     }
 
     pub fn timeout(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::Timeout, message: message.into() }
+        Self { kind: ErrorKind::Timeout, message: message.into(), context: None }
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
-        Self { kind: ErrorKind::Internal, message: message.into() }
+        Self { kind: ErrorKind::Internal, message: message.into(), context: None }
+    }
+
+    pub fn with_context(mut self, key: &str, value: impl Into<String>) -> Self {
+        self.context
+            .get_or_insert_with(HashMap::new)
+            .insert(key.into(), value.into());
+        self
     }
 }
 
 /// Enables `?` operator on `Result<T, String>` inside functions returning `Result<T, AppError>`.
 impl From<String> for AppError {
     fn from(message: String) -> Self {
-        Self { kind: ErrorKind::Internal, message }
+        Self { kind: ErrorKind::Internal, message, context: None }
     }
 }
 
 impl From<&str> for AppError {
     fn from(message: &str) -> Self {
-        Self { kind: ErrorKind::Internal, message: message.to_string() }
+        Self { kind: ErrorKind::Internal, message: message.to_string(), context: None }
     }
 }
 

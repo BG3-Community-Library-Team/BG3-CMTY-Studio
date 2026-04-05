@@ -776,5 +776,9 @@
   "tag_tooltip_err": "Error: This entry has configuration errors that must be fixed",
   "tag_tooltip_mod": "Modified: This entry has unsaved changes",
   "tag_tooltip_ovrd": "Override: This entry overrides vanilla or loaded mod data",
-  "tag_tooltip_base": "Base: Unmodified vanilla game entry"
+  "tag_tooltip_base": "Base: Unmodified vanilla game entry",
+
+  "error_source_dir_not_found": "Source directory not found: {path}",
+  "error_schema_db_not_found": "Schema database not found: {path}. Build ref_base.sqlite first.",
+  "error_mod_dir_not_found": "Mod directory not found: {path}"
 }

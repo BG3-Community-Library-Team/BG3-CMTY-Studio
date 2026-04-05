@@ -1904,6 +1904,16 @@ pub fn run() {
             commands::db::cmd_check_staging_integrity,
             commands::db::cmd_unpack_and_populate,
             commands::db::cmd_populate_game_data,
+            commands::db::cmd_staging_upsert_row,
+            commands::db::cmd_staging_mark_deleted,
+            commands::db::cmd_staging_unmark_deleted,
+            commands::db::cmd_staging_batch_write,
+            commands::db::cmd_staging_query_changes,
+            commands::db::cmd_staging_list_sections,
+            commands::db::cmd_staging_query_section,
+            commands::db::cmd_staging_get_row,
+            commands::db::cmd_staging_get_meta,
+            commands::db::cmd_staging_set_meta,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

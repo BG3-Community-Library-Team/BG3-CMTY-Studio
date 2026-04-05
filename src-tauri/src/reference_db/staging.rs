@@ -22,6 +22,8 @@ use crate::reference_db::builder::{self, load_schema_from_db};
 use crate::reference_db::schema::*;
 use crate::reference_db::{BuildOptions, BuildSummary};
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
@@ -257,6 +259,15 @@ fn create_staging_meta_tables(conn: &Connection) -> Result<(), String> {
             node_id       TEXT,
             parent_tables TEXT,
             row_count     INTEGER DEFAULT 0
+        ) WITHOUT ROWID;
+
+        CREATE TABLE IF NOT EXISTS _staging_authoring (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            _is_new INTEGER NOT NULL DEFAULT 0,
+            _is_modified INTEGER NOT NULL DEFAULT 0,
+            _is_deleted INTEGER NOT NULL DEFAULT 0,
+            _original_hash TEXT
         ) WITHOUT ROWID;",
     )
     .map_err(|e| format!("Staging meta table error: {}", e))
@@ -359,6 +370,653 @@ fn populate_staging_column_types(
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Staging CRUD operations (F1–F6)
+// ---------------------------------------------------------------------------
+
+/// Result of an upsert operation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpsertResult {
+    pub pk_value: String,
+    pub was_insert: bool,
+}
+
+/// Upsert a row into a staging table.
+///
+/// - `is_new`: true → entry created in staging (not from vanilla)
+/// - If row exists:
+///   - If existing row has `_is_new=1`, preserve it (don't downgrade to modified)
+///   - Otherwise set `_is_modified=1`
+/// - If row doesn't exist: insert with `_is_new=is_new, _is_modified=!is_new`
+pub fn staging_upsert_row(
+    conn: &Connection,
+    table: &str,
+    columns: &HashMap<String, String>,
+    is_new: bool,
+) -> Result<UpsertResult, String> {
+    validate_staging_table(conn, table)?;
+    let pk_col = get_pk_column(conn, table)?;
+
+    let pk_value = columns
+        .get(&pk_col)
+        .ok_or_else(|| {
+            format!(
+                "Missing PK column '{}' in upsert data for table '{}'",
+                pk_col, table
+            )
+        })?
+        .clone();
+
+    // Check if row already exists
+    let existing_is_new: Option<bool> = {
+        let sql = format!(
+            "SELECT \"_is_new\" FROM \"{}\" WHERE \"{}\" = ?1",
+            table, pk_col
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare check: {}", e))?;
+        stmt.query_row([&pk_value], |row| {
+            let v: i32 = row.get(0)?;
+            Ok(v == 1)
+        })
+        .optional()
+        .map_err(|e| format!("Check existing: {}", e))?
+    };
+
+    let was_insert = existing_is_new.is_none();
+
+    if let Some(prev_is_new) = existing_is_new {
+        // Row exists → UPDATE
+        let set_clauses: Vec<String> = columns
+            .iter()
+            .filter(|(k, _)| **k != pk_col)
+            .map(|(k, _)| format!("\"{}\" = ?", k))
+            .collect();
+
+        if set_clauses.is_empty() {
+            let tracking = if prev_is_new {
+                "\"_is_new\" = 1"
+            } else {
+                "\"_is_modified\" = 1"
+            };
+            let sql = format!(
+                "UPDATE \"{}\" SET {} WHERE \"{}\" = ?1",
+                table, tracking, pk_col
+            );
+            conn.execute(&sql, rusqlite::params![pk_value])
+                .map_err(|e| format!("Update tracking: {}", e))?;
+        } else {
+            let tracking = if prev_is_new {
+                ", \"_is_new\" = 1"
+            } else {
+                ", \"_is_modified\" = 1"
+            };
+            let all_sets = format!("{}{}", set_clauses.join(", "), tracking);
+            let sql = format!(
+                "UPDATE \"{}\" SET {} WHERE \"{}\" = ?",
+                table, all_sets, pk_col
+            );
+
+            let mut values: Vec<String> = columns
+                .iter()
+                .filter(|(k, _)| **k != pk_col)
+                .map(|(_, v)| v.clone())
+                .collect();
+            values.push(pk_value.clone());
+
+            let refs: Vec<&dyn rusqlite::types::ToSql> =
+                values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+            conn.execute(&sql, refs.as_slice())
+                .map_err(|e| format!("Update row: {}", e))?;
+        }
+    } else {
+        // Row doesn't exist → INSERT
+        let mut all_cols: Vec<String> = columns.keys().map(|c| format!("\"{}\"", c)).collect();
+        all_cols.push("\"_is_new\"".to_string());
+        all_cols.push("\"_is_modified\"".to_string());
+
+        let mut placeholders: Vec<String> =
+            (1..=columns.len()).map(|i| format!("?{}", i)).collect();
+        let new_val = if is_new { "1" } else { "0" };
+        let mod_val = if is_new { "0" } else { "1" };
+        placeholders.push(new_val.to_string());
+        placeholders.push(mod_val.to_string());
+
+        let sql = format!(
+            "INSERT INTO \"{}\" ({}) VALUES ({})",
+            table,
+            all_cols.join(", "),
+            placeholders.join(", ")
+        );
+
+        let values: Vec<&str> = columns.values().map(|v| v.as_str()).collect();
+        let refs: Vec<&dyn rusqlite::types::ToSql> =
+            values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+        conn.execute(&sql, refs.as_slice())
+            .map_err(|e| format!("Insert row: {}", e))?;
+    }
+
+    Ok(UpsertResult {
+        pk_value,
+        was_insert,
+    })
+}
+
+/// Soft-delete a row. If the row has `_is_new=1`, hard-delete it instead.
+/// Returns `true` if a row was affected, `false` if not found.
+pub fn staging_mark_deleted(
+    conn: &Connection,
+    table: &str,
+    pk: &str,
+) -> Result<bool, String> {
+    validate_staging_table(conn, table)?;
+    let pk_col = get_pk_column(conn, table)?;
+
+    let is_new: Option<bool> = {
+        let sql = format!(
+            "SELECT \"_is_new\" FROM \"{}\" WHERE \"{}\" = ?1",
+            table, pk_col
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+        stmt.query_row([pk], |row| {
+            let v: i32 = row.get(0)?;
+            Ok(v == 1)
+        })
+        .optional()
+        .map_err(|e| format!("Check: {}", e))?
+    };
+
+    match is_new {
+        None => Ok(false),
+        Some(true) => {
+            // _is_new=1 → hard delete (entry only existed in staging)
+            let sql = format!("DELETE FROM \"{}\" WHERE \"{}\" = ?1", table, pk_col);
+            conn.execute(&sql, [pk])
+                .map_err(|e| format!("Hard delete: {}", e))?;
+            Ok(true)
+        }
+        Some(false) => {
+            // Existing row → soft delete
+            let sql = format!(
+                "UPDATE \"{}\" SET \"_is_deleted\" = 1 WHERE \"{}\" = ?1",
+                table, pk_col
+            );
+            conn.execute(&sql, [pk])
+                .map_err(|e| format!("Soft delete: {}", e))?;
+            Ok(true)
+        }
+    }
+}
+
+/// Unmark a soft-deleted row. Returns `true` if a row was affected.
+pub fn staging_unmark_deleted(
+    conn: &Connection,
+    table: &str,
+    pk: &str,
+) -> Result<bool, String> {
+    validate_staging_table(conn, table)?;
+    let pk_col = get_pk_column(conn, table)?;
+
+    let sql = format!(
+        "UPDATE \"{}\" SET \"_is_deleted\" = 0 WHERE \"{}\" = ?1",
+        table, pk_col
+    );
+    let affected = conn
+        .execute(&sql, [pk])
+        .map_err(|e| format!("Undelete: {}", e))?;
+    Ok(affected > 0)
+}
+
+/// A single operation in a batch write.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "op")]
+pub enum StagingOperation {
+    Upsert {
+        table: String,
+        columns: HashMap<String, String>,
+        is_new: bool,
+    },
+    MarkDeleted {
+        table: String,
+        pk: String,
+    },
+    UnmarkDeleted {
+        table: String,
+        pk: String,
+    },
+}
+
+/// Result of a batch write.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StagingBatchResult {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+/// Execute a batch of staging operations atomically.
+///
+/// On any individual failure the entire batch is rolled back.
+pub fn staging_batch_write(
+    conn: &Connection,
+    operations: &[StagingOperation],
+) -> Result<StagingBatchResult, String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Begin batch transaction: {}", e))?;
+
+    let total = operations.len();
+
+    for (i, op) in operations.iter().enumerate() {
+        let result = match op {
+            StagingOperation::Upsert {
+                table,
+                columns,
+                is_new,
+            } => staging_upsert_row(&tx, table, columns, *is_new).map(|_| ()),
+            StagingOperation::MarkDeleted { table, pk } => {
+                staging_mark_deleted(&tx, table, pk).map(|_| ())
+            }
+            StagingOperation::UnmarkDeleted { table, pk } => {
+                staging_unmark_deleted(&tx, table, pk).map(|_| ())
+            }
+        };
+
+        if let Err(e) = result {
+            // Explicit rollback — drop would do the same but this is clearer
+            let _ = tx.rollback();
+            return Ok(StagingBatchResult {
+                total,
+                succeeded: i,
+                failed: total - i,
+                errors: vec![format!("Operation {}: {}", i, e)],
+            });
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Commit batch: {}", e))?;
+
+    Ok(StagingBatchResult {
+        total,
+        succeeded: total,
+        failed: 0,
+        errors: Vec::new(),
+    })
+}
+
+/// A row with tracked changes.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StagingChange {
+    pub table: String,
+    pub pk_value: String,
+    pub change_type: String,
+    pub columns: HashMap<String, serde_json::Value>,
+}
+
+/// Query rows with changes (new, modified, or deleted).
+pub fn staging_query_changes(
+    conn: &Connection,
+    table_filter: Option<&str>,
+) -> Result<Vec<StagingChange>, String> {
+    let schema = load_embedded_schema(conn)?;
+    let mut changes = Vec::new();
+
+    let tables: Vec<(&String, &TableSchema)> = if let Some(filter) = table_filter {
+        validate_staging_table(conn, filter)?;
+        schema
+            .tables
+            .iter()
+            .filter(|(name, _)| name.as_str() == filter)
+            .collect()
+    } else {
+        schema.tables.iter().collect()
+    };
+
+    for (table_name, ts) in &tables {
+        let pk_col = ts.pk_strategy.pk_column();
+        let sql = format!(
+            "SELECT * FROM \"{}\" WHERE \"_is_new\" = 1 OR \"_is_modified\" = 1 OR \"_is_deleted\" = 1",
+            table_name
+        );
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("Query changes in {}: {}", table_name, e))?;
+        let col_count = stmt.column_count();
+        let col_names: Vec<String> = (0..col_count)
+            .map(|i| stmt.column_name(i).unwrap().to_string())
+            .collect();
+
+        let rows = stmt
+            .query_map([], |row| {
+                let mut columns = HashMap::new();
+                let mut is_new = false;
+                let mut is_modified = false;
+                let mut is_deleted = false;
+                let mut pk_val = String::new();
+
+                for (i, name) in col_names.iter().enumerate() {
+                    match name.as_str() {
+                        "_is_new" => {
+                            is_new = row.get::<_, i32>(i)? == 1;
+                        }
+                        "_is_modified" => {
+                            is_modified = row.get::<_, i32>(i)? == 1;
+                        }
+                        "_is_deleted" => {
+                            is_deleted = row.get::<_, i32>(i)? == 1;
+                        }
+                        _ => {
+                            let val: rusqlite::types::Value = row.get(i)?;
+                            let json_val = sqlite_value_to_json(val);
+                            if name == pk_col {
+                                pk_val = match &json_val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                };
+                            }
+                            columns.insert(name.clone(), json_val);
+                        }
+                    }
+                }
+
+                let change_type = if is_deleted {
+                    "deleted"
+                } else if is_new {
+                    "new"
+                } else if is_modified {
+                    "modified"
+                } else {
+                    "unknown"
+                };
+
+                Ok(StagingChange {
+                    table: table_name.to_string(),
+                    pk_value: pk_val,
+                    change_type: change_type.to_string(),
+                    columns,
+                })
+            })
+            .map_err(|e| format!("Map changes in {}: {}", table_name, e))?;
+
+        for row in rows {
+            changes.push(row.map_err(|e| format!("Row error in {}: {}", table_name, e))?);
+        }
+    }
+
+    Ok(changes)
+}
+
+/// Summary of a staging section (table).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StagingSectionSummary {
+    pub table_name: String,
+    pub region_id: Option<String>,
+    pub node_id: Option<String>,
+    pub source_type: String,
+    pub total_rows: usize,
+    pub active_rows: usize,
+    pub new_rows: usize,
+    pub modified_rows: usize,
+    pub deleted_rows: usize,
+}
+
+/// List all staging sections with row count summaries.
+pub fn staging_list_sections(
+    conn: &Connection,
+) -> Result<Vec<StagingSectionSummary>, String> {
+    let schema = load_embedded_schema(conn)?;
+    let mut sections = Vec::new();
+
+    for (table_name, ts) in &schema.tables {
+        let sql = format!(
+            "SELECT \
+                COUNT(*), \
+                SUM(CASE WHEN \"_is_deleted\" = 0 THEN 1 ELSE 0 END), \
+                SUM(CASE WHEN \"_is_new\" = 1 THEN 1 ELSE 0 END), \
+                SUM(CASE WHEN \"_is_modified\" = 1 THEN 1 ELSE 0 END), \
+                SUM(CASE WHEN \"_is_deleted\" = 1 THEN 1 ELSE 0 END) \
+             FROM \"{}\"",
+            table_name
+        );
+
+        let counts = conn
+            .query_row(&sql, [], |row| {
+                Ok((
+                    row.get::<_, i64>(0).unwrap_or(0) as usize,
+                    row.get::<_, Option<i64>>(1)
+                        .unwrap_or(Some(0))
+                        .unwrap_or(0) as usize,
+                    row.get::<_, Option<i64>>(2)
+                        .unwrap_or(Some(0))
+                        .unwrap_or(0) as usize,
+                    row.get::<_, Option<i64>>(3)
+                        .unwrap_or(Some(0))
+                        .unwrap_or(0) as usize,
+                    row.get::<_, Option<i64>>(4)
+                        .unwrap_or(Some(0))
+                        .unwrap_or(0) as usize,
+                ))
+            })
+            .map_err(|e| format!("Count rows in {}: {}", table_name, e))?;
+
+        sections.push(StagingSectionSummary {
+            table_name: table_name.clone(),
+            region_id: ts.region_id.clone(),
+            node_id: ts.node_id.clone(),
+            source_type: ts.source_type.clone(),
+            total_rows: counts.0,
+            active_rows: counts.1,
+            new_rows: counts.2,
+            modified_rows: counts.3,
+            deleted_rows: counts.4,
+        });
+    }
+
+    Ok(sections)
+}
+
+/// Query all rows for a staging section.
+pub fn staging_query_section(
+    conn: &Connection,
+    table: &str,
+    include_deleted: bool,
+) -> Result<Vec<HashMap<String, serde_json::Value>>, String> {
+    validate_staging_table(conn, table)?;
+
+    let sql = if include_deleted {
+        format!("SELECT * FROM \"{}\"", table)
+    } else {
+        format!(
+            "SELECT * FROM \"{}\" WHERE \"_is_deleted\" = 0",
+            table
+        )
+    };
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Query section {}: {}", table, e))?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).unwrap().to_string())
+        .collect();
+
+    let rows = stmt
+        .query_map([], |row| {
+            let mut map = HashMap::new();
+            for (i, name) in col_names.iter().enumerate() {
+                let val: rusqlite::types::Value = row.get(i)?;
+                let json_val = sqlite_value_to_json(val);
+                map.insert(name.clone(), json_val);
+            }
+            Ok(map)
+        })
+        .map_err(|e| format!("Map rows in {}: {}", table, e))?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| format!("Row error: {}", e))?);
+    }
+    Ok(result)
+}
+
+/// Get a single row by PK.
+pub fn staging_get_row(
+    conn: &Connection,
+    table: &str,
+    pk: &str,
+) -> Result<Option<HashMap<String, serde_json::Value>>, String> {
+    validate_staging_table(conn, table)?;
+    let pk_col = get_pk_column(conn, table)?;
+
+    let sql = format!(
+        "SELECT * FROM \"{}\" WHERE \"{}\" = ?1",
+        table, pk_col
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Prepare get_row: {}", e))?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).unwrap().to_string())
+        .collect();
+
+    let result = stmt
+        .query_row([pk], |row| {
+            let mut map = HashMap::new();
+            for (i, name) in col_names.iter().enumerate() {
+                let val: rusqlite::types::Value = row.get(i)?;
+                let json_val = sqlite_value_to_json(val);
+                map.insert(name.clone(), json_val);
+            }
+            Ok(map)
+        })
+        .optional()
+        .map_err(|e| format!("Get row: {}", e))?;
+
+    Ok(result)
+}
+
+/// Ensure `_staging_authoring` meta table exists with all columns.
+pub fn ensure_staging_authoring_table(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS _staging_authoring (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            _is_new INTEGER NOT NULL DEFAULT 0,
+            _is_modified INTEGER NOT NULL DEFAULT 0,
+            _is_deleted INTEGER NOT NULL DEFAULT 0,
+            _original_hash TEXT
+        ) WITHOUT ROWID;",
+    )
+    .map_err(|e| format!("Create _staging_authoring: {}", e))?;
+
+    // For existing tables that might lack new columns, attempt to add them.
+    for (col, default) in &[
+        ("_is_new", "INTEGER NOT NULL DEFAULT 0"),
+        ("_is_modified", "INTEGER NOT NULL DEFAULT 0"),
+        ("_is_deleted", "INTEGER NOT NULL DEFAULT 0"),
+        ("_original_hash", "TEXT"),
+    ] {
+        let has_col = conn
+            .prepare(&format!(
+                "SELECT \"{}\" FROM _staging_authoring LIMIT 0",
+                col
+            ))
+            .is_ok();
+        if !has_col {
+            let _ = conn.execute_batch(&format!(
+                "ALTER TABLE _staging_authoring ADD COLUMN \"{}\" {}",
+                col, default
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get a meta value from `_staging_authoring`.
+pub fn staging_get_meta(
+    conn: &Connection,
+    key: &str,
+) -> Result<Option<String>, String> {
+    let result = conn
+        .query_row(
+            "SELECT value FROM _staging_authoring WHERE key = ?1 AND \"_is_deleted\" = 0",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Get meta '{}': {}", key, e))?;
+    Ok(result)
+}
+
+/// Set a meta value in `_staging_authoring`.
+pub fn staging_set_meta(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO _staging_authoring (key, value) VALUES (?1, ?2)",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| format!("Set meta '{}': {}", key, e))?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a SQLite value to a serde_json::Value.
+fn sqlite_value_to_json(val: rusqlite::types::Value) -> serde_json::Value {
+    match val {
+        rusqlite::types::Value::Null => serde_json::Value::Null,
+        rusqlite::types::Value::Integer(n) => serde_json::json!(n),
+        rusqlite::types::Value::Real(f) => serde_json::json!(f),
+        rusqlite::types::Value::Text(s) => serde_json::Value::String(s),
+        rusqlite::types::Value::Blob(b) => {
+            serde_json::Value::String(format!("[blob:{} bytes]", b.len()))
+        }
+    }
+}
+
+/// Validate that a table exists in the staging schema.
+fn validate_staging_table(conn: &Connection, table: &str) -> Result<(), String> {
+    let schema = load_embedded_schema(conn)?;
+    if !schema.tables.contains_key(table) {
+        return Err(format!("Table '{}' not found in staging schema", table));
+    }
+    Ok(())
+}
+
+/// Get PK column name for a staging table.
+fn get_pk_column(conn: &Connection, table: &str) -> Result<String, String> {
+    let schema = load_embedded_schema(conn)?;
+    let ts = schema
+        .tables
+        .get(table)
+        .ok_or_else(|| format!("Table '{}' not in schema", table))?;
+    Ok(ts.pk_strategy.pk_column().to_string())
+}
+
+/// Load the embedded schema from the staging DB.
+fn load_embedded_schema(
+    conn: &Connection,
+) -> Result<DiscoveredSchema, String> {
+    let blob: Vec<u8> = conn
+        .query_row(
+            "SELECT value FROM _embedded_schema WHERE key = 'schema'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Load embedded schema: {}", e))?;
+
+    rmp_serde::from_slice(&blob).map_err(|e| format!("Deserialize schema: {}", e))
 }
 
 #[cfg(test)]
@@ -488,7 +1146,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         create_staging_meta_tables(&conn).unwrap();
 
-        // Verify all four meta tables exist
+        // Verify all five meta tables exist
         let tables: Vec<String> = conn
             .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             .unwrap()
@@ -501,6 +1159,7 @@ mod tests {
         assert!(tables.contains(&"_source_files".to_string()), "Missing _source_files");
         assert!(tables.contains(&"_column_types".to_string()), "Missing _column_types");
         assert!(tables.contains(&"_table_meta".to_string()), "Missing _table_meta");
+        assert!(tables.contains(&"_staging_authoring".to_string()), "Missing _staging_authoring");
     }
 
     #[test]
@@ -561,5 +1220,417 @@ mod tests {
         assert!(json.contains("\"total_tables\":42"));
         assert!(json.contains("\"junction_tables\":5"));
         assert!(json.contains("\"db_path\":\"/tmp/staging.sqlite\""));
+    }
+
+    // -------------------------------------------------------------------
+    // F1–F6 unit tests
+    // -------------------------------------------------------------------
+
+    /// Set up an in-memory staging DB with a test table and embedded schema.
+    fn setup_test_staging_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        create_staging_meta_tables(&conn).unwrap();
+
+        // Data table with UUID PK
+        conn.execute_batch(
+            "CREATE TABLE \"test_entries\" (
+                \"UUID\" TEXT PRIMARY KEY,
+                \"_file_id\" INTEGER,
+                \"_SourceID\" INTEGER,
+                \"Name\" TEXT,
+                \"Description\" TEXT,
+                \"_is_modified\" INTEGER NOT NULL DEFAULT 0,
+                \"_is_new\" INTEGER NOT NULL DEFAULT 0,
+                \"_is_deleted\" INTEGER NOT NULL DEFAULT 0
+            )"
+        ).unwrap();
+
+        // Embedded schema storage
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _embedded_schema (
+                key   TEXT PRIMARY KEY,
+                value BLOB NOT NULL
+            ) WITHOUT ROWID"
+        ).unwrap();
+
+        // Build a DiscoveredSchema with the test table
+        let mut tables = HashMap::new();
+        tables.insert(
+            "test_entries".to_string(),
+            TableSchema {
+                table_name: "test_entries".to_string(),
+                pk_strategy: PkStrategy::Uuid,
+                source_type: "lsx".to_string(),
+                region_id: Some("TestRegion".to_string()),
+                node_id: Some("TestNode".to_string()),
+                columns: vec![
+                    ColumnDef {
+                        name: "Name".to_string(),
+                        bg3_type: "FixedString".to_string(),
+                        sqlite_type: "TEXT".to_string(),
+                    },
+                    ColumnDef {
+                        name: "Description".to_string(),
+                        bg3_type: "LSString".to_string(),
+                        sqlite_type: "TEXT".to_string(),
+                    },
+                ],
+                fk_constraints: vec![],
+                has_file_id: true,
+                parent_tables: std::collections::HashSet::new(),
+            },
+        );
+
+        let schema = DiscoveredSchema {
+            tables,
+            renames: HashMap::new(),
+            region_node_ids: HashMap::new(),
+            junction_tables: vec![],
+            junction_lookup: HashMap::new(),
+        };
+
+        let blob = rmp_serde::to_vec(&schema).unwrap();
+        conn.execute(
+            "INSERT INTO _embedded_schema (key, value) VALUES ('schema', ?1)",
+            rusqlite::params![blob],
+        ).unwrap();
+
+        conn
+    }
+
+    #[test]
+    fn upsert_inserts_new_row_with_is_new() {
+        let conn = setup_test_staging_db();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "test-uuid-1".to_string());
+        cols.insert("Name".to_string(), "TestEntry".to_string());
+
+        let result = staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+        assert!(result.was_insert);
+        assert_eq!(result.pk_value, "test-uuid-1");
+
+        // Verify tracking flags
+        let (is_new, is_mod): (i32, i32) = conn
+            .query_row(
+                "SELECT \"_is_new\", \"_is_modified\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["test-uuid-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(is_new, 1);
+        assert_eq!(is_mod, 0);
+    }
+
+    #[test]
+    fn upsert_existing_row_sets_is_modified() {
+        let conn = setup_test_staging_db();
+
+        // Insert a vanilla row (not new)
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('uuid-2', 'Original')",
+            [],
+        ).unwrap();
+
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "uuid-2".to_string());
+        cols.insert("Name".to_string(), "Modified".to_string());
+
+        let result = staging_upsert_row(&conn, "test_entries", &cols, false).unwrap();
+        assert!(!result.was_insert);
+
+        let (is_new, is_mod): (i32, i32) = conn
+            .query_row(
+                "SELECT \"_is_new\", \"_is_modified\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-2"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(is_new, 0);
+        assert_eq!(is_mod, 1);
+
+        // Verify data updated
+        let name: String = conn
+            .query_row(
+                "SELECT \"Name\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-2"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Modified");
+    }
+
+    #[test]
+    fn upsert_preserves_is_new_on_re_upsert() {
+        let conn = setup_test_staging_db();
+
+        // Insert as new
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "uuid-3".to_string());
+        cols.insert("Name".to_string(), "First".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+
+        // Re-upsert — should keep _is_new=1
+        cols.insert("Name".to_string(), "Second".to_string());
+        let result = staging_upsert_row(&conn, "test_entries", &cols, false).unwrap();
+        assert!(!result.was_insert);
+
+        let is_new: i32 = conn
+            .query_row(
+                "SELECT \"_is_new\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-3"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_new, 1, "_is_new should be preserved on re-upsert");
+    }
+
+    #[test]
+    fn soft_delete_sets_is_deleted() {
+        let conn = setup_test_staging_db();
+
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('uuid-4', 'ToDelete')",
+            [],
+        ).unwrap();
+
+        let result = staging_mark_deleted(&conn, "test_entries", "uuid-4").unwrap();
+        assert!(result);
+
+        let is_deleted: i32 = conn
+            .query_row(
+                "SELECT \"_is_deleted\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-4"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_deleted, 1);
+    }
+
+    #[test]
+    fn soft_delete_on_new_row_hard_deletes() {
+        let conn = setup_test_staging_db();
+
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_new\") VALUES ('uuid-5', 'New', 1)",
+            [],
+        ).unwrap();
+
+        let result = staging_mark_deleted(&conn, "test_entries", "uuid-5").unwrap();
+        assert!(result);
+
+        // Row should be gone entirely
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-5"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "New row should be hard-deleted");
+    }
+
+    #[test]
+    fn undelete_clears_is_deleted() {
+        let conn = setup_test_staging_db();
+
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_deleted\") VALUES ('uuid-6', 'Deleted', 1)",
+            [],
+        ).unwrap();
+
+        let result = staging_unmark_deleted(&conn, "test_entries", "uuid-6").unwrap();
+        assert!(result);
+
+        let is_deleted: i32 = conn
+            .query_row(
+                "SELECT \"_is_deleted\" FROM test_entries WHERE \"UUID\" = ?1",
+                ["uuid-6"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_deleted, 0);
+    }
+
+    #[test]
+    fn batch_write_rolls_back_on_failure() {
+        let conn = setup_test_staging_db();
+
+        let mut good_cols = HashMap::new();
+        good_cols.insert("UUID".to_string(), "batch-1".to_string());
+        good_cols.insert("Name".to_string(), "Good".to_string());
+
+        let ops = vec![
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: good_cols,
+                is_new: true,
+            },
+            // This should fail — nonexistent table
+            StagingOperation::MarkDeleted {
+                table: "nonexistent_table".to_string(),
+                pk: "x".to_string(),
+            },
+        ];
+
+        let result = staging_batch_write(&conn, &ops).unwrap();
+        assert_eq!(result.succeeded, 1);
+        assert_eq!(result.failed, 1);
+        assert!(!result.errors.is_empty());
+
+        // The first op should have been rolled back
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'batch-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "Rolled-back row should not exist");
+    }
+
+    #[test]
+    fn query_changes_returns_correct_types() {
+        let conn = setup_test_staging_db();
+
+        conn.execute_batch(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_new\") VALUES ('new-1', 'New', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_modified\") VALUES ('mod-1', 'Mod', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_deleted\") VALUES ('del-1', 'Del', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('clean-1', 'Clean');"
+        ).unwrap();
+
+        let changes = staging_query_changes(&conn, Some("test_entries")).unwrap();
+        assert_eq!(changes.len(), 3, "Should return 3 changed rows, not the clean one");
+
+        let types: Vec<&str> = changes.iter().map(|c| c.change_type.as_str()).collect();
+        assert!(types.contains(&"new"));
+        assert!(types.contains(&"modified"));
+        assert!(types.contains(&"deleted"));
+    }
+
+    #[test]
+    fn section_list_returns_accurate_counts() {
+        let conn = setup_test_staging_db();
+
+        conn.execute_batch(
+            "INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_new\") VALUES ('a', 'A', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_modified\") VALUES ('b', 'B', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_deleted\") VALUES ('c', 'C', 1);
+             INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('d', 'D');"
+        ).unwrap();
+
+        let sections = staging_list_sections(&conn).unwrap();
+        assert_eq!(sections.len(), 1);
+
+        let s = &sections[0];
+        assert_eq!(s.table_name, "test_entries");
+        assert_eq!(s.total_rows, 4);
+        assert_eq!(s.active_rows, 3); // all except deleted
+        assert_eq!(s.new_rows, 1);
+        assert_eq!(s.modified_rows, 1);
+        assert_eq!(s.deleted_rows, 1);
+    }
+
+    #[test]
+    fn staging_authoring_table_has_correct_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_staging_authoring_table(&conn).unwrap();
+
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(_staging_authoring)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(cols.contains(&"key".to_string()));
+        assert!(cols.contains(&"value".to_string()));
+        assert!(cols.contains(&"_is_new".to_string()));
+        assert!(cols.contains(&"_is_modified".to_string()));
+        assert!(cols.contains(&"_is_deleted".to_string()));
+        assert!(cols.contains(&"_original_hash".to_string()));
+    }
+
+    #[test]
+    fn get_meta_returns_none_for_missing_key() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_staging_authoring_table(&conn).unwrap();
+
+        let result = staging_get_meta(&conn, "nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn set_meta_creates_and_replaces_values() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_staging_authoring_table(&conn).unwrap();
+
+        staging_set_meta(&conn, "author", "TestUser").unwrap();
+        assert_eq!(
+            staging_get_meta(&conn, "author").unwrap(),
+            Some("TestUser".to_string())
+        );
+
+        // Replace
+        staging_set_meta(&conn, "author", "NewUser").unwrap();
+        assert_eq!(
+            staging_get_meta(&conn, "author").unwrap(),
+            Some("NewUser".to_string())
+        );
+    }
+
+    #[test]
+    fn get_row_returns_none_for_missing() {
+        let conn = setup_test_staging_db();
+        let result = staging_get_row(&conn, "test_entries", "nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_row_returns_data_for_existing() {
+        let conn = setup_test_staging_db();
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('row-1', 'Hello')",
+            [],
+        ).unwrap();
+
+        let result = staging_get_row(&conn, "test_entries", "row-1").unwrap();
+        assert!(result.is_some());
+        let map = result.unwrap();
+        assert_eq!(map.get("Name").unwrap(), &serde_json::json!("Hello"));
+    }
+
+    #[test]
+    fn query_section_excludes_deleted_by_default() {
+        let conn = setup_test_staging_db();
+        conn.execute_batch(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('s1', 'Active');
+             INSERT INTO test_entries (\"UUID\", \"Name\", \"_is_deleted\") VALUES ('s2', 'Gone', 1);"
+        ).unwrap();
+
+        let rows = staging_query_section(&conn, "test_entries", false).unwrap();
+        assert_eq!(rows.len(), 1);
+
+        let rows_all = staging_query_section(&conn, "test_entries", true).unwrap();
+        assert_eq!(rows_all.len(), 2);
+    }
+
+    #[test]
+    fn delete_nonexistent_row_returns_false() {
+        let conn = setup_test_staging_db();
+        let result = staging_mark_deleted(&conn, "test_entries", "no-such-uuid").unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn validate_rejects_unknown_table() {
+        let conn = setup_test_staging_db();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "x".to_string());
+
+        let err = staging_upsert_row(&conn, "bogus_table", &cols, true);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().contains("not found in staging schema"));
     }
 }
