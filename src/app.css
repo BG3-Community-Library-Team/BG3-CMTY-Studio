@@ -156,6 +156,11 @@ html {
   --th-badge-cfg: #eab308;
   --th-badge-cf: #0ea5e9;
   --th-badge-fallback: #6b7280;
+  /* Card tokens (derived from surface values) */
+  --th-card-bg: var(--th-bg-800);
+  --th-card-border: var(--th-border-700);
+  --th-card-header-bg: var(--th-bg-850);
+  --th-card-shadow: 0 1px 3px rgba(0,0,0,.1);
 }
 
 /* P-01: Light, Solarized Dark/Light, High Contrast, Aubergine, Balance,

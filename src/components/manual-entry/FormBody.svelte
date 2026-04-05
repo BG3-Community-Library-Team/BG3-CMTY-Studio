@@ -3,9 +3,9 @@
   import type { SectionCapabilities } from "../../lib/data/sectionCaps.js";
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { StringItem, ChildItem } from "../../lib/utils/fieldCodec.js";
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import X from "@lucide/svelte/icons/x";
   import LayoutCell from "./LayoutCell.svelte";
+  import FormSectionCard from "./FormSectionCard.svelte";
   import StringFieldset from "./StringFieldset.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
 
@@ -52,6 +52,7 @@
 
 <!-- Ungrouped rows -->
 {#if layout.rows}
+  <FormSectionCard title="Fields">
   {#if layout.sideColumnBooleans?.length}
     <!-- Side-column layout: rows on left, stacked booleans on right -->
     <div class="flex gap-4 items-start">
@@ -97,21 +98,18 @@
     {/if}
   {/each}
   {/if}
+  </FormSectionCard>
 {/if}
 
 <!-- Named subsections -->
 {#if layout.subsections}
   {#each layout.subsections as sub}
     {#if !sub.component}
-    <details class="form-subsection" open>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {sub.title}
+    <FormSectionCard title={sub.title} open={!sub.collapsed}>
+      {#snippet headerActions()}
         {#if sub.headerBooleans}
           {#each sub.headerBooleans as bKey}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span class="ml-auto flex items-center gap-1.5" onclick={(e) => e.stopPropagation()}>
+            <span class="flex items-center gap-1.5">
               <button
                 type="button"
                 class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(bKey) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
@@ -126,7 +124,7 @@
             </span>
           {/each}
         {/if}
-      </summary>
+      {/snippet}
       <div class="space-y-2">
         {#each sub.rows as row}
           {#if row.wrap}
@@ -210,16 +208,9 @@
           </div>
         {/each}
       {/if}
-    </details>
+    </FormSectionCard>
     {/if}
   {/each}
 {/if}
 
-<style>
-  .form-subsection {
-    padding: 0.5rem 0.625rem 0.625rem;
-    border: 1px solid var(--th-border-700, #3f3f46);
-    border-radius: 0.375rem;
-    margin-top: 0.25rem;
-  }
-</style>
+

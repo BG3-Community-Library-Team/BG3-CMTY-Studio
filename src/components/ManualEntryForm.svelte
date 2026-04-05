@@ -13,7 +13,6 @@
   import { isLazyCategory, loadCategory } from "../lib/services/scanService.js";
   import type { VanillaCategory } from "../lib/data/vanillaRegistry.js";
 
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import {
     buildSectionOptions as buildSectionOptionsBase,
     getFieldComboboxOptions as _getFieldComboboxOptions,
@@ -31,6 +30,8 @@
   import FormIdentity from "./manual-entry/FormIdentity.svelte";
   import FormBody from "./manual-entry/FormBody.svelte";
   import FormChildrenGroups from "./manual-entry/FormChildrenGroups.svelte";
+  import FormSectionCard from "./manual-entry/FormSectionCard.svelte";
+  import FormIdentityCard from "./manual-entry/FormIdentityCard.svelte";
   import RaceProgressionPanel from "./manual-entry/RaceProgressionPanel.svelte";
   import RaceTagPanel from "./manual-entry/RaceTagPanel.svelte";
   import RacePresetPanel from "./manual-entry/RacePresetPanel.svelte";
@@ -733,6 +734,7 @@
     {onclose}
   />
 
+  <FormIdentityCard>
   <FormIdentity
     {caps}
     bind:uuids
@@ -760,6 +762,7 @@
     {fieldComboboxOptions}
     {resolveLocaText}
   />
+  </FormIdentityCard>
 
   {#if layout}
     <FormBody
@@ -782,27 +785,21 @@
 
   <!-- Race Progressions inline panel -->
   {#if _section === 'Races'}
-    <details class="form-subsection" open={false}>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_race_progressions()}
+    <FormSectionCard title={m.manual_form_race_progressions()} open={false}>
+      {#snippet headerActions()}
         {#if getFieldValue('ProgressionTableUUID')}
-          <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{getFieldValue('ProgressionTableUUID')}</span>
+          <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal">{getFieldValue('ProgressionTableUUID')}</span>
         {/if}
-      </summary>
+      {/snippet}
       <RaceProgressionPanel
         bind:this={raceProgressionPanel}
         raceUuid={uuids[0] ?? ''}
         progressionTableUuid={getFieldValue('ProgressionTableUUID')}
         passiveOptions={availablePassiveNames}
       />
-    </details>
+    </FormSectionCard>
 
-    <details class="form-subsection" open>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_race_tags()}
-      </summary>
+    <FormSectionCard title={m.manual_form_race_tags()}>
       <RaceTagPanel
         bind:this={raceTagPanel}
         raceName={getFieldValue('Name')}
@@ -813,23 +810,19 @@
         {getChildValueOptions}
         isNewEntry={!(editIndex >= 0 || !!autoEntryId)}
       />
-    </details>
+    </FormSectionCard>
 
-    <details class="form-subsection" open={false}>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_cc_presets()}
-      </summary>
+    <FormSectionCard title={m.manual_form_cc_presets()} open={false}>
       <RacePresetPanel
         raceUuid={uuids[0] ?? ''}
         raceName={getFieldValue('Name')}
       />
-    </details>
+    </FormSectionCard>
   {/if}
 
   <!-- Legacy fieldsets (only render fields/booleans NOT handled by layout) -->
   {#if caps.hasBooleans && unhandledBooleans.length > 0}
-    <div class="border-t border-zinc-700 pt-2">
+    <FormSectionCard title="Booleans">
       <BooleanFieldset
         bind:booleans
         {caps}
@@ -837,10 +830,10 @@
         onaddBoolean={addBoolean}
         onremoveBoolean={removeBoolean}
       />
-    </div>
+    </FormSectionCard>
   {/if}
   {#if caps.hasFields && unhandledFields.length > 0}
-    <div class="border-t border-zinc-700 pt-2">
+    <FormSectionCard title="Fields">
       <FieldsFieldset
         bind:fields
         {caps}
@@ -853,15 +846,17 @@
         onaddField={addField}
         onremoveField={removeField}
       />
-    </div>
+    </FormSectionCard>
   {/if}
 
   {#if caps.hasSelectors}
-    <FormSelectors bind:selectors {warnKeys} />
+    <FormSectionCard title="Selectors">
+      <FormSelectors bind:selectors {warnKeys} />
+    </FormSectionCard>
   {/if}
 
   {#if caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))}
-    <div class="border-t border-zinc-700 pt-2">
+    <FormSectionCard title="Strings">
       <StringFieldset
         bind:strings
         {caps}
@@ -873,7 +868,7 @@
         onremoveString={removeString}
         filterKeys={unhandledStringKeys}
       />
-    </div>
+    </FormSectionCard>
   {/if}
 
   <FormChildrenGroups
@@ -888,7 +883,7 @@
   />
 
   {#if caps.hasTags}
-    <div class="border-t border-zinc-700 pt-2">
+    <FormSectionCard title="Tags">
       <TagFieldset
         bind:tags
         {allowedTagTypes}
@@ -899,16 +894,15 @@
         onaddTag={addTag}
         onremoveTag={removeTag}
       />
-    </div>
+    </FormSectionCard>
   {/if}
 
   <!-- Subclass Removal — progressive disclosure -->
   {#if caps.hasSubclasses}
-    <details class="border-t border-zinc-700 pt-2" bind:open={openSubclasses}>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_subclass_removal()} ({subclasses.length}) <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
-      </summary>
+    <FormSectionCard title="{m.manual_form_subclass_removal()} ({subclasses.length})" bind:open={openSubclasses}>
+      {#snippet headerActions()}
+        <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
+      {/snippet}
       <SubclassFieldset
         bind:subclasses
         {availableSubclassOptions}
@@ -916,32 +910,32 @@
         onaddSubclass={addSubclass}
         onremoveSubclass={removeSubclass}
       />
-    </details>
+    </FormSectionCard>
   {/if}
 
   <!-- Spell fields — progressive disclosure -->
   {#if caps.isSpell}
-    <details class="border-t border-zinc-700 pt-2" bind:open={openSpellFields}>
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_stat_fields()} ({spellFields.length}) <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
-      </summary>
+    <FormSectionCard title="{m.manual_form_stat_fields()} ({spellFields.length})" bind:open={openSpellFields}>
+      {#snippet headerActions()}
+        <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
+      {/snippet}
       <SpellFieldset
         bind:spellFields
         {availableSpellFieldKeys}
         onaddSpellField={addSpellField}
         onremoveSpellField={removeSpellField}
       />
-    </details>
+    </FormSectionCard>
   {/if}
 
   <!-- Raw LSX data -->
   {#if rawAttributes && Object.keys(rawAttributes).length > 0}
-    <details class="border-t border-zinc-700 pt-2">
-      <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none flex items-center gap-1.5">
-        <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-        {m.manual_form_raw_lsx_data()} ({Object.keys(rawAttributes).length} {m.manual_form_attributes()}){#if sourceFile}<span class="text-[10px] font-normal text-[var(--th-text-600)] ml-1 truncate" title={sourceFile}>— {sourceFile.split(/[\\/]/).pop()}</span>{/if}
-      </summary>
+    <FormSectionCard title="{m.manual_form_raw_lsx_data()} ({Object.keys(rawAttributes).length} {m.manual_form_attributes()})" open={false}>
+      {#snippet headerActions()}
+        {#if sourceFile}
+          <span class="text-[10px] font-normal text-[var(--th-text-600)] truncate" title={sourceFile}>— {sourceFile.split(/[\\/]/).pop()}</span>
+        {/if}
+      {/snippet}
       <div class="mt-1 lsx-codeblock">
         <div class="lsx-codeblock-header">
           <span>{m.manual_form_lsx()}</span>
@@ -951,7 +945,7 @@
 </code>{/each}{#if rawChildren}{#each Object.entries(rawChildren) as [group, guids]}{#if guids.length > 0}<code><span class="lsx-child-key">{group}</span><span class="lsx-punct">:</span> <span class="lsx-child-val">{guids.join(', ')}</span>
 </code>{/if}{/each}{/if}</pre>
       </div>
-    </details>
+    </FormSectionCard>
   {/if}
 
 
@@ -1006,21 +1000,7 @@
 
 
 
-  /* Collapsible subsection chevron rotation */
-  .layout-subsection-summary :global(.layout-chevron) {
-    transform: rotate(0deg);
-  }
-  details[open] > .layout-subsection-summary :global(.layout-chevron) {
-    transform: rotate(90deg);
-  }
 
-  /* Inline subsection panels (Race Progressions, Tag Generation) */
-  .form-subsection {
-    padding: 0.5rem 0.625rem 0.625rem;
-    border: 1px solid var(--th-border-700, #3f3f46);
-    border-radius: 0.375rem;
-    margin-top: 0.25rem;
-  }
 
 
 </style>

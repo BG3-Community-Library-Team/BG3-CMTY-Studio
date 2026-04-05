@@ -42,7 +42,8 @@ export type ThemeTokenKey =
   | "--th-info-border" | "--th-modal-backdrop" | "--th-titlebar-text"
   | "--th-tooltip-text" | "--th-border-structural" | "--th-focus-ring"
   | "--th-sidebar-bg" | "--th-sidebar-bg-deep" | "--th-sidebar-text"
-  | "--th-sidebar-text-muted" | "--th-sidebar-border" | "--th-sidebar-highlight";
+  | "--th-sidebar-text-muted" | "--th-sidebar-border" | "--th-sidebar-highlight"
+  | "--th-card-bg" | "--th-card-border" | "--th-card-header-bg" | "--th-card-shadow";
 
 /** @deprecated Use ThemeTokenKey instead. */
 export type ThemeToken = ThemeTokenKey;
@@ -129,6 +130,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#8d8d96",
     "--th-sidebar-border": "#3f3f46",
     "--th-sidebar-highlight": "#27272a",
+    "--th-card-bg": "#27272a",
+    "--th-card-border": "#3f3f46",
+    "--th-card-header-bg": "#1f1f23",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.1)",
   },
 
   light: {
@@ -208,6 +213,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#52525b",
     "--th-sidebar-border": "#e4e4e7",
     "--th-sidebar-highlight": "#f4f4f5",
+    "--th-card-bg": "#f4f4f5",
+    "--th-card-border": "#d4d4d8",
+    "--th-card-header-bg": "#f9f9fa",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.06)",
   },
 
   "solarized-dark": {
@@ -287,6 +296,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#9aabad",
     "--th-sidebar-border": "#0a4050",
     "--th-sidebar-highlight": "#094352",
+    "--th-card-bg": "#094352",
+    "--th-card-border": "#657b83",
+    "--th-card-header-bg": "#053d47",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.1)",
   },
 
   "solarized-light": {
@@ -366,6 +379,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#51676f",
     "--th-sidebar-border": "#ddd7c4",
     "--th-sidebar-highlight": "#f3ece0",
+    "--th-card-bg": "#f3ece0",
+    "--th-card-border": "#93a1a1",
+    "--th-card-header-bg": "#ede7d5",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.06)",
   },
 
   "high-contrast": {
@@ -445,6 +462,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#c0c0c0",
     "--th-sidebar-border": "#333333",
     "--th-sidebar-highlight": "#1a1a1a",
+    "--th-card-bg": "#1a1a1a",
+    "--th-card-border": "#ffffff",
+    "--th-card-header-bg": "#0d0d0d",
+    "--th-card-shadow": "none",
   },
 
   aubergine: {
@@ -524,6 +545,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#a795b3",
     "--th-sidebar-border": "#4a3960",
     "--th-sidebar-highlight": "#3b2d50",
+    "--th-card-bg": "#3b2d50",
+    "--th-card-border": "#4a3865",
+    "--th-card-header-bg": "#342647",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.1)",
   },
 
   balance: {
@@ -603,6 +628,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#a8afb6",
     "--th-sidebar-border": "#2b3035",
     "--th-sidebar-highlight": "#3d4349",
+    "--th-card-bg": "#f8f9fa",
+    "--th-card-border": "#d0d4d8",
+    "--th-card-header-bg": "#edf0f2",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.06)",
   },
 
   "gruvbox-dark": {
@@ -682,6 +711,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#afa08b",
     "--th-sidebar-border": "#504945",
     "--th-sidebar-highlight": "#3c3836",
+    "--th-card-bg": "#3c3836",
+    "--th-card-border": "#504945",
+    "--th-card-header-bg": "#32302f",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.1)",
   },
 
   "gruvbox-light": {
@@ -761,6 +794,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#6c5f54",
     "--th-sidebar-border": "#d5c4a1",
     "--th-sidebar-highlight": "#ebdbb2",
+    "--th-card-bg": "#ebdbb2",
+    "--th-card-border": "#d5c4a1",
+    "--th-card-header-bg": "#f2e5bc",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.06)",
   },
 
   prototype: {
@@ -840,6 +877,10 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-sidebar-text-muted": "#8686a6",
     "--th-sidebar-border": "#2a2a4a",
     "--th-sidebar-highlight": "#16213e",
+    "--th-card-bg": "#16213e",
+    "--th-card-border": "#2a2a4a",
+    "--th-card-header-bg": "#181d36",
+    "--th-card-shadow": "0 1px 3px rgba(0,0,0,.1)",
   },
 };
 

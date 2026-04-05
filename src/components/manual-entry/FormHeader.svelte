@@ -32,7 +32,7 @@
   } = $props();
 </script>
 
-<div class="flex items-center justify-between">
+<div class="flex items-center justify-between sticky top-0 z-10 bg-[var(--th-bg-900)] py-1">
   <div class="flex items-center gap-3">
     <h4 class="text-sm font-semibold text-[var(--th-text-200)]">
       {isEdit ? m.form_header_edit_entry() : m.form_header_add_entry()}
