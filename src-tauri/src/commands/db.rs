@@ -62,7 +62,7 @@ pub async fn cmd_populate_game_data(
             paks_extracted: summary.paks_extracted,
             files_kept: summary.files_extracted,
             lsf_converted: 0,
-            unpack_path: db_paths.dir.to_string_lossy().to_string(),
+            unpack_path: db_paths.dir.to_string_lossy().into_owned(),
             errors,
             diagnostics,
         })

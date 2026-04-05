@@ -160,9 +160,9 @@ describe("TC-010: Concurrent operation safety", () => {
       resolveA(resultA);
       await pA;
 
-      // A finishes last — it WILL overwrite B (scanAndImport has no generation guard itself)
-      // This test documents the current behavior
-      expect(modStore.scanResult?.sections[0].section).toBe("Races");
+      // A's stale result is discarded by the generation guard (DSM-011 / C6)
+      // B's result remains because it was the most recent scan
+      expect(modStore.scanResult?.sections[0].section).toBe("Progressions");
     });
   });
 

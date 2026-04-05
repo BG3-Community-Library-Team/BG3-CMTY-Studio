@@ -1,5 +1,5 @@
 import type { OutputFormat } from "../types/index.js";
-import { invoke } from "@tauri-apps/api/core";
+import { getSecureSetting, setSecureSetting } from "../utils/tauri.js";
 import { modStore } from "./modStore.svelte.js";
 import { THEME_OPTIONS, DEFAULT_CUSTOM_THEME, type ThemeId, type CustomThemeValues } from "../themes/themeManager.js";
 
@@ -225,10 +225,7 @@ class SettingsStore {
     if (isTauri()) {
       for (const key of this.#dirtyKeys) {
         if (!SECURE_KEY_SET.has(key)) continue;
-        invoke("cmd_set_secure_setting", {
-          key,
-          value: JSON.stringify(this[key as keyof this]),
-        }).catch((e: unknown) =>
+        setSecureSetting(key, JSON.stringify(this[key as keyof this])).catch((e: unknown) =>
           console.warn(`Secure setting '${key}' save failed:`, e)
         );
       }
@@ -268,7 +265,7 @@ class SettingsStore {
           if (val === "") continue;
           if (Array.isArray(val) && val.length === 0) continue;
           if (typeof val === "object" && !Array.isArray(val) && Object.keys(val).length === 0) continue;
-          await invoke("cmd_set_secure_setting", { key, value: JSON.stringify(val) });
+          await setSecureSetting(key, JSON.stringify(val));
           migrated = true;
         }
         if (migrated) {
@@ -282,7 +279,7 @@ class SettingsStore {
     // ── Load secure values from keychain ──
     for (const key of SECURE_KEYS) {
       try {
-        const raw = await invoke<string>("cmd_get_secure_setting", { key });
+        const raw = await getSecureSetting(key);
         if (!raw) continue;
         const val = JSON.parse(raw);
         (this as any)[key] = val;

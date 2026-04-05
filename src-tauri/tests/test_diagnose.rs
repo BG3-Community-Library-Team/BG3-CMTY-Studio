@@ -763,7 +763,7 @@ fn voice_deep_dive() {
         let mut vm_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         for entry in std::fs::read_dir(&voicemeta_dir).unwrap() {
             let entry = entry.unwrap();
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = entry.file_name().to_string_lossy().into_owned();
             if let Some(stem) = name.strip_suffix(".lsx") {
                 // Convert hex-without-dashes to GUID format
                 if stem.len() == 32 {

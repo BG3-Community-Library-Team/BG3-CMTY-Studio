@@ -984,7 +984,7 @@ async fn cmd_get_selector_ids(
             for p in extras {
                 let mod_base = PathBuf::from(&p);
                 let mod_name = mod_base.file_name()
-                    .map(|n| n.to_string_lossy().to_string())
+                    .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "Mod".to_string());
                 // Try consolidated first
                 if !try_consolidated(&mod_base, &mod_name, &mut id_sources) {
@@ -1095,7 +1095,7 @@ async fn cmd_process_mod_folder(
 
         Ok(ModProcessResult {
             lsf_converted: files_processed,
-            unpack_path: db_paths.dir.to_string_lossy().to_string(),
+            unpack_path: db_paths.dir.to_string_lossy().into_owned(),
             errors,
             mod_meta,
             has_public_folder,
@@ -1159,7 +1159,7 @@ async fn cmd_list_load_order_paks() -> Result<Vec<String>, AppError> {
                     .extension()
                     .map_or(false, |ext| ext.eq_ignore_ascii_case("pak"))
             })
-            .map(|e| e.path().to_string_lossy().to_string())
+            .map(|e| e.path().to_string_lossy().into_owned())
             .collect();
         paks.sort();
         Ok(paks)
@@ -1330,7 +1330,7 @@ async fn cmd_detect_game_data_path() -> Result<Option<String>, AppError> {
             if let Ok(loc) = key.get_value::<String, _>("InstallLocation") {
                 let data = std::path::Path::new(&loc).join("Data");
                 if data.is_dir() {
-                    return Ok(Some(data.to_string_lossy().to_string()));
+                    return Ok(Some(data.to_string_lossy().into_owned()));
                 }
             }
         }
@@ -1340,7 +1340,7 @@ async fn cmd_detect_game_data_path() -> Result<Option<String>, AppError> {
             if let Ok(path_val) = key.get_value::<String, _>("path") {
                 let data = std::path::Path::new(&path_val).join("Data");
                 if data.is_dir() {
-                    return Ok(Some(data.to_string_lossy().to_string()));
+                    return Ok(Some(data.to_string_lossy().into_owned()));
                 }
             }
         }
@@ -1799,9 +1799,9 @@ r#"<?xml version="1.0" encoding="utf-8"?>
         }
 
         Ok(CreateModResult {
-            mod_root: root.to_string_lossy().to_string(),
-            meta_path: meta_path.to_string_lossy().to_string(),
-            public_path: public_dir.to_string_lossy().to_string(),
+            mod_root: root.to_string_lossy().into_owned(),
+            meta_path: meta_path.to_string_lossy().into_owned(),
+            public_path: public_dir.to_string_lossy().into_owned(),
             has_script_extender: use_script_extender,
         })
     })

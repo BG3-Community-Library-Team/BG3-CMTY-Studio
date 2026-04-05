@@ -53,6 +53,7 @@ export async function rehydrateStaging(modPath: string, modName: string): Promis
  */
 const categoryGeneration = new Map<string, number>();
 let vanillaLoadGeneration = 0;
+let scanGeneration = 0;
 
 function guardedWrite(category: string, gen: number, setter: () => void): void {
   if (gen >= (categoryGeneration.get(category) ?? 0)) {
@@ -194,12 +195,14 @@ export async function loadVanillaData(): Promise<void> {
  * alongside the primary mod path.
  */
 export async function scanAndImport(modPath: string, extraScanPaths?: string[]): Promise<void> {
+  const gen = ++scanGeneration;
   modStore.isScanning = true;
   modStore.error = "";
   modStore.selectedModPath = modPath;
 
   try {
     const result = await scanMod(modPath, extraScanPaths, true);
+    if (gen !== scanGeneration) return; // A newer scan was started; discard stale result
     modStore.scanResult = result;
     configStore.initFromScan();
 

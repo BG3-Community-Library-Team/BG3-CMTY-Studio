@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
-// â”€â”€ Mock tauri utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Mock tauri utilities ─────────────────────────────────────────────
 // We mock the entire tauri module so scanService doesn't try real IPC calls.
 
 const mockScanMod = vi.fn();
@@ -72,7 +72,7 @@ const { modStore } = await import("../lib/stores/modStore.svelte.js");
 const { scanAndImport, loadVanillaData, loadCategory, isLazyCategory, rehydrateStaging } = await import("../lib/services/scanService.js");
 const { toastStore } = await import("../lib/stores/toastStore.svelte.js");
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ──────────────────────────────────────────────────────────
 
 /** Build a minimal ScanResult fixture. */
 function makeScanResult(opts: {
@@ -108,7 +108,7 @@ function makeScanResult(opts: {
   };
 }
 
-// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tests ────────────────────────────────────────────────────────────
 
 describe("TC-005: scanAndImport", () => {
   beforeEach(() => {
@@ -156,7 +156,7 @@ describe("TC-005: scanAndImport", () => {
     expect(modStore.error).toBe("Folder not found");
   });
 
-  // â”€â”€ disableCommentedEntries two-pass logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── disableCommentedEntries two-pass logic ─────────────────────
 
   it("disables commented entries that have no active counterpart", async () => {
     const result = makeScanResult({
@@ -215,7 +215,7 @@ describe("TC-005: scanAndImport", () => {
     expect(configStore.disabled["Races::race-active"]).toBeUndefined();
   });
 
-  // â”€â”€ Config import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Config import ─────────────────────────────────────────────
 
   it("imports existing config when path is present in scan result", async () => {
     const result = makeScanResult({
@@ -256,7 +256,7 @@ describe("TC-005: scanAndImport", () => {
     expect(mockReadExistingConfig).not.toHaveBeenCalled();
   });
 
-  // â”€â”€ Entry deduplication (disabled map uses Section::UUID key) â”€â”€
+  // ── Entry deduplication (disabled map uses Section::UUID key) ──
 
   it("uses Section::UUID composite key for disabled tracking", async () => {
     const result = makeScanResult({
@@ -282,7 +282,7 @@ describe("TC-005: scanAndImport", () => {
     expect(configStore.disabled["Progressions::same-uuid"]).toBe(true);
   });
 
-  // â”€â”€ Extra scan paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Extra scan paths ──────────────────────────────────────────
 
   it("passes extraScanPaths to scanMod IPC call", async () => {
     const result = makeScanResult();
@@ -292,7 +292,7 @@ describe("TC-005: scanAndImport", () => {
   });
 });
 
-// â”€â”€ loadVanillaData â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── loadVanillaData ─────────────────────────────────────────────────
 
 describe("TC-005: loadVanillaData", () => {
   beforeEach(() => {
@@ -342,7 +342,7 @@ describe("TC-005: loadVanillaData", () => {
   });
 });
 
-// â”€â”€ guardedWrite / generation counter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── guardedWrite / generation counter ───────────────────────────────
 
 describe("TC-005: Generation counter (concurrent scan safety)", () => {
   beforeEach(() => {
@@ -391,7 +391,7 @@ describe("TC-005: Generation counter (concurrent scan safety)", () => {
   });
 });
 
-// â”€â”€ isLazyCategory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── isLazyCategory ──────────────────────────────────────────────────
 
 describe("TC-005: isLazyCategory", () => {
   it("returns boolean for any string input", () => {

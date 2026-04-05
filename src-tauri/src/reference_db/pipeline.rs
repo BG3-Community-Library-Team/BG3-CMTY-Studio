@@ -795,7 +795,7 @@ fn list_pak_files(dir: &Path) -> Result<Vec<String>, String> {
     let mut paks: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |ext| ext == "pak"))
-        .map(|e| e.file_name().to_string_lossy().to_string())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     paks.sort();
     Ok(paks)

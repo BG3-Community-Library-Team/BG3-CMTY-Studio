@@ -23,6 +23,9 @@ export default defineConfig({
     },
   },
   resolve: {
+    // "browser" condition ensures Svelte resolves to client-side code (not SSR)
+    // when jsdom environment is used for component tests
+    conditions: ["browser"],
     alias: {
       // Stub Tauri APIs so tests can import modules that reference them
       "@tauri-apps/api/core": new URL("./src/__mocks__/tauri-api.ts", import.meta.url).pathname.slice(1),

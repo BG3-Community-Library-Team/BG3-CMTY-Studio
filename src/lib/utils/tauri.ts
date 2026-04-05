@@ -9,6 +9,12 @@ import type {
 } from "../types/index.js";
 import type { ManualEntry } from "../stores/configStore.svelte.js";
 
+/**
+ * IPC Parameter Conventions:
+ * - Empty string `""` = "all" for String filter params (e.g. `entryType: ""` returns all types)
+ * - `undefined` / `null` = omit optional params (maps to Rust `Option::None`)
+ */
+
 /** T2-2 / IPC-06: Paginated response envelope from Rust commands. */
 export interface PaginatedResponse<T> {
   items: T[];
@@ -22,12 +28,29 @@ function unwrap<T>(resp: PaginatedResponse<T>): T[] {
   return resp.items;
 }
 
+/** IPC-ERR-16: Invoke with a timeout to prevent indefinite hangs. */
+export async function invokeWithTimeout<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+  timeoutMs: number = 60_000,
+): Promise<T> {
+  return Promise.race([
+    invoke<T>(cmd, args),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`IPC call '${cmd}' timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      ),
+    ),
+  ]);
+}
+
 export async function scanMod(
   modPath: string,
   extraScanPaths?: string[],
   isPrimary?: boolean
 ): Promise<ScanResult> {
-  return invoke("cmd_scan_mod", { modPath, extraScanPaths: extraScanPaths ?? null, isPrimary: isPrimary ?? null });
+  return invokeWithTimeout("cmd_scan_mod", { modPath, extraScanPaths: extraScanPaths ?? null, isPrimary: isPrimary ?? null }, 120_000);
 }
 
 // ---- Dynamic section discovery (DB-driven) ----
@@ -171,7 +194,10 @@ export interface ModLocaResult {
   warnings: string[];
 }
 
-/** Get localization data (handle UUID → display text) from unpacked vanilla Localization XML. */
+/** Get localization data (handle UUID → display text) from unpacked vanilla Localization XML.
+ *  Does NOT use the shared `unwrap()` helper because the Rust response wraps
+ *  `PaginatedResponse` inside a `ParseResultWithWarnings` envelope that also
+ *  carries `.warnings` metadata needed by the caller. */
 export async function getLocalizationMap(
   limit?: number,
   offset?: number,
@@ -224,14 +250,14 @@ export interface ModProcessResult {
 export async function populateVanillaDbs(
   gameDataPath: string,
 ): Promise<PopulateResult> {
-  return invoke("cmd_populate_game_data", { gameDataPath });
+  return invokeWithTimeout("cmd_populate_game_data", { gameDataPath }, 300_000);
 }
 
 export async function processModFolder(
   modPath: string,
   modName: string
 ): Promise<ModProcessResult> {
-  return invoke("cmd_process_mod_folder", { modPath, modName });
+  return invokeWithTimeout("cmd_process_mod_folder", { modPath, modName }, 120_000);
 }
 
 export async function dirSize(dirPath: string): Promise<number> {
@@ -579,7 +605,7 @@ export async function populateStagingFromMod(
   stagingDbPath: string,
   vacuum: boolean = false,
 ): Promise<BuildSummary> {
-  return invoke("cmd_populate_staging_from_mod", { modPath, modName, stagingDbPath, vacuum });
+  return invokeWithTimeout("cmd_populate_staging_from_mod", { modPath, modName, stagingDbPath, vacuum }, 300_000);
 }
 
 /** Run PRAGMA integrity_check on the staging database. Returns null if ok, or details string if issues. */
@@ -596,7 +622,7 @@ export async function populateModsDb(
   dbPath: string,
   vacuum: boolean = false,
 ): Promise<BuildSummary> {
-  return invoke("cmd_populate_mods_db", { modPath, modName, dbPath, vacuum });
+  return invokeWithTimeout("cmd_populate_mods_db", { modPath, modName, dbPath, vacuum }, 300_000);
 }
 
 /** Remove a single mod's data from ref_mods.sqlite by name. Returns rows deleted. */
@@ -670,7 +696,7 @@ export async function populateGameData(
   vacuum: boolean = true,
   cleanup: boolean = true,
 ): Promise<PipelineSummary> {
-  return invoke("cmd_unpack_and_populate", {
+  return invokeWithTimeout("cmd_unpack_and_populate", {
     divinePath,
     gameDataPath,
     workDir,
@@ -679,5 +705,90 @@ export async function populateGameData(
     populateHonor,
     vacuum,
     cleanup,
-  });
+  }, 300_000);
+}
+
+// ─── Reference DB Build / Populate ─────────────────────────────────
+
+/** Build reference DB from unpacked vanilla data directory. */
+export async function buildReferenceDb(
+  unpackedPath: string,
+  dbPath: string,
+): Promise<BuildSummary> {
+  return invokeWithTimeout("cmd_build_reference_db", { unpackedPath, dbPath }, 1_200_000);
+}
+
+/** Populate reference DB (base) from unpacked data. */
+export async function populateReferenceDb(
+  unpackedPath: string,
+  dbPath: string,
+  vacuum: boolean = false,
+): Promise<BuildSummary> {
+  return invokeWithTimeout("cmd_populate_reference_db", { unpackedPath, dbPath, vacuum }, 1_200_000);
+}
+
+/** Populate honor variant reference DB. Optional baseDbPath for fallback lookups. */
+export async function populateHonorDb(
+  unpackedPath: string,
+  dbPath: string,
+  vacuum: boolean = false,
+  baseDbPath?: string,
+): Promise<BuildSummary> {
+  return invokeWithTimeout("cmd_populate_honor_db", { unpackedPath, dbPath, vacuum, baseDbPath: baseDbPath ?? null }, 600_000);
+}
+
+// ─── Staging DB ────────────────────────────────────────────────────
+
+export interface StagingSummary {
+  db_path: string;
+  total_tables: number;
+  junction_tables: number;
+  elapsed_secs: number;
+  db_size_mb: number;
+}
+
+/** Create staging DB from a schema (ref_base) DB. */
+export async function createStagingDb(
+  schemaDbPath: string,
+  stagingDbPath: string,
+): Promise<StagingSummary> {
+  return invokeWithTimeout("cmd_create_staging_db", { schemaDbPath, stagingDbPath }, 60_000);
+}
+
+// ─── Cross-DB FK Validation ────────────────────────────────────────
+
+export interface FkViolation {
+  table: string;
+  rowid: number;
+  from_column: string;
+  value: string;
+  target_table: string;
+  target_column: string;
+}
+
+export interface CrossDbFkReport {
+  unresolved: FkViolation[];
+  cross_resolved: number;
+  total_checked: number;
+  attached_schemas: string[];
+}
+
+/** Validate foreign keys across attached databases. */
+export async function validateCrossDbFks(
+  dbPath: string,
+  attachPaths: [string, string][],
+): Promise<CrossDbFkReport> {
+  return invokeWithTimeout("cmd_validate_cross_db_fks", { dbPath, attachPaths }, 300_000);
+}
+
+// ─── Secure Storage ────────────────────────────────────────────────
+
+/** Get a value from OS-level secure storage. Returns empty string if not found. */
+export async function getSecureSetting(key: string): Promise<string> {
+  return invoke("cmd_get_secure_setting", { key });
+}
+
+/** Write a value to OS-level secure storage. Pass empty string to delete the entry. */
+export async function setSecureSetting(key: string, value: string): Promise<void> {
+  return invoke("cmd_set_secure_setting", { key, value });
 }

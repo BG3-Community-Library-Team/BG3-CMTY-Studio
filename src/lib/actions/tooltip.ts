@@ -11,6 +11,11 @@ let activeNode: HTMLElement | null = null;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// Lazy attach/detach: track how many tooltip action instances are alive.
+// Global listeners are only active when at least one tooltip exists.
+let activeInstances = 0;
+let listenersAttached = false;
+
 function removeActive() {
   if (activeTooltip) {
     activeTooltip.remove();
@@ -19,10 +24,12 @@ function removeActive() {
   activeNode = null;
 }
 
+// --- Named global handlers (must be named for removeEventListener) ---
+
 // Global mousemove on document to track cursor in viewport coords and detect
 // when the cursor leaves an element (covers edge cases where mouseleave
 // doesn't fire due to DOM re-renders or zoom mismatches).
-document.addEventListener("mousemove", (e: MouseEvent) => {
+function onGlobalMouseMove(e: MouseEvent) {
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
   if (activeNode && activeTooltip) {
@@ -41,25 +48,43 @@ document.addEventListener("mousemove", (e: MouseEvent) => {
       }
     });
   }
-}, true);
+}
 
 // Dismiss tooltip when mouse leaves the document entirely (e.g. moving
 // to the title bar or outside the window in a Tauri app).
-document.documentElement.addEventListener("mouseleave", () => {
+function onDocMouseLeave() {
   if (activeNode) removeActive();
-});
+}
 
 // Dismiss tooltip when any ancestor scrolls (the element may move out
 // from under the cursor without a mousemove event).
-document.addEventListener("scroll", () => {
+function onGlobalScroll() {
   if (activeNode) removeActive();
-}, true);
+}
 
 // Dismiss tooltip when focus moves elsewhere (e.g., tab key navigation
 // or clicking into another element that doesn't trigger mouseleave).
-document.addEventListener("focusin", () => {
+function onGlobalFocusIn() {
   if (activeNode) removeActive();
-}, true);
+}
+
+function attachGlobalListeners() {
+  if (listenersAttached) return;
+  document.addEventListener("mousemove", onGlobalMouseMove, true);
+  document.documentElement.addEventListener("mouseleave", onDocMouseLeave);
+  document.addEventListener("scroll", onGlobalScroll, true);
+  document.addEventListener("focusin", onGlobalFocusIn, true);
+  listenersAttached = true;
+}
+
+function detachGlobalListeners() {
+  if (!listenersAttached) return;
+  document.removeEventListener("mousemove", onGlobalMouseMove, true);
+  document.documentElement.removeEventListener("mouseleave", onDocMouseLeave);
+  document.removeEventListener("scroll", onGlobalScroll, true);
+  document.removeEventListener("focusin", onGlobalFocusIn, true);
+  listenersAttached = false;
+}
 
 function positionTooltip(x: number, y: number) {
   if (!activeTooltip) return;
@@ -101,6 +126,11 @@ function show(text: string, x: number, y: number) {
 
 export function tooltip(node: HTMLElement, text: string | undefined) {
   if (!text) return;
+
+  activeInstances++;
+  if (activeInstances === 1) attachGlobalListeners();
+
+  let destroyed = false;
 
   // Remove native title if set
   if (node.title) node.title = "";
@@ -144,6 +174,8 @@ export function tooltip(node: HTMLElement, text: string | undefined) {
       }
     },
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       node.removeEventListener("mouseenter", onEnter);
       node.removeEventListener("mousemove", onMove);
       node.removeEventListener("mouseleave", onLeave);
@@ -151,6 +183,8 @@ export function tooltip(node: HTMLElement, text: string | undefined) {
       node.removeEventListener("focus", onFocus);
       node.removeEventListener("blur", onLeave);
       if (activeNode === node) removeActive();
+      activeInstances--;
+      if (activeInstances === 0) detachGlobalListeners();
     },
   };
 }
@@ -162,6 +196,10 @@ export function tooltip(node: HTMLElement, text: string | undefined) {
 export function delayedTooltip(node: HTMLElement, params: { text: string | undefined; delay?: number } | undefined) {
   if (!params?.text) return;
 
+  activeInstances++;
+  if (activeInstances === 1) attachGlobalListeners();
+
+  let destroyed = false;
   let text = params.text;
   let delay = params.delay ?? 1000;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -208,12 +246,16 @@ export function delayedTooltip(node: HTMLElement, params: { text: string | undef
       }
     },
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       if (timer) { clearTimeout(timer); timer = null; }
       node.removeEventListener("mouseenter", onEnter);
       node.removeEventListener("mousemove", onMove);
       node.removeEventListener("mouseleave", onLeave);
       node.removeEventListener("click", onClick);
       if (activeNode === node) removeActive();
+      activeInstances--;
+      if (activeInstances === 0) detachGlobalListeners();
     },
   };
 }

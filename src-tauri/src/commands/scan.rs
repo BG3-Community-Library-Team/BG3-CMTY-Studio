@@ -543,12 +543,12 @@ fn find_existing_config(mod_root: &Path, folder: &str) -> Option<String> {
 
     let yaml_path = se_path.join("CompatibilityFrameworkConfig.yaml");
     if yaml_path.exists() {
-        return Some(yaml_path.to_string_lossy().to_string());
+        return Some(yaml_path.to_string_lossy().into_owned());
     }
 
     let json_path = se_path.join("CompatibilityFrameworkConfig.json");
     if json_path.exists() {
-        return Some(json_path.to_string_lossy().to_string());
+        return Some(json_path.to_string_lossy().into_owned());
     }
 
     None
