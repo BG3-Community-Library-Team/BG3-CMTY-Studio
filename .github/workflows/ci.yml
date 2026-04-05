@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Run frontend tests
+        run: bash scripts/ci/test-frontend.sh
+        shell: bash
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Build frontend
+        run: bash scripts/ci/build-frontend.sh
+        shell: bash
+
+  rust-test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri-deps
+      - name: Run Rust tests
+        run: bash scripts/ci/test-rust.sh
+        shell: bash
+
+  rust-clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri-deps
+      - name: Run Clippy
+        run: bash scripts/ci/lint-rust.sh
+        shell: bash
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - name: Run cargo audit
+        run: bash scripts/ci/audit-cargo.sh
+        shell: bash
+
+  security-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Run npm audit
+        run: bash scripts/ci/audit-npm.sh
+        shell: bash
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    if: always()
+    needs: [frontend-test, frontend-build, rust-test, rust-clippy, cargo-deny, security-audit, secret-scan]
+    steps:
+      - name: Check job results
+        run: |
+          if [[ "${{ needs.frontend-test.result }}" != "success" ]] ||
+             [[ "${{ needs.frontend-build.result }}" != "success" ]] ||
+             [[ "${{ needs.rust-test.result }}" != "success" ]] ||
+             [[ "${{ needs.rust-clippy.result }}" != "success" ]] ||
+             [[ "${{ needs.cargo-deny.result }}" != "success" ]] ||
+             [[ "${{ needs.security-audit.result }}" != "success" ]] ||
+             [[ "${{ needs.secret-scan.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed"

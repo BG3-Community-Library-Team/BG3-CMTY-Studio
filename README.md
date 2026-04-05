@@ -1,5 +1,7 @@
 # BG3 CMTY Studio
 
+[![CI](https://github.com/BG3-Community-Library-Team/BG3-CMTY-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/BG3-Community-Library-Team/BG3-CMTY-Studio/actions/workflows/ci.yml)
+
 > Note: This application is built using AI-assisted development practices - this has been a mixture of hand-crafted code and spec-driven agentic workflows. While LLMs are utilized as a tool for building this application, they are not integrated into the application.
 
 A desktop application for creating and editing Baldur's Gate 3 mods. Built with **Tauri 2** (Rust backend) and **Svelte 5** (TypeScript frontend).
@@ -118,6 +120,22 @@ npm run test:db       # Test: populate schema DBs with game data (requires test_
 ```
 
 Test artifacts are written to `test_schema_dbs/` and `test_populated_dbs/`.
+
+## Bundle Analysis
+
+The project includes `rollup-plugin-visualizer` for analyzing the frontend bundle.
+
+```bash
+# Generate an interactive treemap of the bundle
+ANALYZE=true npm run build
+```
+
+This produces a `stats.html` file in the project root. Open it in a browser to see an interactive treemap visualization of all bundled modules and their sizes.
+
+**When to use it:**
+- Before and after adding new frontend dependencies
+- When investigating frontend bundle size increases
+- During periodic dependency audits
 
 ## Important Directories
 

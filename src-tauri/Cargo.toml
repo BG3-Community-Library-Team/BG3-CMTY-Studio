@@ -49,3 +49,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "generate_schema"
 path = "src/bin/generate_schema.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
