@@ -83,7 +83,6 @@ describe("Theme compliance: hardcoded zinc color lint", () => {
     "src/components/EntryDiff.svelte": 6,
     "src/components/EntryRow.svelte": 16,
     "src/components/FormatToggle.svelte": 10,
-    "src/components/ManualEntryForm.svelte": 2,
     "src/components/ManualEntryCard.svelte": 5,
     "src/components/SectionAccordion.svelte": 6,
     "src/components/OutputSidebar.svelte": 1,

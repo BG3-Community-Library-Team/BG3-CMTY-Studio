@@ -4,7 +4,7 @@
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { changesToManualFields } from "../../lib/utils/preview.js";
   import TagBadge from "../TagBadge.svelte";
-  import ManualEntryForm from "../ManualEntryForm.svelte";
+  import UnifiedForm from "../UnifiedForm.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Pencil from "@lucide/svelte/icons/pencil";
   import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
@@ -281,7 +281,7 @@
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="timeline-form-container" style:height={isFormCollapsed ? "0px" : ""} style:overflow={isFormCollapsed ? "hidden" : ""} style:padding={isFormCollapsed ? "0" : ""} onclick={(e) => e.stopPropagation()} oncontextmenu={(e) => e.stopPropagation()}>
-                <ManualEntryForm
+                <UnifiedForm
                   {section}
                   prefill={getPrefillFields(step.entry)}
                   editIndex={-1}

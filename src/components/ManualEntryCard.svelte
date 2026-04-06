@@ -7,7 +7,7 @@
   import { configStore } from "../lib/stores/configStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
-  import ManualEntryForm from "./ManualEntryForm.svelte";
+  import UnifiedForm from "./UnifiedForm.svelte";
   import TagBadge from "./TagBadge.svelte";
   import Eye from "@lucide/svelte/icons/eye";
   import EyeOff from "@lucide/svelte/icons/eye-off";
@@ -136,7 +136,7 @@
       <span class="text-xs text-zinc-500 select-none">{m.manual_entry_card_click_cancel()}</span>
     </button>
     <div class="px-2 py-1">
-      <ManualEntryForm
+      <UnifiedForm
         {section}
         prefill={editFields}
         editIndex={globalIndex}

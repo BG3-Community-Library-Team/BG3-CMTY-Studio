@@ -10,8 +10,7 @@
   import { saveLsx, type LsxPreviewEntry } from "../lib/utils/tauri.js";
   import { diffEntryToLsx, getRegionId } from "../lib/utils/entryToLsx.js";
   import EntryRow from "./EntryRow.svelte";
-  import ManualEntryForm from "./ManualEntryForm.svelte";
-  import SchemaForm from "./SchemaForm.svelte";
+  import UnifiedForm from "./UnifiedForm.svelte";
   import ManualEntryCard from "./ManualEntryCard.svelte";
   import PaginationControls from "./PaginationControls.svelte";
   import HelpTooltip from "./HelpTooltip.svelte";
@@ -104,7 +103,7 @@
     }
   });
 
-  // Whether this section has hardcoded SECTION_CAPS (uses ManualEntryForm) or schema-driven (uses SchemaForm)
+  // Whether this section has hardcoded SECTION_CAPS (uses ManualEntryForm) or schema-driven (uses UnifiedForm)
   let hasCaps = $derived(sectionResult.section in SECTION_CAPS);
 
   // Reset confirmation modal state
@@ -602,7 +601,7 @@
       {#if showManualForm}
         <div class="px-4 py-2">
           {#if hasCaps}
-            <ManualEntryForm
+            <UnifiedForm
               section={sectionResult.section}
               {entryFilter}
               prefill={subraceParentUuid ? { 'Field:ParentGuid': subraceParentUuid } : null}
@@ -640,24 +639,29 @@
               }}
             />
           {:else}
-            <SchemaForm
+            <UnifiedForm
               section={sectionResult.section}
               onclose={() => showManualForm = false}
-              onsave={(attrs, nodeId, attrTypes) => {
-                configStore.addManualEntry(sectionResult.section, attrs);
+              onsave={(result) => {
                 showManualForm = false;
-                toastStore.success(m.section_panel_entry_added_title(), m.section_panel_entry_added_schema_message({ nodeId }));
+                toastStore.success(m.section_panel_entry_added_title(), m.section_panel_entry_added_schema_message({ nodeId: result["_nodeType"] ?? sectionResult.section }));
 
-                // Persist to LSX file on disk
+                // Persist identity fields to LSX file on disk
                 const folder = modStore.scanResult?.mod_meta?.folder;
                 const modPath = modStore.selectedModPath;
                 if (!folder || !modPath) return;
+                const uuid = result.UUID ?? result.EntryName ?? "";
+                if (!uuid) return;
                 const regionId = getRegionId(sectionResult.section as Section);
+                const nodeId = result["_nodeType"] ?? regionId.replace(/s$/, "");
+                const lsxAttrs: Record<string, string> = {};
+                if (result.UUID) lsxAttrs["UUID"] = result.UUID;
+                if (result.Name) lsxAttrs["Name"] = result.Name;
                 const newEntry: LsxPreviewEntry = {
-                  uuid: attrs.UUID ?? attrs.MapKey ?? "",
+                  uuid,
                   node_id: nodeId,
-                  raw_attributes: { ...attrs },
-                  raw_attribute_types: attrTypes,
+                  raw_attributes: lsxAttrs,
+                  raw_attribute_types: {},
                   raw_children: {},
                 };
                 const existingEntries: LsxPreviewEntry[] = (sectionResult.entries ?? []).map(diffEntryToLsx);

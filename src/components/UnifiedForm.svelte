@@ -13,6 +13,9 @@
   import { FORM_LAYOUTS, type FormLayout } from "../lib/data/formLayouts.js";
   import { isLazyCategory, loadCategory } from "../lib/services/scanService.js";
   import type { VanillaCategory } from "../lib/data/vanillaRegistry.js";
+  import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
+  import type { NodeSchema } from "../lib/utils/tauri.js";
+  import { autoLayoutFromSchema, autoLayoutFromCaps } from "../lib/data/autoLayout.js";
 
   import {
     buildSectionOptions as buildSectionOptionsBase,
@@ -46,6 +49,7 @@
     computeChildValueOptions, computeTagValueOptions, computeReallyTagValueOptions,
     computeValidationErrors,
   } from "../lib/utils/formOptions.js";
+  import Search from "@lucide/svelte/icons/search";
 
   let {
     section,
@@ -60,6 +64,7 @@
     entryFilter = undefined,
     sourceFile = undefined,
     initialShowSummary = false,
+    nodeId = null,
   }: {
     section: string;
     onclose: () => void;
@@ -73,11 +78,11 @@
     entryFilter?: { field: string; value: string };
     sourceFile?: string;
     initialShowSummary?: boolean;
+    nodeId?: string | null;
   } = $props();
 
   // ---- Core identity fields ----
 
-  // Decoders/encoders + color helpers imported from fieldCodec.ts (AIP-06/07)
   const _init = untrack(() => buildFormState({
     prefill: snapshot(prefill),
     section,
@@ -291,9 +296,108 @@
     }).catch(e => console.warn("List items lookup failed:", e));
   });
 
-  // ---- Section capability flags ----
+  // ── Metadata priority cascade ──────────────────────────────
   const _section = untrack(() => snapshot(section));
-  const baseCaps = SECTION_CAPS[_section] ?? {};
+  const _hasFormLayout = _section in FORM_LAYOUTS;
+  const _hasSectionCaps = _section in SECTION_CAPS;
+
+  // Schema data (reactive — may load asynchronously)
+  let schemas = $derived(schemaStore.getBySection(_section));
+
+  // svelte-ignore state_referenced_locally — intentional one-time snapshot
+  let selectedSchemaNodeId = $state(snapshot(nodeId) ?? "");
+  $effect(() => {
+    // Auto-select first schema node when schemas load and no node is pre-selected
+    if (!selectedSchemaNodeId && schemas.length > 0) {
+      selectedSchemaNodeId = schemas[0].node_id;
+    }
+  });
+  let activeSchema = $derived(
+    selectedSchemaNodeId ? schemaStore.getByNodeId(selectedSchemaNodeId) : schemas[0]
+  );
+
+  // Tier determination (stable — based on _section which is snapshotted)
+  const tier: 'layout' | 'caps' | 'schema' =
+    _hasFormLayout ? 'layout'
+    : _hasSectionCaps ? 'caps'
+    : 'schema'; // Tier 3/4 resolved at render time based on schemas availability
+
+  const isFallback = $derived(tier === 'schema' && schemas.length === 0);
+
+  // Caps resolution
+  const baseCaps: SectionCapabilities = _hasSectionCaps ? (SECTION_CAPS[_section] ?? {}) : {};
+
+  /** Synthesize SectionCapabilities from a NodeSchema for schema-only sections. */
+  function capsFromSchema(schema: NodeSchema): SectionCapabilities {
+    const booleanKeys = schema.attributes
+      .filter(a => a.attr_type === "bool" && a.name !== "UUID" && a.name !== "MapKey")
+      .map(a => a.name);
+    const fieldKeys = schema.attributes
+      .filter(a => a.attr_type !== "bool" && a.name !== "UUID" && a.name !== "MapKey")
+      .map(a => a.name);
+    const fieldTypes: Record<string, string> = {};
+    for (const attr of schema.attributes) {
+      if (attr.name !== "UUID" && attr.name !== "MapKey") {
+        fieldTypes[attr.name] = attr.attr_type;
+      }
+    }
+    return {
+      hasFields: fieldKeys.length > 0,
+      hasBooleans: booleanKeys.length > 0,
+      hasChildren: schema.children.length > 0,
+      fieldKeys,
+      booleanKeys,
+      fieldTypes,
+      childTypes: schema.children.map(c => c.child_node_id),
+    };
+  }
+
+  // For schema-only sections, synthesize caps from schema
+  let effectiveCaps = $derived.by((): SectionCapabilities => {
+    if (_hasSectionCaps) return baseCaps;
+    if (activeSchema) return capsFromSchema(activeSchema);
+    return {};
+  });
+
+  // Layout resolution via cascade
+  const staticLayout = _hasFormLayout ? (FORM_LAYOUTS[_section] as FormLayout) : undefined;
+  let baseLayout = $derived.by((): FormLayout | undefined => {
+    if (staticLayout) return staticLayout;
+    if (_hasSectionCaps) return autoLayoutFromCaps(SECTION_CAPS[_section]);
+    if (activeSchema) return autoLayoutFromSchema(activeSchema);
+    return undefined;
+  });
+
+  // Large section optimization: collapse all subsections when >50 attrs
+  let resolvedLayout = $derived.by((): FormLayout | undefined => {
+    if (!baseLayout) return undefined;
+    const totalAttrs = (baseLayout.handledFieldKeys?.length ?? 0) + (baseLayout.handledBooleanKeys?.length ?? 0);
+    if (totalAttrs > 50 && baseLayout.subsections) {
+      return {
+        ...baseLayout,
+        subsections: baseLayout.subsections.map(s => ({ ...s, collapsed: true })),
+      };
+    }
+    return baseLayout;
+  });
+
+  // For schema/fallback tiers, initialize fields from effectiveCaps after schema loads
+  $effect(() => {
+    if (tier !== 'layout' && !_hasSectionCaps && effectiveCaps.fieldKeys) {
+      const existingFieldKeys = new Set(fields.map(f => f.key));
+      for (const key of effectiveCaps.fieldKeys ?? []) {
+        if (!existingFieldKeys.has(key)) {
+          fields = [...fields, { key, value: "" }];
+        }
+      }
+      const existingBoolKeys = new Set(booleans.map(b => b.key));
+      for (const key of effectiveCaps.booleanKeys ?? []) {
+        if (!existingBoolKeys.has(key)) {
+          booleans = [...booleans, { key, value: false }];
+        }
+      }
+    }
+  });
 
   // Node type selector state (for sections like CharacterCreationPresets with multiple entry types)
   const _entryFilter = untrack(() => snapshot(entryFilter));
@@ -303,30 +407,29 @@
       : (baseCaps.nodeTypes ? Object.keys(baseCaps.nodeTypes)[0] ?? "" : "")
   );
 
-  /** Merge base caps with per-node-type overrides. */
+  /** Merge base caps with per-node-type overrides, using effectiveCaps for schema-only sections. */
   let caps = $derived.by((): SectionCapabilities => {
-    if (!baseCaps.nodeTypeCaps || !selectedNodeType) return baseCaps;
-    const override = baseCaps.nodeTypeCaps[selectedNodeType];
-    if (!override) return baseCaps;
+    const base = _hasSectionCaps ? baseCaps : effectiveCaps;
+    if (!base.nodeTypeCaps || !selectedNodeType) return base;
+    const override = base.nodeTypeCaps[selectedNodeType];
+    if (!override) return base;
     return {
-      ...baseCaps,
+      ...base,
       ...override,
-      fieldCombobox: { ...baseCaps.fieldCombobox, ...override.fieldCombobox },
-      fieldTypes: { ...baseCaps.fieldTypes, ...override.fieldTypes },
+      fieldCombobox: { ...base.fieldCombobox, ...override.fieldCombobox },
+      fieldTypes: { ...base.fieldTypes, ...override.fieldTypes },
     };
   });
 
-  const baseLayout = FORM_LAYOUTS[_section] as FormLayout | undefined;
-
-  /** Resolve per-node-type layout override, or fall back to base layout. */
+  /** Resolve per-node-type layout override, or fall back to resolved layout. */
   let layout = $derived.by((): FormLayout | undefined => {
-    if (baseLayout?.nodeTypeLayouts && selectedNodeType) {
-      const override = baseLayout.nodeTypeLayouts[selectedNodeType];
+    if (resolvedLayout?.nodeTypeLayouts && selectedNodeType) {
+      const override = resolvedLayout.nodeTypeLayouts[selectedNodeType];
       if (override) {
-        return { ...baseLayout, ...override, nodeTypeLayouts: undefined };
+        return { ...resolvedLayout, ...override, nodeTypeLayouts: undefined };
       }
     }
-    return baseLayout;
+    return resolvedLayout;
   });
 
   let allowedTagTypes = $derived(caps.tagTypes ?? ["Tags", "ReallyTags", "AppearanceTags"]);
@@ -370,6 +473,10 @@
     }
   }
 
+  // ---- Search filter for large sections ----
+  let formFieldFilter = $state("");
+  let totalAttrCount = $derived((layout?.handledFieldKeys?.length ?? 0) + (layout?.handledBooleanKeys?.length ?? 0));
+
   // ---- Combobox helpers (thin wrappers around extracted utilities) ----
 
   /** Convenience wrapper: builds section options using current store state. */
@@ -390,8 +497,6 @@
   }
 
   // -- Per-descriptor-type combobox option derivations (PF-009) --
-  // Each group tracks only its specific reactive data sources, avoiding
-  // full recomputation of ALL field options when any single source changes.
 
   /** section: — vanilla entries + scanned mod + additional mods */
   let _cbSection = $derived.by(() => {
@@ -554,9 +659,7 @@
     return map;
   });
 
-  /** Dispatching accessor — routes to the correct per-type derivation.
-   *  Reads only ONE derived map per call, preserving fine-grained reactivity
-   *  when called from child component render scopes. */
+  /** Dispatching accessor — routes to the correct per-type derivation. */
   function fieldComboboxOptions(fieldKey: string): ComboboxOption[] {
     const descriptor = caps.fieldCombobox?.[fieldKey];
     if (!descriptor) return [];
@@ -825,7 +928,7 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') onclose(); }} />
 
-<div class="bg-zinc-900 border rounded p-3 space-y-3 {hasErrors ? 'border-red-500/60' : hasWarnings ? 'border-amber-500/60' : 'border-zinc-600'}" aria-invalid={hasErrors ? 'true' : undefined}>
+<div class="bg-[var(--th-bg-900)] border rounded p-3 space-y-3 {hasErrors ? 'border-red-500/60' : hasWarnings ? 'border-amber-500/60' : 'border-[var(--th-border-700)]'}" aria-invalid={hasErrors ? 'true' : undefined}>
   <FormHeader
     isEdit={editIndex >= 0 || !!autoEntryId}
     {baseCaps}
@@ -833,7 +936,7 @@
     {entryFilter}
     bind:selectedNodeType
     bind:blacklist
-    {layout}
+    layout={layout}
     {rawAttributes}
     {showSummary}
     {getBoolValue}
@@ -842,218 +945,298 @@
     ontoggleSummary={() => { showSummary = !showSummary; }}
   />
 
-  <div class="form-container" bind:this={formContainerEl}>
-    <FormNav sections={navSections} errorCounts={navErrorCounts} containerEl={formContainerEl} />
-    <div class="form-content">
+  <!-- Schema node type selector for schema-driven sections with multiple node types -->
+  {#if tier === 'schema' && schemas.length > 1}
+    <div class="flex items-center gap-2 px-1">
+      <span class="text-xs text-[var(--th-text-400)]">Node type:</span>
+      <select
+        class="form-input text-xs h-6 py-0"
+        value={selectedSchemaNodeId}
+        onchange={(e) => selectedSchemaNodeId = (e.target as HTMLSelectElement).value}
+      >
+        {#each schemas as s}
+          <option value={s.node_id}>{s.node_id} ({s.sample_count} samples)</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
-  <FormIdentityCard>
-  <FormIdentity
-    {caps}
-    bind:uuids
-    bind:displayName
-    bind:entryComment
-    {generateUuid}
-    {warnKeys}
-    {combinedSpellIdOptions}
-    bind:listItems
-    bind:listInheritList
-    bind:listExcludeList
-    {listItemsLabel}
-    {listItemsOptions}
-    {listItemsPlaceholder}
-    {listItemsCache}
-    {availableListOptions}
-    bind:argDefinitionsList
-    {availableActionResourceOptions}
-    {sectionUuidOptions}
-    {layout}
-    {getFieldValue}
-    {setFieldValue}
-    {getBoolValue}
-    {setBoolValue}
-    {fieldComboboxOptions}
-    {resolveLocaText}
-  />
-  </FormIdentityCard>
+  {#if isFallback}
+    <!-- Tier 4: Minimal UUID + flat attribute grid -->
+    <FormIdentityCard>
+      <FormIdentity
+        caps={{ hasFields: false, hasBooleans: false }}
+        bind:uuids
+        bind:displayName
+        bind:entryComment
+        {generateUuid}
+        warnKeys={new Set()}
+        combinedSpellIdOptions={[]}
+        bind:listItems
+        bind:listInheritList
+        bind:listExcludeList
+        listItemsLabel=""
+        listItemsOptions={[]}
+        listItemsPlaceholder=""
+        listItemsCache={new Map()}
+        availableListOptions={[]}
+        bind:argDefinitionsList
+        availableActionResourceOptions={[]}
+        sectionUuidOptions={[]}
+        layout={undefined}
+        getFieldValue={() => ''}
+        setFieldValue={() => {}}
+        getBoolValue={() => false}
+        setBoolValue={() => {}}
+        fieldComboboxOptions={() => []}
+        resolveLocaText={() => undefined}
+      />
+    </FormIdentityCard>
+    <FormSectionCard title="Attributes" open>
+      <p class="text-xs text-[var(--th-text-500)] mb-2">
+        {m.schema_form_no_vanilla({ section: _section })}
+      </p>
+      <fieldset class="space-y-1.5">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-[var(--th-text-400)] w-36 shrink-0">Name</span>
+          <input type="text" class="form-input w-full" value={displayName} oninput={(e) => displayName = (e.target as HTMLInputElement).value} placeholder="Entry name" />
+        </div>
+      </fieldset>
+    </FormSectionCard>
 
-  {#if layout}
-    <FormBody
-      {layout}
+    <!-- Validation + Submit (fallback) -->
+    <FormFooter
+      {validationErrors}
+      isEdit={editIndex >= 0 || !!autoEntryId}
+      onsubmit={submit}
+      {onclose}
+    />
+  {:else}
+    <!-- Tiers 1-3: Full form rendering -->
+    <div class="form-container" bind:this={formContainerEl}>
+      <FormNav sections={navSections} errorCounts={navErrorCounts} containerEl={formContainerEl} />
+      <div class="form-content">
+
+    <!-- Search filter for large sections (50+ attrs) -->
+    {#if totalAttrCount > 50}
+      <div class="relative mb-1">
+        <Search size={12} class="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--th-text-500)]" />
+        <input
+          type="text"
+          class="form-input w-full pl-7 text-xs h-7"
+          placeholder="Filter fields..."
+          bind:value={formFieldFilter}
+        />
+      </div>
+    {/if}
+
+    <FormIdentityCard>
+    <FormIdentity
       {caps}
-      bind:strings
-      bind:children
+      bind:uuids
+      bind:displayName
+      bind:entryComment
+      {generateUuid}
+      {warnKeys}
+      {combinedSpellIdOptions}
+      bind:listItems
+      bind:listInheritList
+      bind:listExcludeList
+      {listItemsLabel}
+      {listItemsOptions}
+      {listItemsPlaceholder}
+      {listItemsCache}
+      {availableListOptions}
+      bind:argDefinitionsList
+      {availableActionResourceOptions}
+      {sectionUuidOptions}
+      {layout}
       {getFieldValue}
       {setFieldValue}
       {getBoolValue}
       {setBoolValue}
       {fieldComboboxOptions}
       {resolveLocaText}
-      {generateUuid}
-      {availablePassiveNames}
-      {warnKeys}
-      {getChildValueOptions}
     />
-  {/if}
+    </FormIdentityCard>
 
-  <!-- Race Progressions inline panel -->
-  {#if _section === 'Races'}
-    <FormSectionCard title={m.manual_form_race_progressions()} id="section-race-progressions" open={false}>
-      {#snippet headerActions()}
-        {#if getFieldValue('ProgressionTableUUID')}
-          <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal">{getFieldValue('ProgressionTableUUID')}</span>
-        {/if}
-      {/snippet}
-      <RaceProgressionPanel
-        bind:this={raceProgressionPanel}
-        raceUuid={uuids[0] ?? ''}
-        progressionTableUuid={getFieldValue('ProgressionTableUUID')}
-        passiveOptions={availablePassiveNames}
-      />
-    </FormSectionCard>
-
-    <FormSectionCard title={m.manual_form_race_tags()} id="section-race-tags">
-      <RaceTagPanel
-        bind:this={raceTagPanel}
-        raceName={getFieldValue('Name')}
-        raceDisplayName={getFieldValue('DisplayName')}
-        raceDescription={getFieldValue('Description')}
-        raceEntryUuid={uuids[0] ?? ''}
-        bind:children
-        {getChildValueOptions}
-        isNewEntry={!(editIndex >= 0 || !!autoEntryId)}
-      />
-    </FormSectionCard>
-
-    <FormSectionCard title={m.manual_form_cc_presets()} id="section-cc-presets" open={false}>
-      <RacePresetPanel
-        raceUuid={uuids[0] ?? ''}
-        raceName={getFieldValue('Name')}
-      />
-    </FormSectionCard>
-  {/if}
-
-  <!-- Legacy fieldsets (only render fields/booleans NOT handled by layout) -->
-  {#if caps.hasBooleans && unhandledBooleans.length > 0}
-    <FormSectionCard title="Booleans" id="section-booleans">
-      <BooleanFieldset
-        bind:booleans
+    {#if layout}
+      <FormBody
+        {layout}
         {caps}
-        {allBoolKeysUsed}
-        onaddBoolean={addBoolean}
-        onremoveBoolean={removeBoolean}
-      />
-    </FormSectionCard>
-  {/if}
-  {#if caps.hasFields && unhandledFields.length > 0}
-    <FormSectionCard title="Fields" id="section-fields">
-      <FieldsFieldset
-        bind:fields
-        {caps}
-        {warnKeys}
-        {validationErrors}
-        {listItemsCache}
-        {allFieldKeysUsed}
-        getFieldComboboxOptions={fieldComboboxOptions}
-        {resolveLocaText}
-        onaddField={addField}
-        onremoveField={removeField}
-      />
-    </FormSectionCard>
-  {/if}
-
-  {#if caps.hasSelectors}
-    <FormSectionCard title="Selectors" id="section-selectors">
-      <FormSelectors bind:selectors {warnKeys} />
-    </FormSectionCard>
-  {/if}
-
-  {#if caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))}
-    <FormSectionCard title="Strings" id="section-strings">
-      <StringFieldset
         bind:strings
-        {caps}
+        bind:children
+        {getFieldValue}
+        {setFieldValue}
+        {getBoolValue}
+        {setBoolValue}
+        {fieldComboboxOptions}
+        {resolveLocaText}
+        {generateUuid}
         {availablePassiveNames}
         {warnKeys}
-        {allStringTypesUsed}
-        hideRemoveButton={layout?.noRemoveButtons ?? false}
-        onaddString={addString}
-        onremoveString={removeString}
-        filterKeys={unhandledStringKeys}
+        {getChildValueOptions}
       />
-    </FormSectionCard>
+    {/if}
+
+    <!-- Race Progressions inline panel -->
+    {#if _section === 'Races'}
+      <FormSectionCard title={m.manual_form_race_progressions()} id="section-race-progressions" open={false}>
+        {#snippet headerActions()}
+          {#if getFieldValue('ProgressionTableUUID')}
+            <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal">{getFieldValue('ProgressionTableUUID')}</span>
+          {/if}
+        {/snippet}
+        <RaceProgressionPanel
+          bind:this={raceProgressionPanel}
+          raceUuid={uuids[0] ?? ''}
+          progressionTableUuid={getFieldValue('ProgressionTableUUID')}
+          passiveOptions={availablePassiveNames}
+        />
+      </FormSectionCard>
+
+      <FormSectionCard title={m.manual_form_race_tags()} id="section-race-tags">
+        <RaceTagPanel
+          bind:this={raceTagPanel}
+          raceName={getFieldValue('Name')}
+          raceDisplayName={getFieldValue('DisplayName')}
+          raceDescription={getFieldValue('Description')}
+          raceEntryUuid={uuids[0] ?? ''}
+          bind:children
+          {getChildValueOptions}
+          isNewEntry={!(editIndex >= 0 || !!autoEntryId)}
+        />
+      </FormSectionCard>
+
+      <FormSectionCard title={m.manual_form_cc_presets()} id="section-cc-presets" open={false}>
+        <RacePresetPanel
+          raceUuid={uuids[0] ?? ''}
+          raceName={getFieldValue('Name')}
+        />
+      </FormSectionCard>
+    {/if}
+
+    <!-- Legacy fieldsets (only render fields/booleans NOT handled by layout) -->
+    {#if caps.hasBooleans && unhandledBooleans.length > 0}
+      <FormSectionCard title="Booleans" id="section-booleans">
+        <BooleanFieldset
+          bind:booleans
+          {caps}
+          {allBoolKeysUsed}
+          onaddBoolean={addBoolean}
+          onremoveBoolean={removeBoolean}
+        />
+      </FormSectionCard>
+    {/if}
+    {#if caps.hasFields && unhandledFields.length > 0}
+      <FormSectionCard title="Fields" id="section-fields">
+        <FieldsFieldset
+          bind:fields
+          {caps}
+          {warnKeys}
+          {validationErrors}
+          {listItemsCache}
+          {allFieldKeysUsed}
+          getFieldComboboxOptions={fieldComboboxOptions}
+          {resolveLocaText}
+          onaddField={addField}
+          onremoveField={removeField}
+        />
+      </FormSectionCard>
+    {/if}
+
+    {#if caps.hasSelectors}
+      <FormSectionCard title="Selectors" id="section-selectors">
+        <FormSelectors bind:selectors {warnKeys} />
+      </FormSectionCard>
+    {/if}
+
+    {#if caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))}
+      <FormSectionCard title="Strings" id="section-strings">
+        <StringFieldset
+          bind:strings
+          {caps}
+          {availablePassiveNames}
+          {warnKeys}
+          {allStringTypesUsed}
+          hideRemoveButton={layout?.noRemoveButtons ?? false}
+          onaddString={addString}
+          onremoveString={removeString}
+          filterKeys={unhandledStringKeys}
+        />
+      </FormSectionCard>
+    {/if}
+
+    <div id="section-children">
+    <FormChildrenGroups
+      {layout}
+      {caps}
+      bind:children
+      {section}
+      {entryFilter}
+      {rawAttributes}
+      {getChildValueOptions}
+      {warnKeys}
+    />
+    </div>
+
+    {#if caps.hasTags}
+      <FormSectionCard title="Tags" id="section-tags">
+        <TagFieldset
+          bind:tags
+          {allowedTagTypes}
+          {getTagOptionsForType}
+          {warnKeys}
+          {allTagTypesUsed}
+          hideRemoveButton={layout?.noRemoveButtons ?? false}
+          onaddTag={addTag}
+          onremoveTag={removeTag}
+        />
+      </FormSectionCard>
+    {/if}
+
+    <!-- Subclass Removal — progressive disclosure -->
+    {#if caps.hasSubclasses}
+      <FormSectionCard title="{m.manual_form_subclass_removal()} ({subclasses.length})" id="section-subclass-removal" bind:open={openSubclasses}>
+        {#snippet headerActions()}
+          <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
+        {/snippet}
+        <SubclassFieldset
+          bind:subclasses
+          {availableSubclassOptions}
+          {warnKeys}
+          onaddSubclass={addSubclass}
+          onremoveSubclass={removeSubclass}
+        />
+      </FormSectionCard>
+    {/if}
+
+    <!-- Spell fields — progressive disclosure -->
+    {#if caps.isSpell}
+      <FormSectionCard title="{m.manual_form_stat_fields()} ({spellFields.length})" bind:open={openSpellFields}>
+        {#snippet headerActions()}
+          <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
+        {/snippet}
+        <SpellFieldset
+          bind:spellFields
+          {availableSpellFieldKeys}
+          onaddSpellField={addSpellField}
+          onremoveSpellField={removeSpellField}
+        />
+      </FormSectionCard>
+    {/if}
+
+      </div><!-- .form-content -->
+    </div><!-- .form-container -->
+
+    <!-- Validation + Submit -->
+    <FormFooter
+      {validationErrors}
+      isEdit={editIndex >= 0 || !!autoEntryId}
+      onsubmit={submit}
+      {onclose}
+    />
   {/if}
-
-  <div id="section-children">
-  <FormChildrenGroups
-    {layout}
-    {caps}
-    bind:children
-    {section}
-    {entryFilter}
-    {rawAttributes}
-    {getChildValueOptions}
-    {warnKeys}
-  />
-  </div>
-
-  {#if caps.hasTags}
-    <FormSectionCard title="Tags" id="section-tags">
-      <TagFieldset
-        bind:tags
-        {allowedTagTypes}
-        {getTagOptionsForType}
-        {warnKeys}
-        {allTagTypesUsed}
-        hideRemoveButton={layout?.noRemoveButtons ?? false}
-        onaddTag={addTag}
-        onremoveTag={removeTag}
-      />
-    </FormSectionCard>
-  {/if}
-
-  <!-- Subclass Removal — progressive disclosure -->
-  {#if caps.hasSubclasses}
-    <FormSectionCard title="{m.manual_form_subclass_removal()} ({subclasses.length})" id="section-subclass-removal" bind:open={openSubclasses}>
-      {#snippet headerActions()}
-        <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
-      {/snippet}
-      <SubclassFieldset
-        bind:subclasses
-        {availableSubclassOptions}
-        {warnKeys}
-        onaddSubclass={addSubclass}
-        onremoveSubclass={removeSubclass}
-      />
-    </FormSectionCard>
-  {/if}
-
-  <!-- Spell fields — progressive disclosure -->
-  {#if caps.isSpell}
-    <FormSectionCard title="{m.manual_form_stat_fields()} ({spellFields.length})" bind:open={openSpellFields}>
-      {#snippet headerActions()}
-        <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
-      {/snippet}
-      <SpellFieldset
-        bind:spellFields
-        {availableSpellFieldKeys}
-        onaddSpellField={addSpellField}
-        onremoveSpellField={removeSpellField}
-      />
-    </FormSectionCard>
-  {/if}
-
-
-
-    </div><!-- .form-content -->
-  </div><!-- .form-container -->
-
-  <!-- Validation + Submit -->
-  <FormFooter
-    {validationErrors}
-    isEdit={editIndex >= 0 || !!autoEntryId}
-    onsubmit={submit}
-    {onclose}
-  />
 </div>
 
 <style>

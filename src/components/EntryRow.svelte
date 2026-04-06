@@ -7,7 +7,7 @@
   import { SECTION_CAPS } from "../lib/data/sectionCaps.js";
   import { FIELD_PREFIX, simpleKey } from "../lib/data/fieldKeys.js";
   import EntryDiff from "./EntryDiff.svelte";
-  import ManualEntryForm from "./ManualEntryForm.svelte";
+  import UnifiedForm from "./UnifiedForm.svelte";
   import TagBadge from "./TagBadge.svelte";
   import Button from "./Button.svelte";
   import ChevronUp from "@lucide/svelte/icons/chevron-up";
@@ -372,7 +372,7 @@
     {#if !editCollapsed}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="p-2" oncontextmenu={(e) => e.stopPropagation()}>
-        <ManualEntryForm
+        <UnifiedForm
           {section}
           prefill={prefillFields}
           editIndex={-1}
