@@ -1655,7 +1655,7 @@ async fn cmd_export_mod(
 #[tauri::command]
 async fn cmd_region_id_for_section(section: String) -> Result<String, AppError> {
     Ok(Section::parse_name(&section)
-        .map(|s| lsx_writer::section_to_region_id(s).to_string())
+        .map(|s| s.region_id().to_string())
         .ok_or_else(|| format!("Unknown section: {}", section))?)
 }
 
@@ -1672,14 +1672,20 @@ async fn cmd_infer_schemas(app: tauri::AppHandle) -> Result<Vec<schema::infer::N
             if *section == Section::Meta || *section == Section::Spells {
                 continue;
             }
-            match reference_db::queries::query_vanilla_lsx_for_scan(&db_paths.base, section) {
-                Ok(entries) if !entries.is_empty() => {
-                    lsx_sections.insert(*section, entries);
+            // Query each region_id the section covers (umbrella sections have multiple)
+            let mut merged = std::collections::HashMap::new();
+            for region_id in section.region_ids() {
+                match reference_db::queries::query_vanilla_lsx_by_region(&db_paths.base, region_id) {
+                    Ok(entries) => {
+                        merged.extend(entries);
+                    }
+                    Err(e) => {
+                        tracing::warn!(section = ?section, region_id = %region_id, error = %e, "Failed to load vanilla LSX from DB for schema inference");
+                    }
                 }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!(section = ?section, error = %e, "Failed to load vanilla LSX from DB for schema inference");
-                }
+            }
+            if !merged.is_empty() {
+                lsx_sections.insert(*section, merged);
             }
         }
         Ok(schema::infer::infer_schemas(&lsx_sections))

@@ -159,7 +159,7 @@ pub fn infer_schemas(lsx_sections: &HashMap<Section, HashMap<String, LsxEntry>>)
 
             schemas.push(NodeSchema {
                 node_id: node_id.to_string(),
-                section: section.yaml_key().to_string(),
+                section: section.region_id().to_string(),
                 sample_count: total,
                 attributes,
                 children,

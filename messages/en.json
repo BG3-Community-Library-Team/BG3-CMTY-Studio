@@ -570,6 +570,14 @@
   "manual_form_entry_updated_message": "Manual entry updated for {section}",
   "manual_form_create_race_progressions": "Create race progressions",
 
+  "form_section_attributes": "Attributes",
+  "form_section_booleans": "Booleans",
+  "form_section_fields": "Fields",
+  "form_section_selectors": "Selectors",
+  "form_section_strings": "Strings",
+  "form_section_tags": "Tags",
+  "schema_loading": "Loading schema data…",
+
   "file_preview_loading": "Loading file…",
   "file_preview_failed": "Failed to read file",
   "file_preview_copy_title": "Copy file contents",

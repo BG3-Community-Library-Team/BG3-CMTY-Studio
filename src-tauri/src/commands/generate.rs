@@ -332,7 +332,7 @@ pub fn detect_anchors(entries: &[SelectedEntry], threshold: usize) -> Vec<Anchor
             let lines_saved = full_lines.saturating_sub(anchored_lines);
 
             AnchorGroup {
-                anchor_name: format!("shared_{}", first.section.yaml_key().to_lowercase()),
+                anchor_name: format!("shared_{}", first.section.region_id().to_lowercase()),
                 shared_changes: first.changes.clone(),
                 entry_uuids: entries.iter().map(|e| e.uuid.clone()).collect(),
                 lines_saved,
@@ -685,7 +685,7 @@ fn build_preview_sections(
         // Auto entries
         if let Some(autos) = section_auto {
             for entry in autos {
-                let override_key = format!("{}::{}", section.yaml_key(), entry.uuid);
+                let override_key = format!("{}::{}", section.region_id(), entry.uuid);
                 if let Some(override_fields) = auto_entry_overrides.get(&override_key) {
                     // Overridden auto entry — render from fields
                     for val in build_ir_from_fields_with_split(section, override_fields) {
@@ -760,7 +760,7 @@ pub fn generate_yaml(entries: &[SelectedEntry], include_comments: bool) -> Strin
             if include_comments {
                 output.push_str(&section_comment(*section));
             }
-            output.push_str(&format!("{}:\n", section.yaml_key()));
+            output.push_str(&format!("{}:\n", section.region_id()));
 
             for entry in section_entries {
                 for ir_val in build_entry_ir(*section, entry) {
@@ -794,7 +794,7 @@ pub fn generate_json(entries: &[SelectedEntry]) -> Result<String, String> {
                 .flat_map(|e| build_entry_ir(*section, e))
                 .collect();
             root.insert(
-                section.yaml_key().to_string(),
+                section.region_id().to_string(),
                 serde_json::Value::Array(arr),
             );
         }
@@ -821,7 +821,7 @@ pub fn generate_yaml_preview(
         } else {
             output.push('\n');
         }
-        output.push_str(&format!("{}:\n", section.yaml_key()));
+        output.push_str(&format!("{}:\n", section.region_id()));
 
         for entry_ir in ir_entries {
             if enable_entry_comments {
@@ -852,7 +852,7 @@ pub fn generate_json_preview(
     for (section, ir_entries) in &sections {
         let arr: Vec<serde_json::Value> = ir_entries.iter().map(|e| e.value.clone()).collect();
         if !arr.is_empty() {
-            root.insert(section.yaml_key().to_string(), serde_json::Value::Array(arr));
+            root.insert(section.region_id().to_string(), serde_json::Value::Array(arr));
         }
     }
 

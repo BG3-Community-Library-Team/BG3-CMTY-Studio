@@ -64,6 +64,18 @@ describe("SECTIONS_ORDERED cross-language validation", () => {
     "Voices",
     "WeaponAnimationSetData",
     "ErrorDescriptions",
+    "ProgressionDescriptions",
+    "CompanionPresets",
+    "SpellLists",
+    "SkillLists",
+    "PassiveLists",
+    "EquipmentLists",
+    "AbilityLists",
+    "ExperienceRewards",
+    "GoldValues",
+    "DeathEffects",
+    "SpeakerGroups",
+    "Gossips",
   ] as const;
 
   it("matches canonical section order", () => {

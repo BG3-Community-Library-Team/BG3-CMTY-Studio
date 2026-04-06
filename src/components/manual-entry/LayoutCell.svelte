@@ -91,6 +91,7 @@
 {#if item.type === 'field'}
   {@const ft = caps.fieldTypes?.[item.key]}
   {@const isNum = ft === 'int'}
+  {@const isFloat = ft === 'float'}
   {@const hasBadge = ft && ft !== 'bool' && !caps.fieldCombobox?.[item.key]}
   {@const badgeClass = ft === 'string' || ft === 'str' ? 'badge-text' : ft === 'int' ? 'badge-number' : ft === 'float' ? 'badge-decimal' : (ft === 'string (UUID)' || ft === 'guid' || ft === 'uuid') ? 'badge-uuid' : 'badge-text'}
   {@const badgeText = ft === 'string' || ft === 'str' ? 'Text' : ft === 'int' ? 'Number' : ft === 'float' ? 'Decimal' : (ft === 'string (UUID)' || ft === 'guid' || ft === 'uuid') ? 'UUID' : ft ?? ''}
@@ -181,7 +182,7 @@
     {:else if item.textarea}
       <textarea class="form-input w-full" rows="2" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLTextAreaElement).value)}></textarea>
     {:else}
-      <input id="field-{item.key}" type={isNum ? 'number' : 'text'} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} />
+      <input id="field-{item.key}" type={(isNum || isFloat) ? 'number' : 'text'} step={isFloat ? 'any' : undefined} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} />
     {/if}
   </div>
 {:else}

@@ -16,6 +16,7 @@
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import type { NodeSchema } from "../lib/utils/tauri.js";
   import { autoLayoutFromSchema, autoLayoutFromCaps } from "../lib/data/autoLayout.js";
+  import { classifyLsxType, renderTypeToFieldType, inferComboboxDescriptor } from "../lib/utils/lsxTypes.js";
 
   import {
     buildSectionOptions as buildSectionOptionsBase,
@@ -322,25 +323,38 @@
     : _hasSectionCaps ? 'caps'
     : 'schema'; // Tier 3/4 resolved at render time based on schemas availability
 
-  const isFallback = $derived(tier === 'schema' && schemas.length === 0);
+  const isFallback = $derived(tier === 'schema' && schemas.length === 0 && schemaStore.loaded);
+  const isSchemaLoading = $derived(tier === 'schema' && schemas.length === 0 && !schemaStore.loaded);
 
   // Caps resolution
   const baseCaps: SectionCapabilities = _hasSectionCaps ? (SECTION_CAPS[_section] ?? {}) : {};
 
   /** Synthesize SectionCapabilities from a NodeSchema for schema-only sections. */
   function capsFromSchema(schema: NodeSchema): SectionCapabilities {
-    const booleanKeys = schema.attributes
-      .filter(a => a.attr_type === "bool" && a.name !== "UUID" && a.name !== "MapKey")
-      .map(a => a.name);
-    const fieldKeys = schema.attributes
-      .filter(a => a.attr_type !== "bool" && a.name !== "UUID" && a.name !== "MapKey")
-      .map(a => a.name);
+    const booleanKeys: string[] = [];
+    const fieldKeys: string[] = [];
     const fieldTypes: Record<string, string> = {};
+    const fieldCombobox: Record<string, string> = {};
+
     for (const attr of schema.attributes) {
-      if (attr.name !== "UUID" && attr.name !== "MapKey") {
-        fieldTypes[attr.name] = attr.attr_type;
+      if (attr.name === "UUID" || attr.name === "MapKey") continue;
+
+      const renderType = classifyLsxType(attr.attr_type, attr.name, attr.examples);
+
+      if (renderType === 'boolean') {
+        booleanKeys.push(attr.name);
+      } else {
+        fieldKeys.push(attr.name);
+        fieldTypes[attr.name] = renderTypeToFieldType(renderType);
+      }
+
+      // Combobox inference
+      const descriptor = inferComboboxDescriptor(attr.name, attr.attr_type, renderType, attr.examples);
+      if (descriptor) {
+        fieldCombobox[attr.name] = descriptor;
       }
     }
+
     return {
       hasFields: fieldKeys.length > 0,
       hasBooleans: booleanKeys.length > 0,
@@ -348,6 +362,7 @@
       fieldKeys,
       booleanKeys,
       fieldTypes,
+      fieldCombobox: Object.keys(fieldCombobox).length > 0 ? fieldCombobox : undefined,
       childTypes: schema.children.map(c => c.child_node_id),
     };
   }
@@ -742,7 +757,17 @@
   });
 
   function getChildValueOptions(childType: string): ComboboxOption[] {
-    return computeChildValueOptions(childType, modStore.vanilla, modStore.scanResult, modStore.additionalModResults, (h) => modStore.lookupLocalizedString(h));
+    const opts = computeChildValueOptions(childType, modStore.vanilla, modStore.scanResult, modStore.additionalModResults, (h) => modStore.lookupLocalizedString(h));
+    if (opts.length > 0) return opts;
+    // Schema-driven fallback: use vanilla entries from the child node's section
+    const childSchema = schemaStore.getByNodeId(childType);
+    if (childSchema) {
+      const vanillaEntries = modStore.vanilla[childSchema.section] ?? [];
+      if (vanillaEntries.length > 0) {
+        return buildSectionOptions(vanillaEntries, childSchema.section);
+      }
+    }
+    return [];
   }
 
   let tagValueOptions = $derived(computeTagValueOptions(modStore.vanilla.Tags ?? [], modStore.scanResult, modStore.additionalModResults, (h) => modStore.lookupLocalizedString(h)));
@@ -961,7 +986,12 @@
     </div>
   {/if}
 
-  {#if isFallback}
+  {#if isSchemaLoading}
+    <div class="schema-loading" role="status" aria-label="Loading schema data">
+      <div class="loading-spinner"></div>
+      <p>Loading schema data…</p>
+    </div>
+  {:else if isFallback}
     <!-- Tier 4: Minimal UUID + flat attribute grid -->
     <FormIdentityCard>
       <FormIdentity
@@ -992,7 +1022,7 @@
         resolveLocaText={() => undefined}
       />
     </FormIdentityCard>
-    <FormSectionCard title="Attributes" open>
+    <FormSectionCard title={m.form_section_attributes()} open>
       <p class="text-xs text-[var(--th-text-500)] mb-2">
         {m.schema_form_no_vanilla({ section: _section })}
       </p>
@@ -1118,7 +1148,7 @@
 
     <!-- Legacy fieldsets (only render fields/booleans NOT handled by layout) -->
     {#if caps.hasBooleans && unhandledBooleans.length > 0}
-      <FormSectionCard title="Booleans" id="section-booleans">
+      <FormSectionCard title={m.form_section_booleans()} id="section-booleans">
         <BooleanFieldset
           bind:booleans
           {caps}
@@ -1129,7 +1159,7 @@
       </FormSectionCard>
     {/if}
     {#if caps.hasFields && unhandledFields.length > 0}
-      <FormSectionCard title="Fields" id="section-fields">
+      <FormSectionCard title={m.form_section_fields()} id="section-fields">
         <FieldsFieldset
           bind:fields
           {caps}
@@ -1146,13 +1176,13 @@
     {/if}
 
     {#if caps.hasSelectors}
-      <FormSectionCard title="Selectors" id="section-selectors">
+      <FormSectionCard title={m.form_section_selectors()} id="section-selectors">
         <FormSelectors bind:selectors {warnKeys} />
       </FormSectionCard>
     {/if}
 
     {#if caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))}
-      <FormSectionCard title="Strings" id="section-strings">
+      <FormSectionCard title={m.form_section_strings()} id="section-strings">
         <StringFieldset
           bind:strings
           {caps}
@@ -1181,7 +1211,7 @@
     </div>
 
     {#if caps.hasTags}
-      <FormSectionCard title="Tags" id="section-tags">
+      <FormSectionCard title={m.form_section_tags()} id="section-tags">
         <TagFieldset
           bind:tags
           {allowedTagTypes}
@@ -1298,5 +1328,26 @@
     .form-container {
       gap: 1rem;
     }
+  }
+
+  .schema-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    gap: 1rem;
+    color: var(--th-text-secondary, #aaa);
+  }
+  .schema-loading .loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--th-border-700, #333);
+    border-top-color: var(--th-accent-500, #0ea5e9);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

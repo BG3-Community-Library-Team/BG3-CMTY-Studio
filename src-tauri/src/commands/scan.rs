@@ -130,6 +130,30 @@ fn file_to_section(relative_path: &str) -> Option<Section> {
         Some(Section::Voices)
     } else if has("WeaponAnimationSetData") {
         Some(Section::WeaponAnimationSetData)
+    } else if has("ProgressionDescriptions") {
+        Some(Section::ProgressionDescriptions)
+    } else if has("CompanionPresets") {
+        Some(Section::CompanionPresets)
+    } else if has("SpellLists") {
+        Some(Section::SpellLists)
+    } else if has("SkillLists") {
+        Some(Section::SkillLists)
+    } else if has("PassiveLists") {
+        Some(Section::PassiveLists)
+    } else if has("EquipmentLists") {
+        Some(Section::EquipmentLists)
+    } else if has("AbilityLists") {
+        Some(Section::AbilityLists)
+    } else if has("ExperienceRewards") {
+        Some(Section::ExperienceRewards)
+    } else if has("GoldValues") {
+        Some(Section::GoldValues)
+    } else if has("DeathEffects") {
+        Some(Section::DeathEffects)
+    } else if has("SpeakerGroups") {
+        Some(Section::SpeakerGroups)
+    } else if has("Gossips") {
+        Some(Section::Gossips)
     } else {
         None
     }

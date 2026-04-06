@@ -1,34 +1,5 @@
-use crate::models::{Section, LsxAttribute, LsxChildGroup, LsxEntry};
+use crate::models::{LsxAttribute, LsxChildGroup, LsxEntry};
 use std::collections::HashMap;
-
-/// Map Section to the LSX region ID used in the `<region id="...">` element.
-pub fn section_to_region_id(section: Section) -> &'static str {
-    match section {
-        Section::Progressions => "Progressions",
-        Section::Races => "Races",
-        Section::Lists => "Lists",
-        Section::Feats => "Feats",
-        Section::Origins => "Origins",
-        Section::Backgrounds => "Backgrounds",
-        Section::BackgroundGoals => "BackgroundGoals",
-        Section::ActionResources => "ActionResourceDefinitions",
-        Section::ActionResourceGroups => "ActionResourceGroupDefinitions",
-        Section::ClassDescriptions => "ClassDescriptions",
-        Section::Spells => "Spells",
-        Section::Gods => "Gods",
-        Section::Tags => "Tags",
-        Section::Visuals => "Visuals",
-        Section::CharacterCreation => "CharacterCreation",
-        Section::CharacterCreationPresets => "CharacterCreationPresets",
-        Section::ColorDefinitions => "ColorDefinitions",
-        Section::FeatDescriptions => "FeatDescriptions",
-        Section::SpellMetadata => "Spell",
-        Section::StatusMetadata => "Status",
-        Section::Meta => "Config",
-        // Additional LSX sections: region ID matches the yaml_key
-        _ => section.yaml_key(),
-    }
-}
 
 /// Generate a complete LSX XML file from a list of entries.
 ///

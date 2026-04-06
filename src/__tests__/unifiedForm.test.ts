@@ -14,6 +14,7 @@ import { autoLayoutFromSchema, autoLayoutFromCaps } from "../lib/data/autoLayout
 import { FORM_LAYOUTS, type FormLayout } from "../lib/data/formLayouts.js";
 import { SECTION_CAPS, type SectionCapabilities } from "../lib/data/sectionCaps.js";
 import type { NodeSchema, AttrSchema, ChildSchema } from "../lib/utils/tauri.js";
+import { classifyLsxType, renderTypeToFieldType, inferComboboxDescriptor } from "../lib/utils/lsxTypes.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -805,5 +806,75 @@ describe("SECTION_CAPS structural integrity", () => {
         }
       }
     }
+  });
+});
+
+// ─── Schema-driven combobox inference integration ────────────────────
+
+describe("schema-driven combobox inference", () => {
+  it("RaceUUID FixedString with UUID examples → section:Races combobox", () => {
+    const renderType = classifyLsxType("FixedString", "RaceUUID", [
+      "0eb594cb-8820-4be6-a58d-8be7a1a98fba",
+    ]);
+    expect(renderType).toBe("uuid");
+    expect(inferComboboxDescriptor("RaceUUID", "FixedString", renderType)).toBe("section:Races");
+  });
+
+  it("TranslatedString fields get loca: combobox", () => {
+    const renderType = classifyLsxType("TranslatedString", "DisplayName");
+    expect(renderType).toBe("loca");
+    expect(inferComboboxDescriptor("DisplayName", "TranslatedString", renderType)).toBe("loca:");
+  });
+
+  it("int32 fields get 'int' fieldType", () => {
+    const renderType = classifyLsxType("int32", "Level");
+    expect(renderType).toBe("number");
+    expect(renderTypeToFieldType(renderType)).toBe("int");
+  });
+
+  it("float fields get 'float' fieldType", () => {
+    const renderType = classifyLsxType("float", "Weight");
+    expect(renderType).toBe("float");
+    expect(renderTypeToFieldType(renderType)).toBe("float");
+  });
+
+  it("bool fields get 'bool' fieldType", () => {
+    const renderType = classifyLsxType("bool", "IsActive");
+    expect(renderType).toBe("boolean");
+    expect(renderTypeToFieldType(renderType)).toBe("bool");
+  });
+
+  it("guid fields get 'string (UUID)' fieldType", () => {
+    const renderType = classifyLsxType("guid", "TableUUID");
+    expect(renderType).toBe("uuid");
+    expect(renderTypeToFieldType(renderType)).toBe("string (UUID)");
+  });
+
+  it("capsFromSchema + lsxType classify produces consistent results for a full schema", () => {
+    const schema = makeSchema({
+      attributes: [
+        attr("UUID", "guid", 1.0),
+        attr("Name", "FixedString", 0.95),
+        attr("DisplayName", "TranslatedString", 0.95),
+        attr("RaceUUID", "FixedString", 0.90),
+        attr("Level", "int32", 0.85),
+        attr("Weight", "float", 0.80),
+        attr("IsActive", "bool", 0.80),
+      ],
+    });
+    const layout = autoLayoutFromSchema(schema);
+
+    // Layout should have handled all non-identity, non-bool fields
+    expect(layout.handledFieldKeys).toContain("Name");
+    expect(layout.handledFieldKeys).toContain("DisplayName");
+    expect(layout.handledFieldKeys).toContain("RaceUUID");
+    expect(layout.handledFieldKeys).toContain("Level");
+    expect(layout.handledFieldKeys).toContain("Weight");
+    expect(layout.handledBooleanKeys).toContain("IsActive");
+
+    // Type classification is consistent
+    expect(classifyLsxType("TranslatedString", "DisplayName")).toBe("loca");
+    expect(classifyLsxType("int32", "Level")).toBe("number");
+    expect(classifyLsxType("float", "Weight")).toBe("float");
   });
 });

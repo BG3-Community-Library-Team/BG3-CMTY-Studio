@@ -55,6 +55,17 @@ html {
    by settingsStore.reducedMotion (system/on/off).
    Uses 0.01ms (not 0) so transitionend/animationend events still fire.
    =================================================================== */
+
+/* Native prefers-reduced-motion as bootstrap fallback (before JS applies .reduced-motion class) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 :root.reduced-motion *, :root.reduced-motion *::before, :root.reduced-motion *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;

@@ -10,27 +10,19 @@ import type { LsxPreviewEntry } from "./tauri.js";
  *  Only sections where regionId differs from the section name need explicit entries.
  *  getRegionId() falls back to section name for others. */
 const SECTION_REGION_MAP: Partial<Record<Section, string>> = {
-  Progressions: "Progressions",
-  Races: "Races",
-  Lists: "Lists",
-  Feats: "Feats",
-  Origins: "Origins",
-  Backgrounds: "Backgrounds",
-  BackgroundGoals: "BackgroundGoals",
   ActionResources: "ActionResourceDefinitions",
   ActionResourceGroups: "ActionResourceGroupDefinitions",
-  ClassDescriptions: "ClassDescriptions",
-  Spells: "Spells",
-  Gods: "Gods",
-  Tags: "Tags",
-  Visuals: "Visuals",
-  CharacterCreation: "CharacterCreation",
-  CharacterCreationPresets: "CharacterCreationPresets",
-  ColorDefinitions: "ColorDefinitions",
-  FeatDescriptions: "FeatDescriptions",
   SpellMetadata: "Spell",
   StatusMetadata: "Status",
   Meta: "Config",
+  Factions: "FactionContainer",
+  Disturbances: "DisturbanceProperties",
+  Levelmaps: "LevelMapValues",
+  TooltipExtras: "TooltipExtraTexts",
+  Encumbrance: "WeightCategories",
+  ErrorDescriptions: "ConditionErrors",
+  RootTemplates: "Templates",
+  Ruleset: "Rulesets",
 };
 
 /** Get the LSX region ID for a CF section. */

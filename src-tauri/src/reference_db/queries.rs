@@ -34,7 +34,7 @@ pub fn query_vanilla_entries(
 ) -> Result<Vec<VanillaEntryInfo>, String> {
     let conn = open_ro(db_path)?;
 
-    let region_id = section.yaml_key();
+    let region_id = section.region_id();
 
     // Find the table name(s) for this section via _table_meta
     let table_name: String = conn
@@ -687,7 +687,7 @@ pub fn query_entries_by_folder(
     section: &Section,
 ) -> Result<Vec<VanillaEntryInfo>, String> {
     let conn = open_ro(db_path)?;
-    let region_id = section.yaml_key();
+    let region_id = section.region_id();
 
     let table_name: String = conn
         .query_row(
@@ -1314,8 +1314,15 @@ pub fn query_vanilla_lsx_for_scan(
     db_path: &Path,
     section: &Section,
 ) -> Result<HashMap<String, LsxEntry>, String> {
+    query_vanilla_lsx_by_region(db_path, section.region_id())
+}
+
+/// Query ALL vanilla LSX entries for a given region_id string.
+pub fn query_vanilla_lsx_by_region(
+    db_path: &Path,
+    region_id: &str,
+) -> Result<HashMap<String, LsxEntry>, String> {
     let conn = open_ro(db_path)?;
-    let region_id = section.yaml_key();
 
     // Find the main table for this section
     let table_name: String = match conn.query_row(

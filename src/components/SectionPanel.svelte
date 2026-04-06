@@ -108,6 +108,12 @@
 
   // Reset confirmation modal state
   let showResetModal = $state(false);
+  let resetTriggerEl: HTMLElement | null = $state(null);
+
+  function closeResetModal() {
+    showResetModal = false;
+    tick().then(() => resetTriggerEl?.focus());
+  }
 
   // PF-032: Entry grouping state
   let groupingMode: GroupCriterion = $state("flat" as GroupCriterion);
@@ -548,7 +554,7 @@
           {#if hasResettableChanges}
             <button
               class="text-xs text-amber-400 hover:text-amber-300 whitespace-nowrap"
-              onclick={() => { showResetModal = true; }}
+              onclick={(e) => { resetTriggerEl = e.currentTarget as HTMLElement; showResetModal = true; }}
               use:tooltip={m.section_panel_reset_tooltip()}
             >
               {m.section_panel_reset()}
@@ -740,14 +746,14 @@
 {#if showResetModal}
   <div
     class="fixed inset-0 bg-[var(--th-modal-backdrop)] z-[60] flex items-center justify-center p-4"
-    onclick={() => showResetModal = false}
-    onkeydown={(e) => e.key === "Escape" && (showResetModal = false)}
+    onclick={() => closeResetModal()}
+    onkeydown={(e) => e.key === "Escape" && closeResetModal()}
     role="presentation"
   >
     <div
       class="bg-[var(--th-bg-800)] border border-[var(--th-border-700)] rounded-lg shadow-2xl max-w-sm w-full"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.key === 'Escape' && (showResetModal = false)}
+      onkeydown={(e) => e.key === 'Escape' && closeResetModal()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="reset-modal-title"
@@ -767,11 +773,11 @@
       <div class="px-5 py-3 border-t border-[var(--th-border-700)] flex justify-end gap-2">
         <button
           class="px-4 py-1.5 text-xs rounded bg-[var(--th-bg-700)] text-[var(--th-text-300)] hover:opacity-80 transition-colors"
-          onclick={() => showResetModal = false}
+          onclick={() => closeResetModal()}
         >{m.common_cancel()}</button>
         <button
           class="px-4 py-1.5 text-xs rounded bg-amber-600 text-white hover:bg-amber-500 transition-colors"
-          onclick={() => { configStore.resetSection(sectionResult.section); showResetModal = false; toastStore.info(m.section_panel_reset_toast_title(), m.section_panel_reset_toast_message({ section: displayName })); }}
+          onclick={() => { configStore.resetSection(sectionResult.section); closeResetModal(); toastStore.info(m.section_panel_reset_toast_title(), m.section_panel_reset_toast_message({ section: displayName })); }}
         >{m.common_reset()}</button>
       </div>
     </div>

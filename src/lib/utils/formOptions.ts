@@ -193,7 +193,8 @@ export function computeChildValueOptions(
   additionalModResults: ScanResult[],
   lookupLocalizedString: (handle: string) => string | undefined,
 ): ComboboxOption[] {
-  const config = CHILD_TYPE_SOURCE[childType] ?? { store: "color" as const };
+  const config = CHILD_TYPE_SOURCE[childType];
+  if (!config) return []; // Unknown child type — no predefined options (user can still paste UUIDs)
   const optMap = new Map<string, ComboboxOption>();
 
   let source: VanillaEntryInfo[] = [];
