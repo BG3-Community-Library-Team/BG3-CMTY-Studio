@@ -5,6 +5,7 @@ src-tauri/gen/
 src/paraglide/
 stats.html
 node_modules/
+
 # === BG3 data ===
 UnpackedData/
 
@@ -33,3 +34,8 @@ test_populated_dbs/
 Thumbs.db
 *.swp
 *.swo
+
+# === sqlite tools ===
+*.exe
+*.dll
+*.def
