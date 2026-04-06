@@ -33,6 +33,9 @@
   } = $props();
 
   let filterSet = $derived(filterKeys ? new Set(filterKeys) : null);
+
+  const chipEligibleTypes = new Set(["Passives", "PassivesAdded", "PassivesRemoved", "SkillList"]);
+
   /** Pairs of [originalIndex, stringEntry] visible in this fieldset, sorted by filterKeys order when present */
   let visibleStrings = $derived(
     strings
@@ -52,16 +55,17 @@
         <div class="flex-1 flex flex-col gap-1 min-w-0">
 
           <!-- Values row -->
-          {#if ["Passives", "PassivesAdded", "PassivesRemoved"].includes(s.type) && availablePassiveNames.length > 0}
+          {#if chipEligibleTypes.has(s.type) && availablePassiveNames.length > 0}
             <MultiSelectCombobox
               label={s.type}
               options={availablePassiveNames}
               selected={s.values ? s.values.split(";").map(v => v.trim()).filter(Boolean) : []}
-              placeholder="Select or type passives…"
+              placeholder="Select or type values…"
+              rawTextToggle={true}
               onchange={(vals) => s.values = vals.join(";")}
             />
           {:else}
-            <label class="flex flex-col gap-0.5 text-xs">
+            <label class="flex flex-col gap-1.5 text-xs">
               <span class="text-[10px] text-[var(--th-text-500)]">{s.type}</span>
               <input type="text" class="form-input w-full" bind:value={s.values}
                 placeholder="Value1;Value2;..." />
@@ -73,15 +77,15 @@
           <span class="flex items-center gap-1.5 self-end pb-1.5 shrink-0">
             <button
               type="button"
-              class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(adj.boolKey) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
+              class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(adj.boolKey) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
               role="switch"
               aria-checked={getBoolValue(adj.boolKey)}
               aria-label={adj.label}
               onclick={() => setBoolValue(adj.boolKey, !getBoolValue(adj.boolKey))}
             >
-              <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(adj.boolKey) ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
+              <span class="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(adj.boolKey) ? 'translate-x-4.5' : 'translate-x-0.5'}"></span>
             </button>
-            <span class="text-[11px] whitespace-nowrap cursor-pointer select-none {getBoolValue(adj.boolKey) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(adj.boolKey, !getBoolValue(adj.boolKey))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(adj.boolKey, !getBoolValue(adj.boolKey)); } }}>{adj.label}</span>
+            <span class="text-[11px] whitespace-nowrap cursor-pointer select-none transition-colors duration-200 {getBoolValue(adj.boolKey) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(adj.boolKey, !getBoolValue(adj.boolKey))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(adj.boolKey, !getBoolValue(adj.boolKey)); } }}>{adj.label}</span>
           </span>
         {/if}
         {#if !hideRemoveButton}
@@ -100,7 +104,7 @@
 <style>
   .form-input {
     box-sizing: border-box;
-    height: 2rem;
+    height: 2.25rem;
     background-color: var(--th-input-bg);
     border: 1px solid var(--th-input-border);
     border-radius: 0.25rem;

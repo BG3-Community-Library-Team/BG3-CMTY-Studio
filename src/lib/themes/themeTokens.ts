@@ -651,7 +651,7 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-text-500": "#a89984",
     "--th-text-600": "#928374",
     "--th-text-red-300": "#fb4934",
-    "--th-text-red-400": "#cc241d",
+    "--th-text-red-400": "#e04030",
     "--th-text-amber-400": "#fabd2f",
     "--th-text-sky-400": "#83a598",
     "--th-text-sky-300": "#8ec07c",

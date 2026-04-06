@@ -4,6 +4,7 @@
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { ChildItem } from "../../lib/utils/fieldCodec.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
   import ColorGridPicker from "../ColorGridPicker.svelte";
@@ -77,28 +78,35 @@
     {@const groupAvailable = group.types.filter(t => !groupUsed.has(t))}
     {#if group.inline}
       <!-- Inline child group — no collapsible header -->
-      <div class="{group.noBorder ? '' : 'border-t border-zinc-700'} pt-2">
+      <div class="{group.noBorder ? '' : 'border-t border-[var(--th-border-700)]'} pt-2">
         <fieldset class="space-y-1">
           {#if groupChildren.length === 0}
             {#if groupAvailable.length > 0}
-              <button class="text-xs text-sky-400 hover:text-sky-300" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}>+ Add {group.title.toLowerCase()}</button>
+              <button class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-dashed border-[var(--th-border-700)] text-[var(--th-text-sky-400)] hover:border-[var(--th-text-sky-400)] transition-colors" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}><Plus size={12} /> Add {group.title.toLowerCase()}</button>
             {/if}
           {:else}
             {#each groupChildren as c}
               {@const absIdx = childIndexMap.get(c) ?? 0}
-              <div class="flex gap-1 items-start">
-                <div class="flex-1 flex flex-col gap-1 min-w-0">
-                  <MultiSelectCombobox
-                    label={c.type}
-                    options={getChildValueOptions(c.type)}
-                    selected={c.values}
-                    placeholder="Search or paste UUID(s)…"
-                    onchange={(vals) => c.values = vals}
-                  />
+              {@const opts = getChildValueOptions(c.type)}
+              <div class="rounded border border-[var(--th-border-700)] p-2 space-y-1">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[11px] font-semibold text-[var(--th-text-300)]">{c.type}</span>
+                  <div class="flex items-center gap-1.5">
+                    {#if c.values.length > 0}
+                      <span class="inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full text-[0.625rem] font-semibold bg-[var(--th-bg-sky-700-40)] text-[var(--th-text-sky-300)]">{c.values.length}</span>
+                    {/if}
+                    {#if !layout?.noRemoveButtons}
+                      <button class="text-xs text-red-400 hover:text-red-300 px-1 min-w-5 min-h-5 inline-flex items-center justify-center" onclick={() => removeChild(absIdx)} aria-label="Remove {c.type}"><X size={14} /></button>
+                    {/if}
+                  </div>
                 </div>
-                {#if !layout?.noRemoveButtons}
-                <button class="text-xs text-red-400 hover:text-red-300 self-center px-1.5 min-w-6 min-h-6 inline-flex items-center justify-center" onclick={() => removeChild(absIdx)} aria-label="Remove child"><X size={14} /></button>
-                {/if}
+                <MultiSelectCombobox
+                  label={c.type}
+                  options={opts}
+                  selected={c.values}
+                  placeholder="Search or paste UUID(s)…"
+                  onchange={(vals) => c.values = vals}
+                />
               </div>
             {/each}
           {/if}
@@ -106,7 +114,7 @@
       </div>
     {:else}
       <!-- Collapsible child group -->
-      <details class="border-t border-zinc-700 pt-2" open>
+      <details class="border-t border-[var(--th-border-700)] pt-2" open>
         <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
           <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
           {group.title} ({groupChildren.length})
@@ -152,31 +160,39 @@
         <fieldset class="space-y-1">
           {#if groupChildren.length === 0}
             <div class="flex flex-col items-center justify-center py-4 border border-dashed border-[var(--th-border-700)] rounded">
+              <ChevronRight size={16} class="text-[var(--th-text-600)] mb-1" />
               <p class="text-xs text-[var(--th-text-500)] mb-2">No {group.title.toLowerCase()} added</p>
               {#if groupAvailable.length > 0}
-                <button class="text-xs text-sky-400 hover:text-sky-300" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}>+ Add {group.title.toLowerCase()}</button>
+                <button class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-dashed border-[var(--th-border-700)] text-[var(--th-text-sky-400)] hover:border-[var(--th-text-sky-400)] transition-colors" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}><Plus size={12} /> Add {group.title.toLowerCase()}</button>
               {/if}
             </div>
           {:else}
             {#each groupChildren as c}
               {@const absIdx = childIndexMap.get(c) ?? 0}
-              <div class="flex gap-1 items-start">
-                <div class="flex-1 flex flex-col gap-1 min-w-0">
-                  <MultiSelectCombobox
-                    label={c.type}
-                    options={getChildValueOptions(c.type)}
-                    selected={c.values}
-                    placeholder="Search or paste UUID(s)…"
-                    onchange={(vals) => c.values = vals}
-                  />
+              {@const opts = getChildValueOptions(c.type)}
+              <div class="rounded border border-[var(--th-border-700)] p-2 space-y-1">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[11px] font-semibold text-[var(--th-text-300)]">{c.type}</span>
+                  <div class="flex items-center gap-1.5">
+                    {#if c.values.length > 0}
+                      <span class="inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full text-[0.625rem] font-semibold bg-[var(--th-bg-sky-700-40)] text-[var(--th-text-sky-300)]">{c.values.length}</span>
+                    {/if}
+                    {#if !layout?.noRemoveButtons}
+                      <button class="text-xs text-red-400 hover:text-red-300 px-1 min-w-5 min-h-5 inline-flex items-center justify-center" onclick={() => removeChild(absIdx)} aria-label="Remove {c.type}"><X size={14} /></button>
+                    {/if}
+                  </div>
                 </div>
-                {#if !layout?.noRemoveButtons}
-                <button class="text-xs text-red-400 hover:text-red-300 self-center px-1.5 min-w-6 min-h-6 inline-flex items-center justify-center" onclick={() => removeChild(absIdx)} aria-label="Remove child"><X size={14} /></button>
-                {/if}
+                <MultiSelectCombobox
+                  label={c.type}
+                  options={opts}
+                  selected={c.values}
+                  placeholder="Search or paste UUID(s)…"
+                  onchange={(vals) => c.values = vals}
+                />
               </div>
             {/each}
             {#if groupAvailable.length > 0}
-              <button class="text-xs text-sky-400 hover:text-sky-300" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}>+ Add {group.title.toLowerCase()}</button>
+              <button class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-dashed border-[var(--th-border-700)] text-[var(--th-text-sky-400)] hover:border-[var(--th-text-sky-400)] transition-colors" onclick={() => { childItems = [...childItems, { type: groupAvailable[0], values: [], action: "Insert", modGuid: "" }]; }}><Plus size={12} /> Add {group.title.toLowerCase()}</button>
             {/if}
           {/if}
         </fieldset>
@@ -186,7 +202,7 @@
     {/if}
   {/each}
 {:else if caps.hasChildren}
-  <details class="border-t border-zinc-700 pt-2" bind:open={openChildren}>
+  <details class="border-t border-[var(--th-border-700)] pt-2" bind:open={openChildren}>
     <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none mb-2 flex items-center gap-1.5">
       <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
       {section === "Gods" ? "Tags" : "Children"} ({childItems.length}) <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>

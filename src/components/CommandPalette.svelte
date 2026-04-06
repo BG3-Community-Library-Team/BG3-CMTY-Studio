@@ -22,6 +22,7 @@
   import { fuzzyScore, type FuzzyResult } from "../lib/utils/fuzzyScore.js";
   import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { APP_NAME } from "../lib/version.js";
   import Search from "@lucide/svelte/icons/search";
   import X from "@lucide/svelte/icons/x";
@@ -29,6 +30,7 @@
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
+  import MapPin from "@lucide/svelte/icons/map-pin";
   import { focusTrap } from "../lib/utils/focusTrap.js";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -164,11 +166,12 @@
 
   // Build the flat navigable items list for keyboard navigation
   interface NavItem {
-    type: "search-all" | "command" | "scored-command" | "category" | "back" | "entry-result" | "recent" | "scan-prompt";
+    type: "search-all" | "command" | "scored-command" | "category" | "back" | "entry-result" | "recent" | "scan-prompt" | "form-nav";
     command?: Command;
     scored?: ScoredCommand;
     category?: CommandCategory;
     entry?: EntrySearchResult;
+    formSection?: { id: string; label: string };
   }
   let navItems = $derived.by((): NavItem[] => {
     const items: NavItem[] = [];
@@ -180,6 +183,13 @@
       }
       for (const sc of commandResults) {
         items.push({ type: "scored-command", scored: sc, command: sc.command });
+      }
+      // Also search form sections
+      for (const sec of uiStore.formNavSections) {
+        const result = fuzzyScore(searchText, sec.label);
+        if (result) {
+          items.push({ type: "form-nav", formSection: sec });
+        }
       }
       for (const entry of entryResults) {
         items.push({ type: "entry-result", entry });
@@ -209,6 +219,11 @@
         if (searchAllCmd) {
           items.push({ type: "command", command: searchAllCmd });
         }
+      }
+
+      // Form navigation sections (when a manual entry form is open)
+      for (const sec of uiStore.formNavSections) {
+        items.push({ type: "form-nav", formSection: sec });
       }
 
       // Categories (shown before recent commands)
@@ -251,6 +266,13 @@
   function searchAllEntries() {
     modStore.setGlobalFilter(searchText);
     closePalette();
+  }
+
+  function scrollToFormSection(sectionId: string) {
+    closePalette();
+    requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function drillIntoCategory(cat: CommandCategory) {
@@ -314,6 +336,9 @@
         break;
       case "entry-result":
         if (item.entry) selectEntry(item.entry);
+        break;
+      case "form-nav":
+        if (item.formSection) scrollToFormSection(item.formSection.id);
         break;
     }
   }
@@ -426,6 +451,8 @@
       <span class="text-xs shrink-0">{commandRegistry.getCategoryIcon(item.category!)}</span>
     {:else if item.type === "entry-result"}
       <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-400)] shrink-0">{item.entry!.section}</span>
+    {:else if item.type === "form-nav"}
+      <span class="shrink-0 text-[var(--th-text-sky-400)]"><MapPin size={14} strokeWidth={2} /></span>
     {:else}
       <span class="text-xs shrink-0">{item.command!.icon}</span>
     {/if}
@@ -445,6 +472,8 @@
       </span>
     {:else if item.type === "entry-result"}
       <span class="flex-1 text-xs truncate">{item.entry!.displayName}</span>
+    {:else if item.type === "form-nav"}
+      <span class="flex-1 text-xs truncate">Jump to: {item.formSection!.label}</span>
     {:else}
       <span class="flex-1 text-xs truncate">{item.command!.label}</span>
     {/if}
@@ -557,8 +586,13 @@
           {searchText ? m.command_palette_no_matching() : m.command_palette_no_commands()}
         </div>
       {:else}
-        {#each navItems as item, i (item.type === "entry-result" ? `entry-${item.entry?.section}-${item.entry?.uuid}-${i}` : item.type === "category" ? `cat-${item.category}` : item.type === "back" ? "back" : item.type === "search-all" ? "search-all" : item.type === "scan-prompt" ? `scan-${item.command?.id}` : `cmd-${item.command?.id}-${i}`)}
+        {#each navItems as item, i (item.type === "entry-result" ? `entry-${item.entry?.section}-${item.entry?.uuid}-${i}` : item.type === "form-nav" ? `form-nav-${item.formSection?.id}` : item.type === "category" ? `cat-${item.category}` : item.type === "back" ? "back" : item.type === "search-all" ? "search-all" : item.type === "scan-prompt" ? `scan-${item.command?.id}` : `cmd-${item.command?.id}-${i}`)}
           {@const isActive = i === activeIndex}
+          {#if item.type === "form-nav" && (i === 0 || navItems[i - 1]?.type !== "form-nav")}
+            <div class="px-3 pt-2 pb-0.5 text-[11px] uppercase tracking-wider font-semibold text-[var(--th-text-500)]">
+              <MapPin size={12} strokeWidth={2} class="inline -mt-0.5" /> Form Sections
+            </div>
+          {/if}
           {#if item.type === "recent" && (i === 0 || navItems[i - 1]?.type !== "recent")}
             <div class="px-3 pt-2 pb-0.5 text-[11px] uppercase tracking-wider font-semibold text-[var(--th-text-500)]">
               <Clock size={12} strokeWidth={2} class="inline -mt-0.5" /> {m.command_palette_recent()}

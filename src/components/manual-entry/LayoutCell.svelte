@@ -88,8 +88,11 @@
   {@const badgeText = ft === 'string' || ft === 'str' ? 'Text' : ft === 'int' ? 'Number' : ft === 'float' ? 'Decimal' : (ft === 'string (UUID)' || ft === 'guid' || ft === 'uuid') ? 'UUID' : ft ?? ''}
   {@const comboPlaceholder = badgeText ? `${badgeText} — Search…` : 'Search…'}
   {@const isLoca = caps.fieldCombobox?.[item.key]?.startsWith('loca:')}
-  <div class="flex flex-col gap-0.5 text-xs min-w-0">
-    <label for="field-{item.key}" class="text-[var(--th-text-400)]">{item.label ?? item.key}
+  <div class="flex flex-col gap-1.5 text-xs min-w-0">
+    <label for="field-{item.key}" class="font-medium text-[var(--th-text-400)]">{item.label ?? item.key}
+      {#if hasBadge}
+        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full {badgeClass}">{badgeText}</span>
+      {/if}
       {#if item.generateUuid}
         <button type="button"
           class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)]
@@ -144,42 +147,37 @@
     {:else if item.textarea}
       <textarea class="form-input w-full" rows="2" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLTextAreaElement).value)}></textarea>
     {:else}
-      <div class="relative">
-        <input id="field-{item.key}" type={isNum ? 'number' : 'text'} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} style={hasBadge ? "padding-right: 4rem;" : ""} />
-        {#if hasBadge}
-          <span class="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs font-medium px-1.5 py-0.5 rounded-full pointer-events-none {badgeClass}">{badgeText}</span>
-        {/if}
-      </div>
+      <input id="field-{item.key}" type={isNum ? 'number' : 'text'} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} />
     {/if}
   </div>
 {:else}
   {#if reversed}
     <div class="flex items-center justify-end gap-2 text-xs min-w-0 self-end pb-1">
-      <span class="text-[11px] cursor-pointer select-none {getBoolValue(item.key) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(item.key, !getBoolValue(item.key))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(item.key, !getBoolValue(item.key)); } }}>{item.label ?? item.key}</span>
+      <span class="text-[11px] cursor-pointer select-none transition-colors duration-200 {getBoolValue(item.key) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(item.key, !getBoolValue(item.key))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(item.key, !getBoolValue(item.key)); } }}>{item.label ?? item.key}</span>
       <button
         type="button"
-        class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(item.key) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
+        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(item.key) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
         role="switch"
         aria-checked={getBoolValue(item.key)}
         aria-label={item.label ?? item.key}
         onclick={() => setBoolValue(item.key, !getBoolValue(item.key))}
       >
-        <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(item.key) ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
+        <span class="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(item.key) ? 'translate-x-4.5' : 'translate-x-0.5'}"></span>
       </button>
     </div>
   {:else}
     <div class="flex items-center gap-2 text-xs min-w-0 self-end pb-1">
       <button
         type="button"
-        class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(item.key) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
+        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {getBoolValue(item.key) ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
         role="switch"
         aria-checked={getBoolValue(item.key)}
         aria-label={item.label ?? item.key}
         onclick={() => setBoolValue(item.key, !getBoolValue(item.key))}
       >
-        <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(item.key) ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
+        <span class="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 {getBoolValue(item.key) ? 'translate-x-4.5' : 'translate-x-0.5'}"></span>
       </button>
-      <span class="text-[11px] cursor-pointer select-none {getBoolValue(item.key) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(item.key, !getBoolValue(item.key))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(item.key, !getBoolValue(item.key)); } }}>{item.label ?? item.key}</span>
+      <span class="text-[11px] cursor-pointer select-none transition-colors duration-200 {getBoolValue(item.key) ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setBoolValue(item.key, !getBoolValue(item.key))} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBoolValue(item.key, !getBoolValue(item.key)); } }}>{item.label ?? item.key}</span>
     </div>
   {/if}
 {/if}
@@ -187,7 +185,7 @@
 <style>
   .form-input {
     box-sizing: border-box;
-    height: 2rem;
+    height: 2.25rem;
     background-color: var(--th-input-bg);
     border: 1px solid var(--th-input-border);
     border-radius: 0.25rem;

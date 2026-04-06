@@ -299,6 +299,15 @@
           toastStore.info(m.app_mod_closed(), m.app_all_data_cleared());
         },
       },
+      // ── Dev: Theme Gallery ──
+      ...(import.meta.env.DEV ? [{
+        id: "dev.themeGallery",
+        label: m.theme_gallery_command_label(),
+        category: "action" as const,
+        icon: "🎨",
+        enabled: () => true,
+        execute: () => { uiStore.openTab({ id: "theme-gallery", label: "Theme Gallery", type: "theme-gallery", icon: "🎨" }); },
+      }] : []),
     ]);
     // Run once
     return undefined;

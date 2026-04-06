@@ -3,6 +3,7 @@
   import { m } from "../paraglide/messages.js";
   import { configStore } from "../lib/stores/configStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { snapshot } from "../lib/utils/formSnapshot.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import type { VanillaEntryInfo } from "../lib/types/index.js";
@@ -35,6 +36,7 @@
   import RaceProgressionPanel from "./manual-entry/RaceProgressionPanel.svelte";
   import RaceTagPanel from "./manual-entry/RaceTagPanel.svelte";
   import RacePresetPanel from "./manual-entry/RacePresetPanel.svelte";
+  import FormNav from "./manual-entry/FormNav.svelte";
   import { buildFormState, encodeFormState } from "../lib/utils/formInit.js";
   import { parseHandleVersion, isContentHandle, resolveLoca } from "../lib/utils/localizationManager.js";
   import { generateUuid } from "../lib/utils/uuid.js";
@@ -671,6 +673,59 @@
   let hasWarnings = $derived(validationErrors.length > 0);
   let warnKeys = $derived(new Set(validationErrors.map(e => e.key)));
 
+  // ---- Nav sections + error counts for FormNav ----
+  let formContainerEl: HTMLElement | undefined = $state(undefined);
+
+  let navSections = $derived.by(() => {
+    const sections: { id: string; label: string }[] = [];
+    if (layout?.subsections) {
+      for (const sub of layout.subsections) {
+        if (sub.component) continue;
+        const id = `section-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
+        sections.push({ id, label: sub.title });
+      }
+    }
+    if (caps.hasBooleans && unhandledBooleans.length > 0) sections.push({ id: 'section-booleans', label: 'Booleans' });
+    if (caps.hasFields && unhandledFields.length > 0) sections.push({ id: 'section-fields', label: 'Fields' });
+    if (caps.hasSelectors) sections.push({ id: 'section-selectors', label: 'Selectors' });
+    if (caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))) sections.push({ id: 'section-strings', label: 'Strings' });
+    if (caps.hasTags) sections.push({ id: 'section-tags', label: 'Tags' });
+    if (_section === 'Races') {
+      sections.push({ id: 'section-race-progressions', label: 'Race Progressions' });
+      sections.push({ id: 'section-race-tags', label: 'Race Tags' });
+      sections.push({ id: 'section-cc-presets', label: 'CC Presets' });
+    }
+    if (caps.hasSubclasses) sections.push({ id: 'section-subclass-removal', label: 'Subclasses' });
+    if (caps.hasChildren) sections.push({ id: 'section-children', label: 'Children' });
+    return sections;
+  });
+
+  // Publish form nav sections to uiStore for CommandPalette integration (Y3)
+  $effect(() => {
+    uiStore.formNavSections = navSections;
+    return () => { uiStore.formNavSections = []; };
+  });
+
+  let navErrorCounts = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const err of validationErrors) {
+      const fieldKey = err.key.startsWith('field:') ? err.key.slice(6) : '';
+      if (fieldKey && layoutHandledFieldKeys.has(fieldKey)) {
+        // Error belongs to a layout subsection — find which one
+        for (const sub of layout?.subsections ?? []) {
+          if (sub.rows?.some(r => r.items.some(i => i.key === fieldKey))) {
+            const id = `section-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
+            counts[id] = (counts[id] ?? 0) + 1;
+            break;
+          }
+        }
+      } else if (err.key.startsWith('field:')) {
+        counts['section-fields'] = (counts['section-fields'] ?? 0) + 1;
+      }
+    }
+    return counts;
+  });
+
   let combinedSpellIdOptions = $derived(computeCombinedSpellIdOptions(availableVanillaSpellIds, availableSpellIdOptions));
 
   function submit(): void {
@@ -734,6 +789,10 @@
     {onclose}
   />
 
+  <div class="form-container" bind:this={formContainerEl}>
+    <FormNav sections={navSections} errorCounts={navErrorCounts} containerEl={formContainerEl} />
+    <div class="form-content">
+
   <FormIdentityCard>
   <FormIdentity
     {caps}
@@ -785,7 +844,7 @@
 
   <!-- Race Progressions inline panel -->
   {#if _section === 'Races'}
-    <FormSectionCard title={m.manual_form_race_progressions()} open={false}>
+    <FormSectionCard title={m.manual_form_race_progressions()} id="section-race-progressions" open={false}>
       {#snippet headerActions()}
         {#if getFieldValue('ProgressionTableUUID')}
           <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal">{getFieldValue('ProgressionTableUUID')}</span>
@@ -799,7 +858,7 @@
       />
     </FormSectionCard>
 
-    <FormSectionCard title={m.manual_form_race_tags()}>
+    <FormSectionCard title={m.manual_form_race_tags()} id="section-race-tags">
       <RaceTagPanel
         bind:this={raceTagPanel}
         raceName={getFieldValue('Name')}
@@ -812,7 +871,7 @@
       />
     </FormSectionCard>
 
-    <FormSectionCard title={m.manual_form_cc_presets()} open={false}>
+    <FormSectionCard title={m.manual_form_cc_presets()} id="section-cc-presets" open={false}>
       <RacePresetPanel
         raceUuid={uuids[0] ?? ''}
         raceName={getFieldValue('Name')}
@@ -822,7 +881,7 @@
 
   <!-- Legacy fieldsets (only render fields/booleans NOT handled by layout) -->
   {#if caps.hasBooleans && unhandledBooleans.length > 0}
-    <FormSectionCard title="Booleans">
+    <FormSectionCard title="Booleans" id="section-booleans">
       <BooleanFieldset
         bind:booleans
         {caps}
@@ -833,7 +892,7 @@
     </FormSectionCard>
   {/if}
   {#if caps.hasFields && unhandledFields.length > 0}
-    <FormSectionCard title="Fields">
+    <FormSectionCard title="Fields" id="section-fields">
       <FieldsFieldset
         bind:fields
         {caps}
@@ -850,13 +909,13 @@
   {/if}
 
   {#if caps.hasSelectors}
-    <FormSectionCard title="Selectors">
+    <FormSectionCard title="Selectors" id="section-selectors">
       <FormSelectors bind:selectors {warnKeys} />
     </FormSectionCard>
   {/if}
 
   {#if caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))}
-    <FormSectionCard title="Strings">
+    <FormSectionCard title="Strings" id="section-strings">
       <StringFieldset
         bind:strings
         {caps}
@@ -871,6 +930,7 @@
     </FormSectionCard>
   {/if}
 
+  <div id="section-children">
   <FormChildrenGroups
     {layout}
     {caps}
@@ -881,9 +941,10 @@
     {getChildValueOptions}
     {warnKeys}
   />
+  </div>
 
   {#if caps.hasTags}
-    <FormSectionCard title="Tags">
+    <FormSectionCard title="Tags" id="section-tags">
       <TagFieldset
         bind:tags
         {allowedTagTypes}
@@ -899,7 +960,7 @@
 
   <!-- Subclass Removal — progressive disclosure -->
   {#if caps.hasSubclasses}
-    <FormSectionCard title="{m.manual_form_subclass_removal()} ({subclasses.length})" bind:open={openSubclasses}>
+    <FormSectionCard title="{m.manual_form_subclass_removal()} ({subclasses.length})" id="section-subclass-removal" bind:open={openSubclasses}>
       {#snippet headerActions()}
         <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>
       {/snippet}
@@ -950,6 +1011,9 @@
 
 
 
+    </div><!-- .form-content -->
+  </div><!-- .form-container -->
+
   <!-- Validation + Submit -->
   <FormFooter
     {validationErrors}
@@ -960,6 +1024,66 @@
 </div>
 
 <style>
+  .form-container {
+    container-type: inline-size;
+    display: flex;
+    gap: 0.75rem;
+    min-height: 0;
+    transition: gap 0.2s ease;
+  }
+
+  .form-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  /* Narrow: collapse to single column with horizontal pill nav */
+  @container (max-width: 639px) {
+    .form-container {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .form-container :global(.form-nav) {
+      position: static;
+      width: 100%;
+      min-width: unset;
+      max-width: unset;
+      border-right: none;
+      border-bottom: 1px solid var(--th-border-700);
+      border-radius: 0.375rem 0.375rem 0 0;
+      padding: 0.25rem;
+    }
+    .form-container :global(.form-nav-list) {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      padding: 0;
+    }
+    .form-container :global(.form-nav-item) {
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.625rem;
+      border-radius: 9999px;
+      background: var(--th-bg-700);
+    }
+    .form-container :global(.form-nav-item.active) {
+      border-left-color: transparent;
+      border-bottom-color: var(--th-text-sky-400);
+      background: var(--th-bg-sky-700-60, rgba(14, 165, 233, 0.15));
+    }
+  }
+
+  /* Wide: nav + form + optional summary slot */
+  @container (min-width: 1024px) {
+    .form-container {
+      gap: 1rem;
+    }
+  }
+
   .lsx-codeblock {
     border: 1px solid var(--th-lsx-border);
     border-radius: 0.375rem;

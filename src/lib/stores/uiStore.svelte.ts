@@ -23,7 +23,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
@@ -63,6 +63,10 @@ class UiStore {
 
   /** Section accordion expansion state (keyed by section name, session-only) */
   expandedSections: Record<string, boolean> = $state({});
+
+  /** Form navigation sections exposed by the currently open ManualEntryForm (if any).
+   *  CommandPalette reads this to offer "Jump to: section" entries. */
+  formNavSections: { id: string; label: string }[] = $state([]);
 
   /** Persisted activity bar icon order */
   activityBarOrder: ActivityView[] = $state(UiStore.#loadActivityBarOrder());
@@ -195,6 +199,7 @@ class UiStore {
     this.activeTabId = "welcome";
     this.expandedNodes = {};
     this.expandedSections = {};
+    this.formNavSections = [];
     this.activeView = "explorer";
     this.settingsSection = "";
     this.sidebarVisible = true;

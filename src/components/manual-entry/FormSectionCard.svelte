@@ -4,22 +4,26 @@
 
   let {
     title,
+    id = undefined,
     open = $bindable(true),
     accentColor = undefined,
     icon = undefined,
+    badge = undefined,
     headerActions = undefined,
     children,
   }: {
     title: string;
+    id?: string;
     open?: boolean;
     accentColor?: string;
     icon?: Snippet;
+    badge?: string | number;
     headerActions?: Snippet;
     children: Snippet;
   } = $props();
 </script>
 
-<details class="form-section-card" bind:open style={accentColor ? `border-top: 3px solid ${accentColor}` : ''}>
+<details class="form-section-card" bind:open id={id} style={accentColor ? `border-top: 3px solid ${accentColor}` : ''}>
   <summary class="card-header">
     <span class="card-header-left">
       <ChevronRight size={12} class="card-chevron shrink-0 transition-transform" />
@@ -27,6 +31,9 @@
         {@render icon()}
       {/if}
       <span class="card-title">{title}</span>
+      {#if badge !== undefined && badge !== null && badge !== '' && badge !== 0}
+        <span class="card-badge">{badge}</span>
+      {/if}
     </span>
     {#if headerActions}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -75,6 +82,21 @@
   }
 
   .card-title {
+    line-height: 1;
+  }
+
+  .card-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 0.25rem;
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    background: var(--th-bg-sky-700-40);
+    color: var(--th-text-sky-300);
     line-height: 1;
   }
 

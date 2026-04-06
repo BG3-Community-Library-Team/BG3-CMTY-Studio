@@ -5,6 +5,7 @@
    */
   import X from "@lucide/svelte/icons/x";
   import Check from "@lucide/svelte/icons/check";
+  import Code from "@lucide/svelte/icons/code";
   import { handleComboboxKeydown } from "../lib/utils/comboboxKeyNav.js";
   import { m } from "../paraglide/messages.js";
   let {
@@ -14,6 +15,8 @@
     placeholder = "Type to search or add…",
     required = false,
     nonRemovable = [] as string[],
+    displayTransform,
+    rawTextToggle = false,
     onchange,
   }: {
     label?: string;
@@ -22,8 +25,24 @@
     placeholder?: string;
     required?: boolean;
     nonRemovable?: string[];
+    displayTransform?: (value: string) => string;
+    rawTextToggle?: boolean;
     onchange: (values: string[]) => void;
   } = $props();
+
+  let rawMode = $state(false);
+  let rawText = $state("");
+
+  function enterRawMode(): void {
+    rawText = selected.join(";");
+    rawMode = true;
+  }
+
+  function exitRawMode(): void {
+    const parsed = rawText.split(";").map(s => s.trim()).filter(Boolean);
+    onchange(parsed);
+    rawMode = false;
+  }
 
   let searchText = $state("");
   let isOpen = $state(false);
@@ -165,9 +184,31 @@
   }
 </script>
 
-{#if label}
-  <label for={inputId} class="text-zinc-400 text-xs">{label}{#if required}<span class="text-red-400 ml-0.5">*</span>{/if}</label>
+{#if label || rawTextToggle}
+  <div class="flex items-center justify-between">
+    {#if label}
+      <label for={inputId} class="text-[var(--th-text-500)] text-xs">{label}{#if required}<span class="text-red-400 ml-0.5">*</span>{/if}</label>
+    {/if}
+    {#if rawTextToggle}
+      <button
+        type="button"
+        class="text-[var(--th-text-500)] hover:text-[var(--th-text-200)] p-0.5 rounded transition-colors"
+        title={rawMode ? "Switch to chip view" : "Switch to raw text"}
+        aria-label={rawMode ? "Switch to chip view" : "Switch to raw text"}
+        onclick={() => { if (rawMode) exitRawMode(); else enterRawMode(); }}
+      ><Code size={13} /></button>
+    {/if}
+  </div>
 {/if}
+{#if rawMode}
+  <textarea
+    class="raw-textarea w-full text-xs"
+    rows={3}
+    bind:value={rawText}
+    onblur={exitRawMode}
+    placeholder="Value1;Value2;..."
+  ></textarea>
+{:else}
 <div
   bind:this={containerEl}
   class="relative"
@@ -186,20 +227,21 @@
     <div class="flex items-center gap-1 flex-wrap flex-1 min-w-0">
     {#each selected as val}
       {@const opt = optionMap.get(val)}
-      {@const display = opt?.label ?? val}
+      {@const baseDisplay = opt?.label ?? val}
+      {@const display = displayTransform ? displayTransform(val) : baseDisplay}
       {@const color = opt?.color}
       {@const isFixed = nonRemovable.includes(val)}
-      <span class="inline-flex items-center gap-0.5 px-1.5 rounded {isFixed ? 'bg-zinc-700/40 text-zinc-300' : 'bg-sky-700/40 text-sky-200'} text-xs max-w-48 truncate shrink-0 leading-[1.375rem]">
+      <span class="inline-flex items-center gap-0.5 px-1.5 rounded-full {isFixed ? 'bg-zinc-700/40 text-zinc-300' : 'bg-sky-700/40 text-sky-200'} text-xs max-w-48 truncate shrink-0 leading-[1.375rem]">
         {#if color}
           <span class="shrink-0 w-3 h-3 rounded-sm border border-white/20" style="background-color: {color}"></span>
         {/if}
-        <span class="truncate" title={display}>{display}</span>
+        <span class="truncate" title={baseDisplay}>{display}</span>
         {#if !isFixed}
           <button
             type="button"
-            class="text-sky-300 hover:text-sky-100 ml-0.5 leading-none"
+            class="text-sky-300 hover:text-sky-100 p-0.5 leading-none"
             onclick={(e: MouseEvent) => { e.stopPropagation(); removeValue(val); }}
-            aria-label={m.multiselect_remove_aria({ display })}
+            aria-label={m.multiselect_remove_aria({ display: baseDisplay })}
           ><X size={10} /></button>
         {/if}
       </span>
@@ -284,8 +326,24 @@
     {/if}
   </ul>
 </div>
+{/if}
 
 <style>
+  .raw-textarea {
+    box-sizing: border-box;
+    min-height: 3rem;
+    background-color: var(--th-input-bg);
+    border: 1px solid var(--th-input-border);
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--th-input-text);
+    resize: vertical;
+  }
+  .raw-textarea:focus {
+    outline: none;
+    border-color: rgb(14 165 233);
+  }
   .combobox-trigger {
     position: relative;
     box-sizing: border-box;

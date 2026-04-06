@@ -741,7 +741,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 select,
 input[type="text"],
 input[type="number"] {
-  min-height: 2rem;
+  min-height: 2.25rem;
   box-sizing: border-box;
 }
 

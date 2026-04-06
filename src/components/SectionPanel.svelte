@@ -359,7 +359,7 @@
   }
 </script>
 
-<section class="border border-[var(--th-border-700)] rounded-lg overflow-hidden" data-section-panel>
+<section class="border border-[var(--th-border-700)] rounded-lg overflow-clip" data-section-panel>
   <!-- Header (sticky within scroll container) -->
   <button
     class="w-full flex items-center gap-3 px-4 py-3 bg-[var(--th-bg-850,#1a1a1e)] hover:bg-[var(--th-bg-850,#1a1a1e)]/80

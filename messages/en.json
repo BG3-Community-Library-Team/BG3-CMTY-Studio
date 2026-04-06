@@ -780,5 +780,17 @@
 
   "error_source_dir_not_found": "Source directory not found: {path}",
   "error_schema_db_not_found": "Schema database not found: {path}. Build ref_base.sqlite first.",
-  "error_mod_dir_not_found": "Mod directory not found: {path}"
+  "error_mod_dir_not_found": "Mod directory not found: {path}",
+
+  "theme_gallery_command_label": "Dev: Theme Gallery",
+
+  "form_nav_sections_header": "Form Sections",
+  "form_nav_jump_to": "Jump to: {section}",
+  "form_nav_errors_aria": "{count, plural, one {# error} other {# errors}}",
+  "chip_remove_aria": "Remove {value}",
+  "chip_add_value": "Add value",
+  "chip_switch_to_raw": "Switch to raw text",
+  "chip_switch_to_chips": "Switch to chip view",
+  "children_count_badge": "{count, plural, one {# child} other {# children}}",
+  "children_add_child": "+ Add Child"
 }

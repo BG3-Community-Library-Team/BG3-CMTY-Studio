@@ -52,7 +52,7 @@
 
 <!-- Ungrouped rows -->
 {#if layout.rows}
-  <FormSectionCard title="Fields">
+  <FormSectionCard title="Fields" id="section-fields">
   {#if layout.sideColumnBooleans?.length}
     <!-- Side-column layout: rows on left, stacked booleans on right -->
     <div class="flex gap-4 items-start">
@@ -105,7 +105,7 @@
 {#if layout.subsections}
   {#each layout.subsections as sub}
     {#if !sub.component}
-    <FormSectionCard title={sub.title} open={!sub.collapsed}>
+    <FormSectionCard title={sub.title} id="section-{sub.title.toLowerCase().replace(/\s+/g, '-')}" open={!sub.collapsed}>
       {#snippet headerActions()}
         {#if sub.headerBooleans}
           {#each sub.headerBooleans as bKey}

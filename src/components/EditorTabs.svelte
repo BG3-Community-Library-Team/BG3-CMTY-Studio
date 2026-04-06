@@ -10,6 +10,7 @@
   import MetaLsxForm from "./MetaLsxForm.svelte";
   import LocalizationPanel from "./LocalizationPanel.svelte";
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
+  import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
   import ErrorBoundary from "./ErrorBoundary.svelte";
@@ -461,6 +462,8 @@
       {#if activeTab.filePath}
         <FilePreviewPanel filePath={activeTab.filePath} />
       {/if}
+    {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
+      <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />
     {/if}
   </div>
 </div>

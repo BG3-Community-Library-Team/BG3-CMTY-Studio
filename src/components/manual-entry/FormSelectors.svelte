@@ -45,7 +45,7 @@
   );
 
   const actionResourceOptions = $derived(
-    buildSectionOptions(modStore.vanilla.ActionResources, "ActionResources")
+    buildSectionOptions(modStore.vanilla.ActionResources ?? [], "ActionResources")
   );
 
   let selectorIdValues: SelectorIdInfo[] = $state([]);
@@ -67,7 +67,7 @@
 
   function guidOptionsForFn(fn: string): ComboboxOption[] {
     if (fn === "SelectSpells" || fn === "AddSpells") {
-      return buildSectionOptions(modStore.vanilla.Lists, "Lists", { nodeFilter: "SpellList" });
+      return buildSectionOptions(modStore.vanilla.Lists ?? [], "Lists", { nodeFilter: "SpellList" });
     }
     if (fn === "SelectSkills" || fn === "SelectSkillsExpertise") {
       return (modStore.vanillaValueLists.find(v => v.key === "Skill")?.values ?? [])
@@ -80,9 +80,9 @@
       return modStore.vanillaEquipment.map(v => ({ value: v, label: v }));
     }
     if (fn === "SelectPassives") {
-      return buildSectionOptions(modStore.vanilla.Lists, "Lists", { nodeFilter: "PassiveList" });
+      return buildSectionOptions(modStore.vanilla.Lists ?? [], "Lists", { nodeFilter: "PassiveList" });
     }
-    return buildSectionOptions(modStore.vanilla.Lists, "Lists");
+    return buildSectionOptions(modStore.vanilla.Lists ?? [], "Lists");
   }
 
   function addSelector() {
