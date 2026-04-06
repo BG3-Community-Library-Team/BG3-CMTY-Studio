@@ -250,7 +250,7 @@ describe("toggleEntry", () => {
     vi.mocked(stagingMarkDeleted).mockRejectedValue(new Error("DB locked"));
 
     await projectStore.toggleEntry("Races", "race-001");
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to toggle entry", "Error: DB locked");
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to toggle entry", "DB locked");
   });
 
   it("no-ops for unknown pk", async () => {
@@ -296,7 +296,7 @@ describe("addEntry", () => {
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("constraint violation"));
 
     await projectStore.addEntry("Races", { UUID: "dup-uuid", Name: "Dup" });
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to add entry", "Error: constraint violation");
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to add entry", "constraint violation");
   });
 });
 
@@ -336,7 +336,7 @@ describe("updateEntry", () => {
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("DB error"));
 
     await projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to update entry", "Error: DB error");
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to update entry", "DB error");
   });
 });
 
@@ -389,7 +389,7 @@ describe("removeEntry", () => {
     vi.mocked(stagingMarkDeleted).mockRejectedValue(new Error("DB locked"));
 
     await projectStore.removeEntry("Races", "race-001");
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to remove entry", "Error: DB locked");
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to remove entry", "DB locked");
   });
 });
 
@@ -489,7 +489,7 @@ describe("batchToggle", () => {
     vi.mocked(stagingBatchWrite).mockRejectedValue(new Error("batch fail"));
 
     await projectStore.batchToggle("Races", ["race-001"], true);
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to batch toggle", "Error: batch fail");
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to batch toggle", "batch fail");
   });
 });
 
@@ -555,7 +555,7 @@ describe("undo/redo", () => {
     vi.mocked(stagingUndo).mockRejectedValue(new Error("undo error"));
 
     await projectStore.undo();
-    expect(toastStore.warning).toHaveBeenCalledWith("Undo failed", "Error: undo error");
+    expect(toastStore.warning).toHaveBeenCalledWith("Undo failed", "undo error");
   });
 
   it("shows toast on redo failure", async () => {
@@ -563,7 +563,7 @@ describe("undo/redo", () => {
     vi.mocked(stagingRedo).mockRejectedValue(new Error("redo error"));
 
     await projectStore.redo();
-    expect(toastStore.warning).toHaveBeenCalledWith("Redo failed", "Error: redo error");
+    expect(toastStore.warning).toHaveBeenCalledWith("Redo failed", "redo error");
   });
 
   it("marks dirty after successful undo", async () => {

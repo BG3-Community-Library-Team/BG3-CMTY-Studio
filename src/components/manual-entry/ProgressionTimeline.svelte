@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DiffEntry } from "../../lib/types/index.js";
-  import { configStore } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { changesToManualFields } from "../../lib/utils/preview.js";
   import TagBadge from "../TagBadge.svelte";
@@ -65,8 +65,14 @@
 
   /** Get prefill fields for an entry being edited */
   function getPrefillFields(entry: DiffEntry): Record<string, string> {
-    const override = configStore.getAutoEntryOverride(section, entry.uuid);
-    if (override) return override;
+    const stagingEntry = projectStore.getEntries(sectionToTable(section)).find(e => e._pk === entry.uuid);
+    if (stagingEntry?._is_modified) {
+      const fields: Record<string, string> = {};
+      for (const [k, v] of Object.entries(stagingEntry)) {
+        if (!k.startsWith("_") && v != null) fields[k] = String(v);
+      }
+      return fields;
+    }
     return changesToManualFields(
       {
         section: section as any,
@@ -122,9 +128,10 @@
       const steps: TimelineStep[] = groupEntries
         .map((entry) => {
           const level = parseInt(entry.raw_attributes?.Level ?? "0", 10);
-          const enabled = configStore.isEnabled(section, entry.uuid);
+          const stagingEntry = projectStore.getEntries(sectionToTable(section)).find(e => e._pk === entry.uuid);
+          const enabled = !stagingEntry?._is_deleted;
           const isNew = entry.entry_kind !== "Vanilla" && entry.entry_kind !== "Modified";
-          const hasOverride = !!configStore.getAutoEntryOverride(section, entry.uuid);
+          const hasOverride = !!stagingEntry?._is_modified;
           const passivesRaw = entry.raw_attributes?.PassivesAdded ?? "";
           const boostsRaw = entry.raw_attributes?.Boosts ?? "";
           return {

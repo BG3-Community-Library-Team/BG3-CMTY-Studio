@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { configStore, type ManualEntry } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
+  import type { EntryRow } from "../../lib/types/entryRow.js";
   import { generatePresets, generateDreamGuardianEntries, type PresetGeneratorInput, type GeneratedEntry } from "../../lib/utils/racePresetGenerator.js";
   import { tooltip } from "../../lib/actions/tooltip.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -26,15 +27,26 @@
 
   let cameraBase: CameraBase = $state("HUM");
 
+  /** Check if an EntryRow references a particular race UUID. */
+  function matchesRace(e: EntryRow, uuid: string): boolean {
+    return (
+      String(e.RaceUUID ?? '') === uuid ||
+      String(e.Race ?? '') === uuid ||
+      String(e.ParentGuid ?? '') === uuid ||
+      String(e.SubRaceUUID ?? '') === uuid
+    );
+  }
+
   // Auto-detect sub-races: other Race entries with ParentGuid === this race's UUID
   let detectedSubRaces = $derived.by(() => {
     if (!raceUuid) return [];
     const results: { uuid: string; name: string; enabled: boolean }[] = [];
-    for (const e of configStore.manualEntries) {
-      if (e.section === "Races" && e.fields.ParentGuid === raceUuid) {
+    const raceEntries = projectStore.getEntries(sectionToTable("Races"));
+    for (const e of raceEntries) {
+      if (String(e.ParentGuid ?? '') === raceUuid) {
         results.push({
-          uuid: e.fields.UUID || "",
-          name: e.fields.Name || e.fields.UUID || "Sub-Race",
+          uuid: String(e.UUID ?? ''),
+          name: String(e.Name ?? e.UUID ?? 'Sub-Race'),
           enabled: true,
         });
       }
@@ -71,30 +83,27 @@
   let dgCount = $derived(selectedBodyCombos.length * 2); // RT + Preset per body combo
 
   // Existing presets for this race
-  let existingPresets = $derived.by(() => {
+  let existingPresets = $derived.by((): EntryRow[] => {
     if (!raceUuid) return [];
-    return configStore
-      .getManualEntriesForRace(raceUuid)
-      .filter((m) => m.entry.section === "CharacterCreationPresets")
-      .map((m) => m.entry);
+    const entries = projectStore.getEntries(sectionToTable("CharacterCreationPresets"));
+    return entries.filter(e => matchesRace(e, raceUuid));
   });
 
   // Existing DG entries for this race
-  let existingDGEntries = $derived.by(() => {
+  let existingDGEntries = $derived.by((): EntryRow[] => {
     if (!raceUuid) return [];
-    return configStore
-      .getManualEntriesForRace(raceUuid)
-      .filter((m) => m.entry.fields.Name?.includes("_Daisy"))
-      .map((m) => m.entry);
+    const entries = [
+      ...projectStore.getEntries(sectionToTable("CharacterCreationPresets")),
+      ...projectStore.getEntries(sectionToTable("RootTemplates")),
+    ];
+    return entries.filter(e => matchesRace(e, raceUuid) && String(e.Name ?? '').includes("_Daisy"));
   });
 
   // Existing root templates for this race
-  let existingTemplates = $derived.by(() => {
+  let existingTemplates = $derived.by((): EntryRow[] => {
     if (!raceUuid) return [];
-    return configStore
-      .getManualEntriesForRace(raceUuid)
-      .filter((m) => m.entry.section === "RootTemplates")
-      .map((m) => m.entry);
+    const entries = projectStore.getEntries(sectionToTable("RootTemplates"));
+    return entries.filter(e => matchesRace(e, raceUuid));
   });
 
   let hasExistingPresets = $derived(existingPresets.length > 0);
@@ -118,7 +127,7 @@
     return `${sex} ${build}`;
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     if (selectedBodyCombos.length === 0) return;
 
     const presetEntries = generatePresets({
@@ -141,34 +150,31 @@
     }
 
     const allEntries = [...presetEntries, ...dgEntries];
-    configStore.addManualEntries(
-      allEntries,
-      `Generate ${presetEntries.length / 2} presets + ${presetEntries.length / 2} templates${dgEntries.length > 0 ? ` + ${dgEntries.length / 2} DG entries` : ""}`
-    );
+    const label = `Generate ${presetEntries.length / 2} presets + ${presetEntries.length / 2} templates${dgEntries.length > 0 ? ` + ${dgEntries.length / 2} DG entries` : ""}`;
+    await projectStore.snapshot(label);
+    for (const entry of allEntries) {
+      await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
+    }
   }
 
   /** Find the linked RootTemplate entry for a given CC Preset */
-  function findLinkedTemplate(preset: ManualEntry): { entry: ManualEntry; index: number } | undefined {
-    const rtUuid = preset.fields.RootTemplate;
+  function findLinkedTemplate(preset: EntryRow): EntryRow | undefined {
+    const rtUuid = String(preset.RootTemplate ?? '');
     if (!rtUuid) return undefined;
-    for (let i = 0; i < configStore.manualEntries.length; i++) {
-      const e = configStore.manualEntries[i];
-      if (e.section === "RootTemplates" && (e.fields.MapKey === rtUuid || e.fields.UUID === rtUuid)) {
-        return { entry: e, index: i };
-      }
-    }
-    return undefined;
+    const templates = projectStore.getEntries(sectionToTable("RootTemplates"));
+    return templates.find(e =>
+      String(e.MapKey ?? '') === rtUuid || String(e.UUID ?? '') === rtUuid
+    );
   }
 
   /** Save a single template field inline */
-  function saveTemplateField(templateMapKey: string, field: string, value: string) {
-    for (let i = 0; i < configStore.manualEntries.length; i++) {
-      const e = configStore.manualEntries[i];
-      if (e.section === "RootTemplates" && (e.fields.MapKey === templateMapKey || e.fields.UUID === templateMapKey)) {
-        const updatedFields = { ...e.fields, [field]: value };
-        configStore.updateManualEntry(i, "RootTemplates", updatedFields);
-        break;
-      }
+  async function saveTemplateField(templateMapKey: string, field: string, value: string) {
+    const templates = projectStore.getEntries(sectionToTable("RootTemplates"));
+    const tmpl = templates.find(e =>
+      String(e.MapKey ?? '') === templateMapKey || String(e.UUID ?? '') === templateMapKey
+    );
+    if (tmpl) {
+      await projectStore.updateEntry(sectionToTable("RootTemplates"), tmpl._pk, { [field]: value });
     }
   }
 </script>
@@ -246,41 +252,41 @@
         Existing Presets ({existingPresets.length})
       </summary>
       <div class="space-y-1 mt-2">
-        {#each existingPresets as preset (preset.fields.UUID)}
+        {#each existingPresets as preset (String(preset.UUID))}
           {@const linked = findLinkedTemplate(preset)}
           <div class="border border-[var(--th-border-700)] rounded">
             <button
               type="button"
               class="w-full text-left px-2.5 py-1.5 text-xs flex items-center gap-2 hover:bg-[var(--th-bg-800)] transition-colors"
-              onclick={() => toggleExpand(preset.fields.UUID)}
-              aria-expanded={expandedPresets.has(preset.fields.UUID)}
+              onclick={() => toggleExpand(String(preset.UUID))}
+              aria-expanded={expandedPresets.has(String(preset.UUID))}
             >
-              <ChevronRight size={10} class="shrink-0 transition-transform {expandedPresets.has(preset.fields.UUID) ? 'rotate-90' : ''}" />
+              <ChevronRight size={10} class="shrink-0 transition-transform {expandedPresets.has(String(preset.UUID)) ? 'rotate-90' : ''}" />
               <span class="text-[var(--th-text-200)]">
-                {bodyLabel(Number(preset.fields.BodyShape), Number(preset.fields.BodyType))}
+                {bodyLabel(Number(preset.BodyShape), Number(preset.BodyType))}
               </span>
-              {#if preset.fields.SubRaceUUID && preset.fields.SubRaceUUID !== raceUuid && preset.fields.SubRaceUUID !== "00000000-0000-0000-0000-000000000000"}
-                <span class="text-[var(--th-text-500)] text-[10px]">Sub: {preset.fields.SubRaceUUID}</span>
+              {#if preset.SubRaceUUID && String(preset.SubRaceUUID) !== raceUuid && String(preset.SubRaceUUID) !== "00000000-0000-0000-0000-000000000000"}
+                <span class="text-[var(--th-text-500)] text-[10px]">Sub: {String(preset.SubRaceUUID)}</span>
               {/if}
               {#if linked}
-                <span class="ml-auto font-mono text-[10px] text-[var(--th-text-500)] truncate max-w-40">RT: {linked.entry.fields.MapKey || linked.entry.fields.UUID}</span>
+                <span class="ml-auto font-mono text-[10px] text-[var(--th-text-500)] truncate max-w-40">RT: {String(linked.MapKey ?? linked.UUID ?? '')}</span>
               {/if}
             </button>
 
-            {#if expandedPresets.has(preset.fields.UUID) && linked}
+            {#if expandedPresets.has(String(preset.UUID)) && linked}
               <div class="px-3 py-2 border-t border-[var(--th-border-700)] bg-[var(--th-bg-900)] space-y-2">
                 <div class="text-[10px] text-[var(--th-text-500)] mb-1">
-                  Edit linked RootTemplate — <span class="font-mono select-all">{linked.entry.fields.MapKey || linked.entry.fields.UUID}</span>
+                  Edit linked RootTemplate — <span class="font-mono select-all">{String(linked.MapKey ?? linked.UUID ?? '')}</span>
                 </div>
                 {#each ["ParentTemplateId", "CharacterVisualResourceID", "AnimationSetResourceID", "Icon", "Equipment", "SpellSet"] as field}
-                  {@const rtKey = linked.entry.fields.MapKey || linked.entry.fields.UUID}
+                  {@const rtKey = String(linked.MapKey ?? linked.UUID ?? '')}
                   <div class="flex flex-col gap-0.5 text-xs">
                     <label class="text-[var(--th-text-400)]" for="rt-{rtKey}-{field}">{field}</label>
                     <input
                       id="rt-{rtKey}-{field}"
                       type="text"
                       class="form-input w-full"
-                      value={linked.entry.fields[field] ?? ""}
+                      value={String(linked[field] ?? '')}
                       onblur={(e) => saveTemplateField(rtKey, field, (e.target as HTMLInputElement).value)}
                       placeholder={field === "ParentTemplateId" ? "UUID of parent template" : ""}
                     />
@@ -302,12 +308,12 @@
         Dream Guardian Entries ({existingDGEntries.length})
       </summary>
       <div class="space-y-1 mt-2">
-        {#each existingDGEntries as dg (dg.fields.UUID)}
+        {#each existingDGEntries as dg (String(dg.UUID))}
           <div class="flex items-center gap-2 text-xs px-2.5 py-1.5 border border-[var(--th-border-700)] rounded">
-            <span class="text-[var(--th-text-200)]">{dg.fields.Name || "DG Entry"}</span>
-            {#if dg.fields.ParentTemplateId}
+            <span class="text-[var(--th-text-200)]">{String(dg.Name ?? '') || "DG Entry"}</span>
+            {#if dg.ParentTemplateId}
               <span class="ml-auto text-[10px] text-[var(--th-text-500)] font-mono truncate max-w-48">
-                Parent: {dg.fields.ParentTemplateId}
+                Parent: {String(dg.ParentTemplateId)}
               </span>
             {/if}
           </div>

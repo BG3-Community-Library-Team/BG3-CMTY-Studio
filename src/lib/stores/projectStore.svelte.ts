@@ -20,7 +20,7 @@ import {
 } from "../tauri/staging.js";
 import { getDbPaths } from "../tauri/db-management.js";
 import { toastStore } from "./toastStore.svelte.js";
-import type { OutputFormat } from "../types/index.js";
+import { getErrorMessage, type OutputFormat } from "../types/index.js";
 
 /**
  * Derive the primary-key column name from a raw staging DB row.
@@ -62,6 +62,18 @@ function rowToEntryRow(
 }
 
 /**
+ * Convert a section name (e.g. "Races") to its staging DB table name.
+ * Resolves via projectStore.sections when available — handles stats tables
+ * (e.g. "stats__Spells") and multi-node regions (e.g. "lsx__Progressions__Progression").
+ * Falls back to `lsx__${section}` before hydration.
+ */
+export function sectionToTable(section: string): string {
+  const match = projectStore.sections.find(s => s.region_id === section);
+  if (match) return match.table_name;
+  return `lsx__${section}`;
+}
+
+/**
  * Thin reactive caching layer over the staging DB.
  *
  * Every mutation writes through to the staging DB via IPC first and
@@ -74,8 +86,11 @@ class ProjectStore {
   format: OutputFormat = $state("Yaml");
   dirty: boolean = $state(false);
 
+  /** Auto-generated localization entries (handle → {text, version}). */
+  autoLocaEntries: Map<string, { text: string; version: number }> = $state(new Map());
+
   // === Private State ===
-  #entryCache: Map<string, EntryRow[]> = new Map();
+  #entryCache: Map<string, EntryRow[]> = $state(new Map());
   #stagingDbPath: string = "";
   #writeGeneration: number = 0;
   #savedGeneration: number = 0;
@@ -111,6 +126,7 @@ class ProjectStore {
     if (cached) return cached;
 
     const rows = await stagingQuerySection(this.#stagingDbPath, table, true);
+    if (!rows) return [];
     const sourceType = this.#sourceTypeForTable(table);
     const entries: EntryRow[] = rows.map(row => rowToEntryRow(row, table, sourceType));
     this.#entryCache.set(table, entries);
@@ -139,7 +155,7 @@ class ProjectStore {
       this.#markDirty();
     } catch (err) {
       entry._is_deleted = wasDeleted;
-      toastStore.warning("Failed to toggle entry", String(err));
+      toastStore.warning("Failed to toggle entry", getErrorMessage(err));
     }
   }
 
@@ -169,7 +185,7 @@ class ProjectStore {
           entry[key] = value;
         }
       }
-      toastStore.warning("Failed to update entry", String(err));
+      toastStore.warning("Failed to update entry", getErrorMessage(err));
     }
   }
 
@@ -180,7 +196,7 @@ class ProjectStore {
       this.invalidateSection(table);
       this.#markDirty();
     } catch (err) {
-      toastStore.warning("Failed to add entry", String(err));
+      toastStore.warning("Failed to add entry", getErrorMessage(err));
     }
   }
 
@@ -205,7 +221,7 @@ class ProjectStore {
       if (entry && !wasNew) {
         entry._is_deleted = false;
       }
-      toastStore.warning("Failed to remove entry", String(err));
+      toastStore.warning("Failed to remove entry", getErrorMessage(err));
     }
   }
 
@@ -241,7 +257,7 @@ class ProjectStore {
           }
         }
       }
-      toastStore.warning("Failed to batch toggle", String(err));
+      toastStore.warning("Failed to batch toggle", getErrorMessage(err));
     }
   }
 
@@ -251,7 +267,7 @@ class ProjectStore {
     try {
       await this.loadSection(table);
     } catch (err) {
-      toastStore.warning("Failed to reset section", String(err));
+      toastStore.warning("Failed to reset section", getErrorMessage(err));
     }
   }
 
@@ -279,7 +295,7 @@ class ProjectStore {
       this.sections = await stagingListSections(this.#stagingDbPath);
       this.#markDirty();
     } catch (err) {
-      toastStore.warning("Undo failed", String(err));
+      toastStore.warning("Undo failed", getErrorMessage(err));
     }
   }
 
@@ -293,7 +309,7 @@ class ProjectStore {
       this.sections = await stagingListSections(this.#stagingDbPath);
       this.#markDirty();
     } catch (err) {
-      toastStore.warning("Redo failed", String(err));
+      toastStore.warning("Redo failed", getErrorMessage(err));
     }
   }
 
@@ -305,6 +321,26 @@ class ProjectStore {
   markClean(): void {
     this.#savedGeneration = this.#writeGeneration;
     this.dirty = false;
+  }
+
+  /** Set the output format and persist to staging meta. */
+  async setFormat(format: OutputFormat): Promise<void> {
+    this.format = format;
+    if (this.#stagingDbPath) {
+      await stagingSetMeta(this.#stagingDbPath, "format", format);
+    }
+  }
+
+  /** Read a meta key from the staging DB. */
+  async getMeta(key: string): Promise<string | null> {
+    if (!this.#stagingDbPath) return null;
+    return stagingGetMeta(this.#stagingDbPath, key);
+  }
+
+  /** Write a meta key to the staging DB. */
+  async setMeta(key: string, value: string): Promise<void> {
+    if (!this.#stagingDbPath) return;
+    await stagingSetMeta(this.#stagingDbPath, key, value);
   }
 
   /** Reset all state to initial values. */

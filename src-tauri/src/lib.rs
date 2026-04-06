@@ -212,31 +212,21 @@ async fn cmd_scan_mod(app: tauri::AppHandle, mod_path: String, extra_scan_paths:
         }
         let result = scan_mod(&mod_path, base_db, &extra_scan_paths.unwrap_or_default())?;
 
-        // Post-scan DB ingest: primary → staging, additional → ref_mods
-        {
+        // Post-scan DB ingest: additional mods → ref_mods.
+        // Primary mod staging is handled by the frontend via
+        // rehydrateStaging() (recreate + populate) to avoid
+        // _sources UNIQUE constraint violations on re-scan.
+        if !is_primary.unwrap_or(false) {
             let mod_dir = std::path::Path::new(&mod_path);
             let mod_name = result.mod_meta.name.clone();
             let options = reference_db::BuildOptions::default();
 
-            if is_primary.unwrap_or(false) {
-                // Primary mod → populate staging DB
-                if db_paths.staging.exists() {
-                    match reference_db::staging::populate_staging_from_mod(
-                        mod_dir, &mod_name, &db_paths.staging, &options,
-                    ) {
-                        Ok(s) => tracing::info!(rows = s.total_rows, "Populated staging DB from active mod"),
-                        Err(e) => tracing::warn!(error = %e, "Failed to populate staging DB"),
-                    }
-                }
-            } else {
-                // Additional mod → populate ref_mods DB
-                if db_paths.mods.exists() {
-                    match reference_db::populate_mods_db(
-                        mod_dir, &mod_name, &db_paths.mods, &options,
-                    ) {
-                        Ok(s) => tracing::info!(rows = s.total_rows, "Populated ref_mods DB from additional mod"),
-                        Err(e) => tracing::warn!(error = %e, "Failed to populate ref_mods DB"),
-                    }
+            if db_paths.mods.exists() {
+                match reference_db::populate_mods_db(
+                    mod_dir, &mod_name, &db_paths.mods, &options,
+                ) {
+                    Ok(s) => tracing::info!(rows = s.total_rows, "Populated ref_mods DB from additional mod"),
+                    Err(e) => tracing::warn!(error = %e, "Failed to populate ref_mods DB"),
                 }
             }
         }
@@ -1940,6 +1930,7 @@ pub fn run() {
             commands::db::cmd_staging_snapshot,
             commands::db::cmd_staging_undo,
             commands::db::cmd_staging_redo,
+            commands::export::cmd_save_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

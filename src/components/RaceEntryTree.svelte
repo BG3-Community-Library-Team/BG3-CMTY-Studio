@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { DiffEntry } from "../lib/types/index.js";
-  import type { ManualEntry } from "../lib/stores/configStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import type { DiffEntry, ManualEntry } from "../lib/types/index.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { buildRaceTree, type RaceTreeNode, type RaceEntryInput } from "../lib/utils/raceTree.js";
   import EntryRow from "./EntryRow.svelte";
@@ -27,14 +26,14 @@
     }))
   );
 
-  // Build race entry inputs from manual entries
+  // Build race entry inputs from manual entries (new rows in staging)
   let manualInputs = $derived<RaceEntryInput[]>(
-    configStore.manualEntries
-      .filter(e => e.section === "Races")
+    projectStore.getEntries(sectionToTable("Races"))
+      .filter(e => e._is_new && !e._is_deleted)
       .map(e => ({
-        uuid: e.fields["UUID"] || "",
-        displayName: e.fields["Name"] || e.fields["UUID"] || "Unnamed",
-        parentGuid: e.fields["ParentGuid"] || undefined,
+        uuid: String(e["UUID"] ?? ""),
+        displayName: String(e["Name"] ?? e["UUID"] ?? "Unnamed"),
+        parentGuid: e["ParentGuid"] ? String(e["ParentGuid"]) : undefined,
       }))
       .filter(e => e.uuid !== "")
   );
@@ -78,10 +77,19 @@
   }
 
   function findManualEntry(uuid: string): { entry: ManualEntry; globalIndex: number } | undefined {
-    const idx = configStore.manualEntries.findIndex(
-      e => e.section === "Races" && e.fields["UUID"] === uuid
+    const entries = projectStore.getEntries(sectionToTable("Races"));
+    const idx = entries.findIndex(
+      e => e._is_new && !e._is_deleted && String(e["UUID"] ?? "") === uuid
     );
-    if (idx >= 0) return { entry: configStore.manualEntries[idx], globalIndex: idx };
+    if (idx >= 0) {
+      const e = entries[idx];
+      // Adapt to ManualEntry shape for downstream consumers
+      const fields: Record<string, string> = {};
+      for (const [k, v] of Object.entries(e)) {
+        if (!k.startsWith("_") && typeof v === "string") fields[k] = v;
+      }
+      return { entry: { section: "Races", fields }, globalIndex: idx };
+    }
     return undefined;
   }
 

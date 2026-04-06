@@ -1,6 +1,6 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import {
@@ -118,8 +118,12 @@
   });
   let manualCountBySection = $derived.by(() => {
     const m = new Map<string, number>();
-    for (const e of configStore.manualEntries) {
-      m.set(e.section, (m.get(e.section) ?? 0) + 1);
+    for (const s of projectStore.sections) {
+      if (s.new_rows > 0) {
+        // Convert table_name back to section name (strip "lsx__" prefix)
+        const sectionName = s.table_name.startsWith("lsx__") ? s.table_name.slice(5) : s.table_name;
+        m.set(sectionName, s.new_rows);
+      }
     }
     return m;
   });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DiffEntry } from "../lib/types/index.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { changesToManualFields } from "../lib/utils/preview.js";
   import { validateEntry } from "../lib/utils/validation.js";
@@ -37,6 +37,22 @@
 
   let isVanilla = $derived(entry.entry_kind === 'Vanilla');
 
+  /** Staging DB table name for this section */
+  let table = $derived(sectionToTable(section));
+
+  /** Ensure section data is loaded in projectStore (lazy) */
+  $effect(() => {
+    const t = table;
+    if (!projectStore.isSectionLoaded(t)) {
+      projectStore.loadSection(t).catch(err => {
+        console.warn(`[EntryRow] Failed to load table ${t}:`, err);
+      });
+    }
+  });
+
+  /** Look up the corresponding staging DB entry for derived state */
+  let stagingEntry = $derived(projectStore.getEntries(table).find(e => e._pk === entry.uuid));
+
   /** Section capability flags — derived from SECTION_CAPS */
   const capabilities = $derived.by(() => {
     const caps = SECTION_CAPS[section as keyof typeof SECTION_CAPS] as any;
@@ -49,28 +65,18 @@
 
   /** Whether this entry currently has a Blacklist override */
   let isBlacklisted = $derived.by(() => {
-    const override = configStore.getAutoEntryOverride(section, entry.uuid);
-    return override?.["Blacklist"] === "true";
+    if (!stagingEntry?._is_modified) return false;
+    return String(stagingEntry?.["Blacklist"] ?? "") === "true";
   });
 
-  /** Toggle the Blacklist flag via auto-entry override */
+  /** Toggle the Blacklist flag via staging DB update */
   function toggleBlacklist(): void {
     if (isBlacklisted) {
-      // Remove blacklist — clear the override entirely (or remove just the Blacklist key)
-      const existing = configStore.getAutoEntryOverride(section, entry.uuid);
-      if (existing) {
-        const { Blacklist: _, ...rest } = existing;
-        if (Object.keys(rest).length === 0) {
-          configStore.clearAutoEntryOverride(section, entry.uuid);
-        } else {
-          configStore.setAutoEntryOverride(section, entry.uuid, rest);
-        }
-      }
+      // Remove blacklist
+      projectStore.updateEntry(table, entry.uuid, { Blacklist: "" });
     } else {
-      // Add blacklist — merge with existing override
-      const existing = configStore.getAutoEntryOverride(section, entry.uuid) ?? {};
-      configStore.setAutoEntryOverride(section, entry.uuid, {
-        ...existing,
+      // Add blacklist
+      projectStore.updateEntry(table, entry.uuid, {
         UUID: entry.uuid,
         Blacklist: "true",
       });
@@ -110,21 +116,18 @@
 
   /** Computed data state — entry status derived from stores and entry data */
   const dataState = $derived.by(() => ({
-    enabled: configStore.isEnabled(section, entry.uuid),
-    hasOverride: (() => {
-      const override = configStore.getAutoEntryOverride(section, entry.uuid);
-      if (!override) return false;
-      return Object.keys(override).some(k => k !== "UUID");
-    })(),
+    enabled: stagingEntry ? !stagingEntry._is_deleted : true,
+    hasOverride: stagingEntry?._is_modified ?? false,
     isEntirelyNew: entry.changes.length === 1 && entry.changes[0].change_type === "EntireEntryNew",
   }));
 
-  /** Detect if this entry has Hidden or IsHidden set to true (from raw attributes or override). */
+  /** Detect if this entry has Hidden or IsHidden set to true (from staging row or raw attributes). */
   let isHidden = $derived.by(() => {
-    const override = configStore.getAutoEntryOverride(section, entry.uuid);
-    if (override) {
-      if (override["Boolean:Hidden"] === "true" || override["Boolean:IsHidden"] === "true") return true;
-      if (override["Boolean:Hidden"] === "false" || override["Boolean:IsHidden"] === "false") return false;
+    if (stagingEntry?._is_modified) {
+      const h = String(stagingEntry["Boolean:Hidden"] ?? "");
+      const ih = String(stagingEntry["Boolean:IsHidden"] ?? "");
+      if (h === "true" || ih === "true") return true;
+      if (h === "false" || ih === "false") return false;
     }
     const attrs = entry.raw_attributes;
     if (attrs?.Hidden === "true" || attrs?.IsHidden === "true") return true;
@@ -179,7 +182,7 @@
   });
 
   function toggle(): void {
-    configStore.toggleEntry(section, entry.uuid);
+    projectStore.toggleEntry(table, entry.uuid);
   }
 
   let summary = $derived.by((): string => {
@@ -193,10 +196,15 @@
   });
 
   /** Convert the auto entry's changes into a prefill-compatible Record.
-   *  If an override exists, use it; otherwise derive from diff changes. */
+   *  If the staging entry is modified, use its column data as override; otherwise derive from diff changes. */
   let prefillFields = $derived.by(() => {
-    const override = configStore.getAutoEntryOverride(section, entry.uuid);
-    if (override) return override;
+    if (stagingEntry?._is_modified) {
+      const fields: Record<string, string> = {};
+      for (const [k, v] of Object.entries(stagingEntry)) {
+        if (!k.startsWith("_") && v != null) fields[k] = String(v);
+      }
+      return fields;
+    }
     return changesToManualFields(
       {
         section: section as any,
@@ -327,8 +335,7 @@
             aria-label={m.entry_row_unhide_aria()}
             onclick={(e) => {
               e.stopPropagation();
-              const existing = configStore.getAutoEntryOverride(section, entry.uuid) ?? { UUID: entry.uuid };
-              configStore.setAutoEntryOverride(section, entry.uuid, { ...existing, [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "false" });
+              projectStore.updateEntry(table, entry.uuid, { [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "false" });
             }}
           >
             <EyeOff class="w-3.5 h-3.5" />
@@ -341,8 +348,7 @@
             aria-label={m.entry_row_hide_aria()}
             onclick={(e) => {
               e.stopPropagation();
-              const existing = configStore.getAutoEntryOverride(section, entry.uuid) ?? { UUID: entry.uuid };
-              configStore.setAutoEntryOverride(section, entry.uuid, { ...existing, [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "true" });
+              projectStore.updateEntry(table, entry.uuid, { [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "true" });
             }}
           >
             <Eye class="w-3.5 h-3.5" />
@@ -450,8 +456,7 @@
             aria-label={m.entry_row_unhide_aria()}
             onclick={(e) => {
               e.stopPropagation();
-              const existing = configStore.getAutoEntryOverride(section, entry.uuid) ?? { UUID: entry.uuid };
-              configStore.setAutoEntryOverride(section, entry.uuid, { ...existing, [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "false" });
+              projectStore.updateEntry(table, entry.uuid, { [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "false" });
             }}
           >
             <EyeOff class="w-3.5 h-3.5" />
@@ -464,8 +469,7 @@
             aria-label={m.entry_row_hide_aria()}
             onclick={(e) => {
               e.stopPropagation();
-              const existing = configStore.getAutoEntryOverride(section, entry.uuid) ?? { UUID: entry.uuid };
-              configStore.setAutoEntryOverride(section, entry.uuid, { ...existing, [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "true" });
+              projectStore.updateEntry(table, entry.uuid, { [simpleKey(FIELD_PREFIX.Boolean, hiddenKey)]: "true" });
             }}
           >
             <Eye class="w-3.5 h-3.5" />

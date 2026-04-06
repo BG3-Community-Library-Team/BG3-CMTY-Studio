@@ -3,8 +3,8 @@
   Manages view mode (summary row with remove button) and edit mode (inline form).
 -->
 <script lang="ts">
-  import type { ManualEntry } from "../lib/stores/configStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import type { ManualEntry } from "../lib/types/index.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import UnifiedForm from "./UnifiedForm.svelte";
@@ -95,7 +95,8 @@
 
   function removeEntry() {
     const label = getLabel(entry.fields);
-    configStore.removeManualEntry(globalIndex);
+    const pk = entry.fields["UUID"] ?? entry.fields["EntryName"] ?? "";
+    projectStore.removeEntry(sectionToTable(section), pk);
     toastStore.info(m.manual_entry_card_removed_title(), label);
   }
 

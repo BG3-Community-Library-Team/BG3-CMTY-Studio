@@ -1,5 +1,7 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { highlightXml } from "../lib/utils/preview.js";
   import { previewLsx } from "../lib/utils/tauri.js";
   import { diffEntryToLsx, getRegionId } from "../lib/utils/entryToLsx.js";
@@ -8,8 +10,42 @@
   import { m } from "../paraglide/messages.js";
   import ExportBar from "./ExportBar.svelte";
   import ExportModModal from "./ExportModModal.svelte";
+  import { saveProject } from "../lib/tauri/save.js";
+  import { getDbPaths } from "../lib/tauri/db-management.js";
 
   let showExportModal = $state(false);
+  let isSaving = $state(false);
+
+  async function handleSave() {
+    if (!modStore.selectedModPath || isSaving) return;
+    isSaving = true;
+    try {
+      const dbPaths = await getDbPaths();
+      const result = await saveProject(
+        dbPaths.staging,
+        dbPaths.base,
+        modStore.selectedModPath,
+        modStore.modName,
+        modStore.modFolder,
+        false,
+        false,
+      );
+      if (result.errors.length === 0) {
+        projectStore.markClean();
+        const fileCount = result.files_created.length + result.files_updated.length;
+        toastStore.success(
+          `Saved ${fileCount} file${fileCount !== 1 ? "s" : ""}`,
+          `${result.total_entries} entries exported`,
+        );
+      } else {
+        toastStore.error("Save failed", result.errors.join(", "));
+      }
+    } catch (e: unknown) {
+      toastStore.error("Save failed", getErrorMessage(e));
+    } finally {
+      isSaving = false;
+    }
+  }
 
   // ---- LSX preview ----
   let lsxPreviewText = $state("");
@@ -85,7 +121,7 @@
 
   <!-- Export bar -->
   <div class="px-4 py-3 border-t border-[var(--th-border-700)]">
-    <ExportBar lsxPreviewText={lsxPreviewText} onexportmod={() => showExportModal = true} />
+    <ExportBar lsxPreviewText={lsxPreviewText} onexportmod={() => showExportModal = true} onsave={handleSave} saving={isSaving} />
   </div>
 </aside>
 

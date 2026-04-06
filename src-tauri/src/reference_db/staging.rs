@@ -396,8 +396,24 @@ pub fn staging_upsert_row(
     columns: &HashMap<String, String>,
     is_new: bool,
 ) -> Result<UpsertResult, String> {
-    validate_staging_table(conn, table)?;
+    let resolved = resolve_staging_table(conn, table)?;
+    let table = resolved.as_str();
     let pk_col = get_pk_column(conn, table)?;
+
+    // Filter to only columns that exist in the schema (the frontend form may
+    // send prefixed keys like "Boolean:AllowImprovement" that don't correspond
+    // to actual DB columns).
+    let schema = load_embedded_schema(conn)?;
+    let known_cols: std::collections::HashSet<&str> = schema
+        .tables
+        .get(table)
+        .map(|ts| ts.columns.iter().map(|c| c.name.as_str()).collect())
+        .unwrap_or_default();
+    let columns: HashMap<String, String> = columns
+        .iter()
+        .filter(|(k, _)| known_cols.contains(k.as_str()) || *k == &pk_col)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
 
     let pk_value = columns
         .get(&pk_col)
@@ -527,7 +543,8 @@ pub fn staging_mark_deleted(
     table: &str,
     pk: &str,
 ) -> Result<bool, String> {
-    validate_staging_table(conn, table)?;
+    let resolved = resolve_staging_table(conn, table)?;
+    let table = resolved.as_str();
     let pk_col = get_pk_column(conn, table)?;
 
     // Undo: capture before state
@@ -589,7 +606,8 @@ pub fn staging_unmark_deleted(
     table: &str,
     pk: &str,
 ) -> Result<bool, String> {
-    validate_staging_table(conn, table)?;
+    let resolved = resolve_staging_table(conn, table)?;
+    let table = resolved.as_str();
     let pk_col = get_pk_column(conn, table)?;
 
     // Undo: capture before state
@@ -718,11 +736,11 @@ pub fn staging_query_changes(
     let mut changes = Vec::new();
 
     let tables: Vec<(&String, &TableSchema)> = if let Some(filter) = table_filter {
-        validate_staging_table(conn, filter)?;
+        let resolved = resolve_staging_table(conn, filter)?;
         schema
             .tables
             .iter()
-            .filter(|(name, _)| name.as_str() == filter)
+            .filter(|(name, _)| name.as_str() == resolved)
             .collect()
     } else {
         schema.tables.iter().collect()
@@ -878,14 +896,14 @@ pub fn staging_query_section(
     table: &str,
     include_deleted: bool,
 ) -> Result<Vec<HashMap<String, serde_json::Value>>, String> {
-    validate_staging_table(conn, table)?;
+    let resolved = resolve_staging_table(conn, table)?;
 
     let sql = if include_deleted {
-        format!("SELECT * FROM \"{}\"", table)
+        format!("SELECT * FROM \"{}\"", resolved)
     } else {
         format!(
             "SELECT * FROM \"{}\" WHERE \"_is_deleted\" = 0",
-            table
+            resolved
         )
     };
 
@@ -922,12 +940,12 @@ pub fn staging_get_row(
     table: &str,
     pk: &str,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, String> {
-    validate_staging_table(conn, table)?;
-    let pk_col = get_pk_column(conn, table)?;
+    let resolved = resolve_staging_table(conn, table)?;
+    let pk_col = get_pk_column(conn, &resolved)?;
 
     let sql = format!(
         "SELECT * FROM \"{}\" WHERE \"{}\" = ?1",
-        table, pk_col
+        resolved, pk_col
     );
     let mut stmt = conn
         .prepare(&sql)
@@ -1039,12 +1057,62 @@ fn sqlite_value_to_json(val: rusqlite::types::Value) -> serde_json::Value {
 }
 
 /// Validate that a table exists in the staging schema.
-fn validate_staging_table(conn: &Connection, table: &str) -> Result<(), String> {
+/// If the exact name isn't found, try resolving via `_table_meta.region_id`
+/// (handles multi-node regions where `lsx__Region` doesn't exist but
+/// `lsx__Region__Node` does).
+/// Resolve a frontend table name to the actual staging table name.
+/// Returns the input unchanged if it matches directly, or resolves
+/// via `_table_meta.region_id` for multi-node regions.
+fn resolve_staging_table(conn: &Connection, table: &str) -> Result<String, String> {
     let schema = load_embedded_schema(conn)?;
-    if !schema.tables.contains_key(table) {
-        return Err(format!("Table '{}' not found in staging schema", table));
+    if schema.tables.contains_key(table) {
+        return Ok(table.to_string());
     }
-    Ok(())
+    // Fallback: check _table_meta for a matching region_id
+    if let Some(resolved) = resolve_table_by_region(conn, table)? {
+        if schema.tables.contains_key(&resolved) {
+            return Ok(resolved);
+        }
+    }
+    Err(format!("Table '{}' not found in staging schema", table))
+}
+
+/// Resolve a frontend table name (e.g. `lsx__Progressions`) to the actual
+/// table in _table_meta by matching region_id.  Returns the first match
+/// for the given region, preferring the prefix-implied source_type.
+fn resolve_table_by_region(conn: &Connection, table: &str) -> Result<Option<String>, String> {
+    // Extract the region and implied source type from "lsx__RegionName" or "stats__RegionName"
+    let (source_type, region) = if let Some(r) = table.strip_prefix("lsx__") {
+        (Some("lsx"), r)
+    } else if let Some(r) = table.strip_prefix("stats__") {
+        (Some("stats"), r)
+    } else {
+        (None, table)
+    };
+
+    // Try with source_type filter first, then fall back to any match
+    if let Some(st) = source_type {
+        let result: Option<String> = conn
+            .query_row(
+                "SELECT table_name FROM _table_meta WHERE region_id = ?1 AND source_type = ?2 LIMIT 1",
+                rusqlite::params![region, st],
+                |row| row.get(0),
+            )
+            .ok();
+        if result.is_some() {
+            return Ok(result);
+        }
+    }
+
+    // Fallback: match by region_id alone
+    let result: Option<String> = conn
+        .query_row(
+            "SELECT table_name FROM _table_meta WHERE region_id = ?1 LIMIT 1",
+            [region],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(result)
 }
 
 /// Get PK column name for a staging table.

@@ -5,7 +5,7 @@
   import { tooltip } from "../../lib/actions/tooltip.js";
   import { cssToBg3Color, bg3ToCssColor } from "../../lib/utils/fieldCodec.js";
   import { isContentHandle, parseHandleVersion, autoLocalize } from "../../lib/utils/localizationManager.js";
-  import { configStore } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -68,7 +68,7 @@
     const { fieldValue, handle } = autoLocalize(
       inputValue,
       currentFieldValue,
-      configStore.autoLocaEntries,
+      modStore.autoLocaEntries,
     );
 
     // Make the generated text immediately resolvable via global loca map

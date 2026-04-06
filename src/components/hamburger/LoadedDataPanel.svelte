@@ -2,7 +2,6 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { settingsStore } from "../../lib/stores/settingsStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
-  import { configStore } from "../../lib/stores/configStore.svelte.js";
   import { modImportService, type DuplicatePromptFn } from "../../lib/services/modImportService.svelte.js";
   import { dataOperationStore } from "../../lib/stores/dataOperationStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";

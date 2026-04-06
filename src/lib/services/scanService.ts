@@ -1,10 +1,10 @@
 import { modStore } from "../stores/modStore.svelte.js";
-import { configStore } from "../stores/configStore.svelte.js";
-import { projectStore } from "../stores/projectStore.svelte.js";
+import { projectStore, sectionToTable } from "../stores/projectStore.svelte.js";
 import { settingsStore } from "../stores/settingsStore.svelte.js";
 import { toastStore } from "../stores/toastStore.svelte.js";
 import { schemaStore } from "../stores/schemaStore.svelte.js";
 import { undoStore } from "../stores/undoStore.svelte.js";
+import { migrateLocalStorageProject } from "../utils/migration.js";
 import { m } from "../../paraglide/messages.js";
 import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
 import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
@@ -202,38 +202,25 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     const result = await scanMod(modPath, extraScanPaths, true);
     if (gen !== scanGeneration) return; // A newer scan was started; discard stale result
     modStore.scanResult = result;
-    configStore.initFromScan();
-
-    // Pre-disable entries that were commented out in the source .lsx files
-    // Two-pass: first collect all active entry keys, then only disable entries
-    // that have no active counterpart (handles mods with both commented + active versions)
-    const activeKeys = new Set<string>();
-    for (const sr of result.sections) {
-      for (const entry of sr.entries) {
-        if (!entry.commented) {
-          activeKeys.add(`${sr.section}::${entry.uuid}`);
-        }
-      }
-    }
-    for (const sr of result.sections) {
-      for (const entry of sr.entries) {
-        if (entry.commented) {
-          const key = `${sr.section}::${entry.uuid}`;
-          if (!activeKeys.has(key)) {
-            configStore.disabled[key] = true;
-          }
-        }
-      }
-    }
 
     undoStore.clear();
 
-    // Try restoring saved project state for this mod path
-    const restored = configStore.restoreProject(modPath);
+    const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
+    toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
 
-    // Import existing config entries as manual entries (marked as imported)
-    // Skip if project state was restored — the persisted state already has user edits
-    if (!restored && result.existing_config_path) {
+    // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
+    const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
+    await rehydrateStaging(modPath, modName);
+
+    // Migrate legacy localStorage project data into staging DB (I4/I6)
+    await migrateLocalStorageProject(modPath);
+
+    // Hydrate projectStore from the freshly-populated staging DB
+    await projectStore.hydrate();
+
+    // Import existing config entries into the staging DB
+    // Skip if migration already brought in persisted data
+    if (result.existing_config_path) {
       try {
         const configContent = await readExistingConfig(result.existing_config_path);
         const { entries: existingEntries, warnings } = parseExistingConfig(configContent, result.existing_config_path);
@@ -242,7 +229,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
           toastStore.warning(m.scan_config_import_warnings_title(), m.scan_config_import_warnings_detail({ warnings: warnings.join("; ") }));
         }
         for (const entry of existingEntries) {
-          configStore.addManualEntry(entry.section, entry.fields, true);
+          await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
         }
         if (existingEntries.length > 0) {
           toastStore.info(m.scan_config_imported_title(), m.scan_config_imported_detail({ count: String(existingEntries.length) }));
@@ -252,22 +239,6 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
         toastStore.error(m.scan_config_import_failed(), String(configErr));
       }
     }
-
-    // Snapshot imported entries so reset can restore them
-    configStore.snapshotImports();
-
-    // Merge imported entries with auto-detected entries (disable covered auto entries)
-    configStore.mergeImportedWithAuto();
-
-    const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
-    toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
-
-    // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
-    const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
-    await rehydrateStaging(modPath, modName);
-
-    // Hydrate projectStore from the freshly-populated staging DB
-    await projectStore.hydrate();
 
     // Load previewable text files from mod directory (non-blocking)
     listModFiles(modPath).then(files => { modStore.modFiles = files; }).catch(err => console.warn("Failed to list mod files:", err));

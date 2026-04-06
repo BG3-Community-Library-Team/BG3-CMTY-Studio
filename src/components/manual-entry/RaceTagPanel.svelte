@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { configStore } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { resolveLoca, parseHandleVersion, isContentHandle, autoLocalize } from "../../lib/utils/localizationManager.js";
   import type { ChildItem } from "../../lib/utils/fieldCodec.js";
@@ -60,7 +60,7 @@
 
   /** Resolved description text (reactive — updates when loca data loads) */
   let resolvedDescription = $derived(
-    resolveLoca(raceDescription, configStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h))
+    resolveLoca(raceDescription, modStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h))
   );
 
   /** Extract the bare contentuid handle from the Description field value */
@@ -101,16 +101,8 @@
   let locaOptions = $derived.by((): ComboboxOption[] => {
     const opts: ComboboxOption[] = [];
     const seen = new Set<string>();
-    for (const f of configStore.locaEntries) {
-      for (const v of f.values) {
-        if (v.contentuid && !seen.has(v.contentuid)) {
-          seen.add(v.contentuid);
-          opts.push({ value: v.contentuid, label: v.text ? `${v.text}  —  ${v.contentuid}` : v.contentuid });
-        }
-      }
-    }
     for (const [handle, text] of modStore.localizationMap) {
-      if (!seen.has(handle)) {
+      if (handle && !seen.has(handle)) {
         seen.add(handle);
         opts.push({ value: handle, label: text ? `${text}  —  ${handle}` : handle });
       }
@@ -120,7 +112,7 @@
 
   function resolveLocaText(handle: string | undefined): string | undefined {
     if (!handle) return undefined;
-    const resolved = resolveLoca(handle, configStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h));
+    const resolved = resolveLoca(handle, modStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h));
     return resolved === handle ? undefined : resolved;
   }
 
@@ -152,7 +144,7 @@
     const { fieldValue, handle } = autoLocalize(
       inputValue,
       currentFieldValue,
-      configStore.autoLocaEntries,
+      modStore.autoLocaEntries,
     );
 
     const updated = new Map(modStore.localizationMap);
@@ -242,7 +234,7 @@
    * Generate tag entries and wire into children.
    * Called by ManualEntryForm on save — only creates tags for active subforms.
    */
-  export function generateTags(): void {
+  export async function generateTags(): Promise<void> {
     const tagsToCreate: { section: string; fields: Record<string, string> }[] = [];
     const newUuids: string[] = [];
 
@@ -280,19 +272,21 @@
 
     if (tagsToCreate.length === 0) return;
 
-    configStore.addManualEntries(tagsToCreate, 'Generate race tags');
+    await projectStore.snapshot('Generate race tags');
+    for (const tag of tagsToCreate) {
+      await projectStore.addEntry(sectionToTable(tag.section), tag.fields);
+    }
 
     // Register Osiris race tag pair if both tags were generated
     if (tagsToCreate.length === 2 && raceEntryUuid) {
       const raceTagName = tag1.name.replace(/^\|/, '').replace(/\|$/, '').toUpperCase();
       const reallyTagName = tag2.name.replace(/^\|/, '').replace(/\|$/, '').toUpperCase();
-      configStore.registerOsirisRaceTagPair(
-        raceEntryUuid,
-        raceTagName,
-        newUuids[0],
-        reallyTagName,
-        newUuids[1],
-      );
+      // Store via staging meta
+      const existingRaw = await projectStore.getMeta('osiris_goal_entries');
+      const existing: Record<string, { raceTagName: string; raceTagUuid: string; reallyTagName: string; reallyTagUuid: string }> =
+        existingRaw ? JSON.parse(existingRaw) : {};
+      existing[raceEntryUuid] = { raceTagName, raceTagUuid: newUuids[0], reallyTagName, reallyTagUuid: newUuids[1] };
+      await projectStore.setMeta('osiris_goal_entries', JSON.stringify(existing));
     }
 
     // Wire UUIDs into race's Tags children

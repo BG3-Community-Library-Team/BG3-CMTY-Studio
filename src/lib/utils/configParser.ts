@@ -8,7 +8,7 @@
  */
 
 import YAML from "yaml";
-import type { ManualEntry } from "../stores/configStore.svelte.js";
+import type { ManualEntry } from "../types/index.js";
 import { SECTIONS_ORDERED, getErrorMessage, type Section } from "../types/index.js";
 
 /** The top-level sections we recognise in a CF config. */

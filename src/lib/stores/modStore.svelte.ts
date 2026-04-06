@@ -32,6 +32,10 @@ class ModStore {
   /** Localization data — handle UUID → display text mapping for DisplayName resolution. */
   localizationMap: Map<string, string> = $state(new Map());
 
+  /** Auto-generated localization entries: contentuid → { text, version }.
+   *  Created when users type plain text into loca: fields (migrated from configStore). */
+  autoLocaEntries: Map<string, { text: string; version: number }> = $state(new Map());
+
   /** Vanilla data source names that failed to load during the last scan. */
   vanillaLoadFailures: string[] = $state([]);
 
@@ -166,6 +170,7 @@ class ModStore {
     this.vanillaStatFieldNames = [];
     this.vanillaValueLists = [];
     this.localizationMap = new Map();
+    this.autoLocaEntries = new Map();
     this.vanillaLoadFailures = [];
     this.additionalModPaths = [];
     this.additionalModResults = [];

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { configStore, type ManualEntry } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
+  import type { EntryRow } from "../../lib/types/entryRow.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { parseRawSelectors } from "../../lib/utils/selectorParser.js";
   import { encodeSelectors } from "../../lib/utils/fieldCodec.js";
@@ -36,7 +37,7 @@
 
   interface ProgressionSubform {
     id: string;
-    existingIndex?: number;
+    existingPk?: string;
     level: string;
     name: string;
     boosts: string;
@@ -55,20 +56,26 @@
     if (initialized) return;
     if (!progressionTableUuid) { initialized = true; return; }
 
-    // 1. Manual entries (user-created / imported config)
+    // 1. Manual entries (user-created / imported) from staging DB
     const manualUuids = new Set<string>();
-    const existing = configStore.getManualEntriesForRace(raceUuid, progressionTableUuid)
-      .filter(m =>
-        m.entry.section === 'Progressions' &&
-        m.entry.fields.ProgressionType === '2'
+    const progEntries = projectStore.getEntries(sectionToTable('Progressions'));
+    const existing = progEntries.filter(e => {
+      const tableUuid = String(e.TableUUID ?? '');
+      const progType = String(e.ProgressionType ?? '');
+      const raceRef = String(e.RaceUUID ?? e.Race ?? '');
+      return (
+        (tableUuid === progressionTableUuid || raceRef === raceUuid) &&
+        progType === '2'
       );
+    });
 
-    const built: ProgressionSubform[] = existing.map(({ entry, index }) => {
-      const uuid = entry.fields.UUID || `existing-${index}`;
+    const built: ProgressionSubform[] = existing.map((entry) => {
+      const uuid = String(entry.UUID ?? '') || `existing-${entry._pk}`;
       manualUuids.add(uuid);
       let selectors: SelectorSubItem[] = [];
-      if (entry.fields.Selectors) {
-        const parsed = parseRawSelectors(entry.fields.Selectors);
+      const selectorsRaw = String(entry.Selectors ?? '');
+      if (selectorsRaw) {
+        const parsed = parseRawSelectors(selectorsRaw);
         selectors = parsed.map(sel => ({
           action: 'Insert',
           fn: sel.fn,
@@ -81,13 +88,13 @@
       }
       return {
         id: uuid,
-        existingIndex: index,
-        level: entry.fields.Level ?? '',
-        name: entry.fields.Name ?? '',
-        boosts: entry.fields.Boosts ?? '',
-        passivesAdded: entry.fields.PassivesAdded ?? '',
-        passivesRemoved: entry.fields.PassivesRemoved ?? '',
-        allowImprovement: entry.fields.AllowImprovement === 'true',
+        existingPk: entry._pk,
+        level: String(entry.Level ?? ''),
+        name: String(entry.Name ?? ''),
+        boosts: String(entry.Boosts ?? ''),
+        passivesAdded: String(entry.PassivesAdded ?? ''),
+        passivesRemoved: String(entry.PassivesRemoved ?? ''),
+        allowImprovement: String(entry.AllowImprovement ?? '') === 'true',
         selectors,
         markedForDeletion: false,
       };
@@ -190,7 +197,7 @@
     const sub = subforms.find(s => s.id === id);
     if (!sub) return;
 
-    if (sub.existingIndex != null) {
+    if (sub.existingPk != null) {
       sub.markedForDeletion = true;
       subforms = [...subforms]; // trigger reactivity
     } else {
@@ -216,16 +223,16 @@
    */
   export function syncProgressions(): {
     toCreate: { section: string; fields: Record<string, string> }[];
-    toUpdate: { index: number; section: string; fields: Record<string, string> }[];
-    toRemove: number[];
+    toUpdate: { pk: string; section: string; fields: Record<string, string> }[];
+    toRemove: string[];
   } {
     const toCreate: { section: string; fields: Record<string, string> }[] = [];
-    const toUpdate: { index: number; section: string; fields: Record<string, string> }[] = [];
-    const toRemove: number[] = [];
+    const toUpdate: { pk: string; section: string; fields: Record<string, string> }[] = [];
+    const toRemove: string[] = [];
 
     for (const sub of subforms) {
       if (sub.markedForDeletion) {
-        if (sub.existingIndex != null) toRemove.push(sub.existingIndex);
+        if (sub.existingPk != null) toRemove.push(sub.existingPk);
         continue;
       }
 
@@ -252,8 +259,8 @@
         encodeSelectors(sub.selectors as any, fields);
       }
 
-      if (sub.existingIndex != null) {
-        toUpdate.push({ index: sub.existingIndex, section: 'Progressions', fields });
+      if (sub.existingPk != null) {
+        toUpdate.push({ pk: sub.existingPk, section: 'Progressions', fields });
       } else {
         toCreate.push({ section: 'Progressions', fields });
       }
@@ -302,7 +309,7 @@
                   {#if sub.name}
                     <span class="font-normal text-[var(--th-text-500)]">— {sub.name}</span>
                   {/if}
-                  {#if sub.existingIndex != null}
+                  {#if sub.existingPk != null}
                     <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
                   {/if}
                   <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{sub.id}</span>

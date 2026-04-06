@@ -364,4 +364,37 @@ export interface AnchorGroup {
   lines_saved: number;
 }
 
+export interface ManualEntry {
+  section: string;
+  fields: Record<string, string>;
+  /** True if this entry was imported from an existing config file (not manually created). */
+  imported?: boolean;
+  /** Optional YAML comment line above this entry (only emitted when entry comments are enabled). */
+  comment?: string;
+}
+
+export interface EditOverride {
+  /** section::entryId key */
+  key: string;
+  section: string;
+  entryId: string;
+  field: string;
+  value: string;
+}
+
+/** A single <content> line inside a localization XML file. */
+export interface LocaValue {
+  id: string;
+  contentuid: string;
+  version: number;
+  text: string;
+}
+
+/** A localization file entry — label becomes the XML filename. */
+export interface LocaFileEntry {
+  id: string;
+  label: string;
+  values: LocaValue[];
+}
+
 export * from "./entryRow.js";

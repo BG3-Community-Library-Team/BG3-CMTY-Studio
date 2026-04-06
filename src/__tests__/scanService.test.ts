@@ -75,7 +75,6 @@ vi.mock("../lib/utils/tauri.js", () => ({
 }));
 
 // Import stores and service after mocks
-const { configStore } = await import("../lib/stores/configStore.svelte.js");
 const { modStore } = await import("../lib/stores/modStore.svelte.js");
 const { scanAndImport, loadVanillaData, loadCategory, isLazyCategory, rehydrateStaging } = await import("../lib/services/scanService.js");
 const { toastStore } = await import("../lib/stores/toastStore.svelte.js");
@@ -120,7 +119,6 @@ function makeScanResult(opts: {
 
 describe("TC-005: scanAndImport", () => {
   beforeEach(() => {
-    configStore.reset();
     (modStore as any).scanResult = null;
     (modStore as any).selectedModPath = "";
     (modStore as any).isScanning = false;
@@ -164,65 +162,6 @@ describe("TC-005: scanAndImport", () => {
     expect(modStore.error).toBe("Folder not found");
   });
 
-  // ── disableCommentedEntries two-pass logic ─────────────────────
-
-  it("disables commented entries that have no active counterpart", async () => {
-    const result = makeScanResult({
-      sections: [{
-        section: "Races",
-        entries: [
-          { uuid: "commented-only-uuid", display_name: "OldRace", changes: [], commented: true },
-        ],
-      }],
-    });
-    mockScanMod.mockResolvedValue(result);
-    await scanAndImport("/test/mod");
-    expect(configStore.disabled["Races::commented-only-uuid"]).toBe(true);
-  });
-
-  it("does NOT disable commented entries that also have an active version", async () => {
-    const result = makeScanResult({
-      sections: [{
-        section: "Races",
-        entries: [
-          { uuid: "dual-uuid", display_name: "ActiveElf", changes: [], commented: false },
-          { uuid: "dual-uuid", display_name: "CommentedElf", changes: [], commented: true },
-        ],
-      }],
-    });
-    mockScanMod.mockResolvedValue(result);
-    await scanAndImport("/test/mod");
-    // The commented entry should NOT be disabled because the active version exists
-    expect(configStore.disabled["Races::dual-uuid"]).toBeUndefined();
-  });
-
-  it("two-pass logic works across multiple sections", async () => {
-    const result = makeScanResult({
-      sections: [
-        {
-          section: "Races",
-          entries: [
-            { uuid: "race-active", display_name: "R1", changes: [], commented: false },
-            { uuid: "race-commented", display_name: "R2", changes: [], commented: true },
-          ],
-        },
-        {
-          section: "Progressions",
-          entries: [
-            { uuid: "prog-only-commented", display_name: "P1", changes: [], commented: true },
-          ],
-        },
-      ],
-    });
-    mockScanMod.mockResolvedValue(result);
-    await scanAndImport("/test/mod");
-    // race-commented has no active counterpart with same key
-    expect(configStore.disabled["Races::race-commented"]).toBe(true);
-    expect(configStore.disabled["Progressions::prog-only-commented"]).toBe(true);
-    // race-active is NOT commented, so it shouldn't be disabled
-    expect(configStore.disabled["Races::race-active"]).toBeUndefined();
-  });
-
   // ── Config import ─────────────────────────────────────────────
 
   it("imports existing config when path is present in scan result", async () => {
@@ -241,8 +180,6 @@ describe("TC-005: scanAndImport", () => {
     );
     await scanAndImport("/test/mod");
     expect(mockReadExistingConfig).toHaveBeenCalledWith("/test/mod/config.yaml");
-    // Manual entries should have been added
-    expect(configStore.manualEntries.length).toBeGreaterThanOrEqual(1);
   });
 
   it("handles config import failure gracefully", async () => {
@@ -262,32 +199,6 @@ describe("TC-005: scanAndImport", () => {
     mockScanMod.mockResolvedValue(result);
     await scanAndImport("/test/mod");
     expect(mockReadExistingConfig).not.toHaveBeenCalled();
-  });
-
-  // ── Entry deduplication (disabled map uses Section::UUID key) ──
-
-  it("uses Section::UUID composite key for disabled tracking", async () => {
-    const result = makeScanResult({
-      sections: [
-        {
-          section: "Races",
-          entries: [
-            { uuid: "same-uuid", display_name: "RaceEntry", changes: [], commented: true },
-          ],
-        },
-        {
-          section: "Progressions",
-          entries: [
-            { uuid: "same-uuid", display_name: "ProgEntry", changes: [], commented: true },
-          ],
-        },
-      ],
-    });
-    mockScanMod.mockResolvedValue(result);
-    await scanAndImport("/test/mod");
-    // Same UUID in different sections should produce separate disabled keys
-    expect(configStore.disabled["Races::same-uuid"]).toBe(true);
-    expect(configStore.disabled["Progressions::same-uuid"]).toBe(true);
   });
 
   // ── Extra scan paths ──────────────────────────────────────────

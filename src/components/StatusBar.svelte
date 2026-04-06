@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore } from "../lib/stores/projectStore.svelte.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import { dataOperationStore } from "../lib/stores/dataOperationStore.svelte.js";
   import { modImportService } from "../lib/services/modImportService.svelte.js";
@@ -84,6 +84,8 @@
   let currentThemeLabel = $derived(
     THEME_OPTIONS.find(o => o.id === settingsStore.theme)?.label ?? settingsStore.theme
   );
+  // TODO: Wire validation summary from projectStore when validation engine is migrated
+  const validationSummary = { errorCount: 0, warningCount: 0, errors: [] as any[], warnings: [] as any[] };
   let modName = $derived(modStore.scanResult?.mod_meta?.name ?? "");
   let modVersion = $derived.by(() => {
     const v64 = modStore.scanResult?.mod_meta?.version64;
@@ -98,8 +100,12 @@
     } catch { return ""; }
   });
   let totalEntries = $derived(modStore.totalEntries);
-  let selectedCount = $derived(configStore.selectedCount);
-  let manualCount = $derived(configStore.manualEntries.length);
+  let selectedCount = $derived(
+    projectStore.sections.reduce((sum, s) => sum + s.active_rows, 0)
+  );
+  let manualCount = $derived(
+    projectStore.sections.reduce((sum, s) => sum + s.new_rows, 0)
+  );
 
   // Lazy Tauri window API for drag + double-click-to-maximize
   let tauriWindow: any = null;
@@ -189,21 +195,21 @@
           >{m.status_bar_manual({ count: manualCount })}</button>
         {/if}
       </span>
-      {#if configStore.validationSummary.errorCount > 0 || configStore.validationSummary.warningCount > 0}
+      {#if validationSummary.errorCount > 0 || validationSummary.warningCount > 0}
         <span class="text-[var(--th-border-600)]">│</span>
         <button
           class="hover:text-[var(--th-text-300)] transition-colors cursor-pointer"
           onclick={() => validationModalOpen = true}
           type="button"
         >
-          {#if configStore.validationSummary.errorCount > 0}
-            <span class="text-red-400">{configStore.validationSummary.errorCount === 1 ? m.status_bar_errors_one() : m.status_bar_errors({ count: configStore.validationSummary.errorCount })}</span>
+          {#if validationSummary.errorCount > 0}
+            <span class="text-red-400">{validationSummary.errorCount === 1 ? m.status_bar_errors_one() : m.status_bar_errors({ count: validationSummary.errorCount })}</span>
           {/if}
-          {#if configStore.validationSummary.errorCount > 0 && configStore.validationSummary.warningCount > 0}
+          {#if validationSummary.errorCount > 0 && validationSummary.warningCount > 0}
             <span class="text-[var(--th-text-500)]"> · </span>
           {/if}
-          {#if configStore.validationSummary.warningCount > 0}
-            <span class="text-amber-400">{configStore.validationSummary.warningCount === 1 ? m.status_bar_warnings_one() : m.status_bar_warnings({ count: configStore.validationSummary.warningCount })}</span>
+          {#if validationSummary.warningCount > 0}
+            <span class="text-amber-400">{validationSummary.warningCount === 1 ? m.status_bar_warnings_one() : m.status_bar_warnings({ count: validationSummary.warningCount })}</span>
           {/if}
         </button>
       {/if}

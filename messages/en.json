@@ -802,5 +802,19 @@
   "chip_switch_to_raw": "Switch to raw text",
   "chip_switch_to_chips": "Switch to chip view",
   "children_count_badge": "{count, plural, one {# child} other {# children}}",
-  "children_add_child": "+ Add Child"
+  "children_add_child": "+ Add Child",
+
+  "save_summary_title": "Save Summary",
+  "save_summary_created": "Created ({count, plural, one {# file} other {# files}})",
+  "save_summary_updated": "Updated ({count, plural, one {# file} other {# files}})",
+  "save_summary_deleted": "Deleted ({count, plural, one {# file} other {# files}})",
+  "save_summary_unchanged": "Unchanged: {count, plural, one {# file} other {# files}}",
+  "save_summary_total_entries": "Total entries: {count}",
+  "save_summary_dry_run_notice": "This is a preview — no files were written.",
+  "save_summary_errors": "Errors ({count})",
+  "save_summary_entries_label": "{count, plural, one {# entry} other {# entries}}",
+  "save_summary_bytes_label": "{bytes} bytes",
+  "save_summary_backed_up": "backed up",
+  "export_bar_preview_save": "Preview Save",
+  "export_bar_preview_failed": "Preview failed"
 }

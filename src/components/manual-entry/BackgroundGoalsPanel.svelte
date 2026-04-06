@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { configStore } from "../../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
@@ -16,7 +16,7 @@
 
   interface GoalSubform {
     id: string;
-    existingIndex?: number;
+    existingPk?: string;
     experienceReward: string;
     inspirationPoints: string;
     rewardLevel: string;
@@ -34,19 +34,20 @@
     const manualUuids = new Set<string>();
     const built: GoalSubform[] = [];
 
-    // 1. Manual entries (user-created / imported config)
-    for (let i = 0; i < configStore.manualEntries.length; i++) {
-      const e = configStore.manualEntries[i];
-      if (e.section !== 'BackgroundGoals') continue;
-      if (e.fields.BackgroundUuid !== backgroundUuid) continue;
-      const uuid = e.fields.UUID || `existing-${i}`;
+    // 1. Manual entries from projectStore (new staging rows for BackgroundGoals)
+    const bgEntries = projectStore.getEntries(sectionToTable("BackgroundGoals"));
+    for (let i = 0; i < bgEntries.length; i++) {
+      const e = bgEntries[i];
+      if (!e._is_new || e._is_deleted) continue;
+      if (String(e["BackgroundUuid"] ?? "") !== backgroundUuid) continue;
+      const uuid = String(e["UUID"] ?? "") || `existing-${i}`;
       manualUuids.add(uuid);
       built.push({
         id: uuid,
-        existingIndex: i,
-        experienceReward: e.fields.ExperienceReward ?? '',
-        inspirationPoints: e.fields.InspirationPoints ?? '',
-        rewardLevel: e.fields.RewardLevel ?? '',
+        existingPk: e._pk,
+        experienceReward: String(e["ExperienceReward"] ?? ""),
+        inspirationPoints: String(e["InspirationPoints"] ?? ""),
+        rewardLevel: String(e["RewardLevel"] ?? ""),
         markedForDeletion: false,
       });
     }
@@ -111,7 +112,7 @@
   function removeSubform(id: string) {
     const sub = subforms.find(s => s.id === id);
     if (!sub) return;
-    if (sub.existingIndex != null) {
+    if (sub.existingPk != null) {
       sub.markedForDeletion = true;
       subforms = [...subforms];
     } else {
@@ -137,16 +138,16 @@
    */
   export function syncGoals(): {
     toCreate: { section: string; fields: Record<string, string> }[];
-    toUpdate: { index: number; section: string; fields: Record<string, string> }[];
-    toRemove: number[];
+    toUpdate: { pk: string; section: string; fields: Record<string, string> }[];
+    toRemove: string[];
   } {
     const toCreate: { section: string; fields: Record<string, string> }[] = [];
-    const toUpdate: { index: number; section: string; fields: Record<string, string> }[] = [];
-    const toRemove: number[] = [];
+    const toUpdate: { pk: string; section: string; fields: Record<string, string> }[] = [];
+    const toRemove: string[] = [];
 
     for (const sub of subforms) {
       if (sub.markedForDeletion) {
-        if (sub.existingIndex != null) toRemove.push(sub.existingIndex);
+        if (sub.existingPk != null) toRemove.push(sub.existingPk);
         continue;
       }
 
@@ -161,8 +162,8 @@
       if (sub.inspirationPoints) fields.InspirationPoints = sub.inspirationPoints;
       if (sub.rewardLevel) fields.RewardLevel = sub.rewardLevel;
 
-      if (sub.existingIndex != null) {
-        toUpdate.push({ index: sub.existingIndex, section: 'BackgroundGoals', fields });
+      if (sub.existingPk != null) {
+        toUpdate.push({ pk: sub.existingPk, section: 'BackgroundGoals', fields });
       } else {
         toCreate.push({ section: 'BackgroundGoals', fields });
       }
@@ -210,7 +211,7 @@
                   <span class="goal-summary-details font-normal text-[var(--th-text-500)]">
                     — XP {sub.experienceReward || '0'} · Insp {sub.inspirationPoints || '0'}
                   </span>
-                  {#if sub.existingIndex != null}
+                  {#if sub.existingPk != null}
                     <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
                   {/if}
                   <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{sub.id}</span>

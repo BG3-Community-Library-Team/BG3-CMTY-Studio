@@ -699,7 +699,7 @@ fn pre_populate_sources(
     for conn in conns {
         for (i, name) in names.iter().enumerate() {
             let id = (i + 1) as i64;
-            conn.execute("INSERT INTO _sources (id, name) VALUES (?1, ?2)", params![id, name])
+            conn.execute("INSERT OR IGNORE INTO _sources (id, name) VALUES (?1, ?2)", params![id, name])
                 .map_err(|e| format!("Pre-populate _sources: {}", e))?;
         }
     }
@@ -2663,7 +2663,7 @@ impl SourceIdCache {
             return Ok(id);
         }
         let id = self.next_id;
-        tx.prepare_cached("INSERT INTO _sources (id, name) VALUES (?1, ?2)")
+        tx.prepare_cached("INSERT OR IGNORE INTO _sources (id, name) VALUES (?1, ?2)")
             .and_then(|mut stmt| stmt.execute(params![id, mod_name]))
             .map_err(|e| format!("Insert _sources: {}", e))?;
         self.cache.insert(mod_name.to_string(), id);

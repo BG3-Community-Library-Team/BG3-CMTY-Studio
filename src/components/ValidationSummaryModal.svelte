@@ -4,7 +4,6 @@
   Clicking an entry scrolls the main panel to that entry.
 -->
 <script lang="ts">
-  import { configStore } from "../lib/stores/configStore.svelte.js";
   import { SECTION_DISPLAY_NAMES, type Section } from "../lib/types/index.js";
   import { focusTrap } from "../lib/utils/focusTrap.js";
   import { m } from "../paraglide/messages.js";
@@ -12,6 +11,9 @@
   import TagBadge from "./TagBadge.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
+
+  // TODO: Wire validation summary from projectStore when validation engine is migrated
+  const validationSummary = { errorCount: 0, warningCount: 0, errors: [] as IssueItem[], warnings: [] as IssueItem[] };
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") { e.preventDefault(); onclose(); }
@@ -34,8 +36,8 @@
     }));
   }
 
-  let errorGroups = $derived(groupBySection(configStore.validationSummary.errors));
-  let warningGroups = $derived(groupBySection(configStore.validationSummary.warnings));
+  let errorGroups = $derived(groupBySection(validationSummary.errors));
+  let warningGroups = $derived(groupBySection(validationSummary.warnings));
 
   async function jumpToEntry(section: string, uuid: string) {
     onclose();
@@ -71,14 +73,14 @@
 
     <!-- Body -->
     <div class="px-5 py-4 overflow-y-auto space-y-4">
-      {#if configStore.validationSummary.errorCount === 0 && configStore.validationSummary.warningCount === 0}
+      {#if validationSummary.errorCount === 0 && validationSummary.warningCount === 0}
         <p class="text-sm text-[var(--th-text-400)]">{m.validation_summary_no_issues()}</p>
       {/if}
 
       {#if errorGroups.length > 0}
         <div>
           <h3 class="text-sm font-semibold text-red-400 mb-2">
-            {m.validation_summary_errors_heading({ count: configStore.validationSummary.errorCount })}
+            {m.validation_summary_errors_heading({ count: validationSummary.errorCount })}
           </h3>
           {#each errorGroups as group (group.section)}
             <div class="mb-3">
@@ -103,7 +105,7 @@
       {#if warningGroups.length > 0}
         <div>
           <h3 class="text-sm font-semibold text-amber-400 mb-2">
-            {m.validation_summary_warnings_heading({ count: configStore.validationSummary.warningCount })}
+            {m.validation_summary_warnings_heading({ count: validationSummary.warningCount })}
           </h3>
           {#each warningGroups as group (group.section)}
             <div class="mb-3">

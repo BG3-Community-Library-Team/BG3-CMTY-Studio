@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { configStore, type LocaFileEntry, type LocaValue } from "../lib/stores/configStore.svelte.js";
+  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import type { LocaFileEntry, LocaValue } from "../lib/types/index.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { getModLocalization, type LocaEntry } from "../lib/utils/tauri.js";
   import { m } from "../paraglide/messages.js";
@@ -11,37 +12,75 @@
   import X from "@lucide/svelte/icons/x";
   import { generateUuid } from "../lib/utils/uuid.js";
 
+  /** Local state for loca entries, loaded from staging meta. */
+  let locaEntries: LocaFileEntry[] = $state([]);
+  let locaLoaded = $state(false);
+
+  // Load loca entries from staging meta on mount
+  $effect(() => {
+    if (locaLoaded) return;
+    (async () => {
+      try {
+        const raw = await projectStore.getMeta("loca_entries");
+        if (raw) locaEntries = JSON.parse(raw);
+      } catch (err) {
+        console.warn("Failed to load loca entries from staging:", err);
+      }
+      locaLoaded = true;
+    })();
+  });
+
+  /** Persist loca entries to staging meta after changes */
+  async function persistLocaEntries(): Promise<void> {
+    try {
+      await projectStore.setMeta("loca_entries", JSON.stringify(locaEntries));
+    } catch (err) {
+      console.warn("Failed to persist loca entries:", err);
+    }
+  }
+
   /** Generate a BG3-style contentuid: 'h' prefix, all hyphens replaced with 'g'. */
   function generateContentUid(): string {
     return "h" + generateUuid().replace(/-/g, "g");
   }
 
   function addFileEntry() {
-    configStore.locaEntries = [
-      ...configStore.locaEntries,
+    locaEntries = [
+      ...locaEntries,
       { id: generateUuid(), label: "", values: [{ id: generateUuid(), contentuid: generateContentUid(), version: 1, text: "" }] },
     ];
+    persistLocaEntries();
   }
 
   function removeFileEntry(entryId: string) {
-    configStore.locaEntries = configStore.locaEntries.filter(e => e.id !== entryId);
+    locaEntries = locaEntries.filter(e => e.id !== entryId);
+    persistLocaEntries();
   }
 
   function addValue(entryId: string) {
-    const entry = configStore.locaEntries.find(e => e.id === entryId);
-    if (entry) entry.values = [...entry.values, { id: generateUuid(), contentuid: generateContentUid(), version: 1, text: "" }];
+    const entry = locaEntries.find(e => e.id === entryId);
+    if (entry) {
+      entry.values = [...entry.values, { id: generateUuid(), contentuid: generateContentUid(), version: 1, text: "" }];
+      persistLocaEntries();
+    }
   }
 
   function removeValue(entryId: string, valId: string) {
-    const entry = configStore.locaEntries.find(e => e.id === entryId);
-    if (entry) entry.values = entry.values.filter(v => v.id !== valId);
+    const entry = locaEntries.find(e => e.id === entryId);
+    if (entry) {
+      entry.values = entry.values.filter(v => v.id !== valId);
+      persistLocaEntries();
+    }
   }
 
   function shuffleContentUid(entryId: string, valId: string) {
-    const entry = configStore.locaEntries.find(e => e.id === entryId);
+    const entry = locaEntries.find(e => e.id === entryId);
     if (!entry) return;
     const val = entry.values.find(v => v.id === valId);
-    if (val) val.contentuid = generateContentUid();
+    if (val) {
+      val.contentuid = generateContentUid();
+      persistLocaEntries();
+    }
   }
 
   /** Format a Date as MM/DD/YYYY HH:mm */
@@ -91,8 +130,8 @@
   <div class="loca-header">
     <h2 class="text-sm font-semibold text-[var(--th-text-100)]">
       {m.localization_title()}
-      {#if configStore.locaEntries.length > 0}
-        <span class="text-xs font-normal text-[var(--th-text-500)]">{configStore.locaEntries.length !== 1 ? m.localization_title_count({ count: configStore.locaEntries.length }) : m.localization_title_count_singular({ count: configStore.locaEntries.length })}</span>
+      {#if locaEntries.length > 0}
+        <span class="text-xs font-normal text-[var(--th-text-500)]">{locaEntries.length !== 1 ? m.localization_title_count({ count: locaEntries.length }) : m.localization_title_count_singular({ count: locaEntries.length })}</span>
       {/if}
     </h2>
     <button
@@ -104,7 +143,7 @@
   </div>
 
   <div class="loca-body">
-    {#if configStore.locaEntries.length === 0 && existingEntries.length === 0 && !existingLoading}
+    {#if locaEntries.length === 0 && existingEntries.length === 0 && !existingLoading}
       <div class="empty-state">
         <FileText size={32} class="text-[var(--th-text-600)] opacity-30" />
         <p class="text-xs text-[var(--th-text-500)] mt-2">{m.localization_empty_heading()}</p>
@@ -113,7 +152,7 @@
     {/if}
 
     <!-- Authored entries -->
-    {#each configStore.locaEntries as entry (entry.id)}
+    {#each locaEntries as entry (entry.id)}
       {@const isExpanded = expandedEntries[entry.id] !== false}
       <div class="file-card">
         <div class="file-card-header">
@@ -125,6 +164,7 @@
               class="form-input flex-1 h-6 text-xs font-medium"
               placeholder={m.localization_filename_placeholder()}
               bind:value={entry.label}
+              onchange={() => persistLocaEntries()}
               onclick={(e) => e.stopPropagation()}
               onkeydown={(e) => e.stopPropagation()}
             />
@@ -167,6 +207,7 @@
                       type="number"
                       class="form-input h-6 text-xs text-center"
                       bind:value={val.version}
+                      onchange={() => persistLocaEntries()}
                       min="0"
                     />
                   </label>
@@ -182,6 +223,7 @@
                     rows="2"
                     placeholder={m.localization_locale_text_placeholder()}
                     bind:value={val.text}
+                    onchange={() => persistLocaEntries()}
                   ></textarea>
                 </label>
               </div>

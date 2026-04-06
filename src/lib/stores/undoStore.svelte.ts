@@ -1,14 +1,14 @@
 /**
  * IX-03A + ER-01 + PF-06: Command-pattern undo/redo system.
  *
- * Instead of deep-cloning full configStore state for each snapshot,
- * each undoable operation pushes a command with undo/redo closures
- * that capture only the minimal state delta needed to reverse/replay
- * the operation. This reduces memory from O(full-state × MAX_UNDO)
- * to O(delta × MAX_UNDO).
+ * Delegates to projectStore's staging-DB-backed undo/redo.
+ * Legacy push() method kept for backward compatibility but
+ * callers should prefer projectStore.snapshot(label) directly.
  *
  * Supports Ctrl+Z (undo) and Ctrl+Y / Ctrl+Shift+Z (redo).
  */
+
+import { projectStore } from "./projectStore.svelte.js";
 
 const MAX_UNDO = 50;
 
@@ -27,30 +27,41 @@ class UndoStore {
   get undoLabel(): string { return this.#undoStack[this.#undoStack.length - 1]?.label ?? ""; }
   get redoLabel(): string { return this.#redoStack[this.#redoStack.length - 1]?.label ?? ""; }
 
-  /** Push a reversible command onto the undo stack. */
+  /** Push a reversible command onto the undo stack.
+   *  Also creates a staging-DB snapshot for the projectStore undo path. */
   push(command: UndoCommand): void {
     this.#undoStack.push(command);
     if (this.#undoStack.length > MAX_UNDO) {
       this.#undoStack.splice(0, this.#undoStack.length - MAX_UNDO);
     }
     this.#redoStack = [];
+    projectStore.snapshot(command.label);
   }
 
   /** Undo the last action. Returns the label of the undone action, or null. */
-  undo(): string | null {
+  async undo(): Promise<string | null> {
     const cmd = this.#undoStack.pop();
-    if (!cmd) return null;
+    if (!cmd) {
+      // Fallback: try projectStore staging undo even without a local command
+      await projectStore.undo();
+      return null;
+    }
     cmd.undo();
     this.#redoStack.push(cmd);
+    await projectStore.undo();
     return cmd.label;
   }
 
   /** Redo the last undone action. Returns the label, or null. */
-  redo(): string | null {
+  async redo(): Promise<string | null> {
     const cmd = this.#redoStack.pop();
-    if (!cmd) return null;
+    if (!cmd) {
+      await projectStore.redo();
+      return null;
+    }
     cmd.redo();
     this.#undoStack.push(cmd);
+    await projectStore.redo();
     return cmd.label;
   }
 

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { m } from "../paraglide/messages.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { snapshot } from "../lib/utils/formSnapshot.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
@@ -697,7 +697,7 @@
       vanillaStatEntries: [],
       modStatEntries: [],
       vanillaEquipment: [],
-      locaValues: configStore.locaEntries.flatMap(f => f.values.map(v => ({ contentuid: v.contentuid, text: v.text }))),
+      locaValues: Array.from(modStore.localizationMap.entries()).map(([handle, text]) => ({ contentuid: handle, text })),
       localizationMap: modStore.localizationMap,
     };
     const map = new Map<string, ComboboxOption[]>();
@@ -725,7 +725,7 @@
   /** Resolve a localization handle to its display text, if known. */
   function resolveLocaText(handle: string | undefined): string | undefined {
     if (!handle) return undefined;
-    const resolved = resolveLoca(handle, configStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h));
+    const resolved = resolveLoca(handle, modStore.autoLocaEntries, (h) => modStore.lookupLocalizedString(h));
     return resolved === handle ? undefined : resolved;
   }
 
@@ -969,7 +969,7 @@
 
   let combinedSpellIdOptions = $derived(computeCombinedSpellIdOptions(availableVanillaSpellIds, availableSpellIdOptions));
 
-  function submit(): void {
+  async function submit(): Promise<void> {
     const result = encodeFormState({
       caps, uuids, displayName, booleans, fields, selectors, strings,
       children, tags, subclasses, spellFields, listType, listItems,
@@ -980,32 +980,35 @@
     if (Object.keys(result).length === 0) return;
 
     if (editIndex >= 0) {
-      configStore.updateManualEntry(editIndex, section, result, entryComment.trim());
+      const pk = prefill?.UUID ?? prefill?.Name ?? uuids[0] ?? '';
+      await projectStore.updateEntry(sectionToTable(section), pk, result);
       toastStore.success(m.manual_form_entry_updated_title(), m.manual_form_entry_updated_message({ section }));
     } else if (autoEntryId) {
-      configStore.setAutoEntryOverride(section, autoEntryId, result);
+      await projectStore.updateEntry(sectionToTable(section), autoEntryId, result);
     } else {
-      configStore.addManualEntry(section, result, false, entryComment.trim());
+      await projectStore.addEntry(sectionToTable(section), result);
       onsave?.(result);
     }
 
     // Generate race tags on save
     if (_section === 'Races' && raceTagPanel) {
-      raceTagPanel.generateTags();
+      await raceTagPanel.generateTags();
     }
 
     // Sync race progression satellite entries
     if (_section === 'Races' && raceProgressionPanel) {
       const { toCreate, toUpdate, toRemove } = raceProgressionPanel.syncProgressions();
       if (toCreate.length > 0) {
-        configStore.addManualEntries(toCreate, m.manual_form_create_race_progressions());
+        await projectStore.snapshot(m.manual_form_create_race_progressions());
+        for (const entry of toCreate) {
+          await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
+        }
       }
       for (const upd of toUpdate) {
-        configStore.updateManualEntry(upd.index, upd.section, upd.fields);
+        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? upd.fields.UUID ?? '', upd.fields);
       }
-      // Remove in reverse index order to avoid index shifting
-      for (const idx of [...toRemove].sort((a, b) => b - a)) {
-        configStore.removeManualEntry(idx);
+      for (const pk of toRemove) {
+        await projectStore.removeEntry(sectionToTable('Progressions'), String(pk));
       }
     }
 
@@ -1013,13 +1016,16 @@
     if (_section === 'Backgrounds' && backgroundGoalsPanel) {
       const { toCreate, toUpdate, toRemove } = backgroundGoalsPanel.syncGoals();
       if (toCreate.length > 0) {
-        configStore.addManualEntries(toCreate, m.manual_form_create_background_goals());
+        await projectStore.snapshot(m.manual_form_create_background_goals());
+        for (const entry of toCreate) {
+          await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
+        }
       }
       for (const upd of toUpdate) {
-        configStore.updateManualEntry(upd.index, upd.section, upd.fields);
+        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? upd.fields.UUID ?? '', upd.fields);
       }
-      for (const idx of [...toRemove].sort((a, b) => b - a)) {
-        configStore.removeManualEntry(idx);
+      for (const pk of toRemove) {
+        await projectStore.removeEntry(sectionToTable('BackgroundGoals'), String(pk));
       }
     }
 

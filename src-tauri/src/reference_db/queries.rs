@@ -1687,7 +1687,16 @@ pub fn query_vanilla_lsx_by_region(
             let mut uuid_val = String::new();
 
             for (i, col_name) in col_names.iter().enumerate() {
-                let val: Option<String> = row.get(i)?;
+                let val: Option<String> = match row.get_ref(i)? {
+                    rusqlite::types::ValueRef::Null => None,
+                    rusqlite::types::ValueRef::Integer(n) => Some(n.to_string()),
+                    rusqlite::types::ValueRef::Real(f) => Some(f.to_string()),
+                    rusqlite::types::ValueRef::Text(s) => {
+                        let s = std::str::from_utf8(s).unwrap_or("");
+                        if s.is_empty() { None } else { Some(s.to_string()) }
+                    }
+                    rusqlite::types::ValueRef::Blob(_) => None,
+                };
                 if let Some(ref v) = val {
                     if !v.is_empty() {
                         let bg3_type = type_map
@@ -1862,7 +1871,16 @@ pub fn query_vanilla_stats_for_scan(
                 let mut data = HashMap::new();
 
                 for (i, col) in columns.iter().enumerate() {
-                    let val: Option<String> = row.get(i)?;
+                    let val: Option<String> = match row.get_ref(i)? {
+                        rusqlite::types::ValueRef::Null => None,
+                        rusqlite::types::ValueRef::Integer(n) => Some(n.to_string()),
+                        rusqlite::types::ValueRef::Real(f) => Some(f.to_string()),
+                        rusqlite::types::ValueRef::Text(s) => {
+                            let s = std::str::from_utf8(s).unwrap_or("");
+                            if s.is_empty() { None } else { Some(s.to_string()) }
+                        }
+                        rusqlite::types::ValueRef::Blob(_) => None,
+                    };
                     match col.name.as_str() {
                         "_entry_name" => {
                             name = val.unwrap_or_default();

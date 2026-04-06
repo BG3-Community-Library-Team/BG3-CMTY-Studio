@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { parseExistingConfig } from "../lib/utils/configParser.js";
-import type { ManualEntry } from "../lib/stores/configStore.svelte.js";
+import type { ManualEntry } from "../lib/types/index.js";
 
 // ──────────────────────────────────────────────
 // Helpers

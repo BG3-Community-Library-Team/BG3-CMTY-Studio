@@ -27,12 +27,14 @@
   import XIcon from "@lucide/svelte/icons/x";
   import { fade } from "svelte/transition";
   import { commandRegistry, type Command } from "./lib/utils/commandRegistry.svelte.js";
-  import { configStore } from "./lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "./lib/stores/projectStore.svelte.js";
   import { toastStore } from "./lib/stores/toastStore.svelte.js";
   import { uiStore } from "./lib/stores/uiStore.svelte.js";
   import { applyTheme, THEME_COMMANDS, type ThemeId } from "./lib/themes/themeManager.js";
   import { getPrefersReducedMotion } from "./lib/stores/motion.svelte.js";
   import { scanAndImport } from "./lib/services/scanService.js";
+  import { saveProject } from "./lib/tauri/save.js";
+  import { getDbPaths } from "./lib/tauri/db-management.js";
   import { undoStore } from "./lib/stores/undoStore.svelte.js";
   import { open, ask } from "@tauri-apps/plugin-dialog";
   import { SECTIONS_ORDERED, SECTION_DISPLAY_NAMES, type Section, getErrorMessage } from "./lib/types/index.js";
@@ -48,7 +50,7 @@
   // AI-31: Commands whose shortcuts should not be intercepted by the global handler
   // (copyPreview would hijack native Ctrl+C; searchEntries dispatches a synthetic
   //  keydown that would cause an infinite loop)
-  const SKIP_GLOBAL_SHORTCUTS = new Set(["action.copyPreview", "action.searchEntries"]);
+  const SKIP_GLOBAL_SHORTCUTS = new Set(["action.copyPreview", "action.searchEntries", "action.save"]);
 
   // HAM-01: Startup init (migrated from HamburgerMenu.onMount)
   onMount(async () => {
@@ -78,7 +80,12 @@
     }
     function handleUnhandledRejection(event: PromiseRejectionEvent) {
       console.error("[Global] Unhandled rejection:", event.reason);
-      toastStore.error(m.app_unexpected_error(), String(event.reason));
+      const reason = event.reason;
+      const msg = typeof reason === "string" ? reason
+        : reason instanceof Error ? reason.message
+        : reason && typeof reason === "object" && "message" in reason ? String(reason.message)
+        : JSON.stringify(reason);
+      toastStore.error(m.app_unexpected_error(), msg);
     }
     window.addEventListener("error", handleGlobalError);
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
@@ -99,8 +106,8 @@
         shortcut: "Ctrl+Shift+O",
         enabled: () => true,
         execute: () => {
-          configStore.toggleFormat();
-          toastStore.info(m.app_format_changed(), m.app_format_set_to({ format: configStore.format }));
+          projectStore.setFormat(projectStore.format === 'Yaml' ? 'Json' : 'Yaml');
+          toastStore.info(m.app_format_changed(), m.app_format_set_to({ format: projectStore.format }));
         },
       },
       {
@@ -109,11 +116,10 @@
         category: "action",
         icon: "⚡",
         shortcut: "Ctrl+C",
-        enabled: () => !!configStore.previewText,
+        enabled: () => !!modStore.scanResult,
         execute: () => {
-          navigator.clipboard.writeText(configStore.previewText)
-            .then(() => toastStore.success(m.app_copied_to_clipboard()))
-            .catch((err) => toastStore.error(m.app_copy_failed(), getErrorMessage(err)));
+          // Preview text is managed by OutputSidebar — copy from clipboard is handled there
+          toastStore.info(m.app_copied_to_clipboard());
         },
       },
       {
@@ -124,7 +130,7 @@
         enabled: () => !modStore.isScanning,
         execute: async () => {
           try {
-            if (configStore.isDirty) {
+            if (projectStore.dirty) {
               const confirmed = await ask(
                 m.app_unsaved_changes_switch(),
                 { title: m.app_unsaved_changes_title(), kind: "warning" },
@@ -154,6 +160,15 @@
         },
       },
       {
+        id: "action.save",
+        label: "Save Project",
+        category: "action",
+        icon: "⚡",
+        shortcut: "Ctrl+S",
+        enabled: () => projectStore.dirty && !!modStore.selectedModPath && !isSaving,
+        execute: handleSave,
+      },
+      {
         id: "action.createNewMod",
         label: m.command_label_new_project(),
         category: "action",
@@ -168,10 +183,10 @@
         label: m.command_label_convert_config(),
         category: "action",
         icon: "⚡",
-        enabled: () => !!configStore.previewText,
+        enabled: () => !!modStore.scanResult,
         execute: () => {
-          configStore.toggleFormat();
-          toastStore.success(m.app_config_converted(), m.app_now_outputting({ format: configStore.format }));
+          projectStore.setFormat(projectStore.format === 'Yaml' ? 'Json' : 'Yaml');
+          toastStore.success(m.app_config_converted(), m.app_now_outputting({ format: projectStore.format }));
         },
       },
       {
@@ -236,7 +251,7 @@
         category: "setting",
         icon: "⚙",
         enabled: () => true,
-        execute: () => { configStore.format = "Yaml"; },
+        execute: () => { projectStore.setFormat("Yaml"); },
       },
       {
         id: "setting.formatJson",
@@ -244,7 +259,7 @@
         category: "setting",
         icon: "⚙",
         enabled: () => true,
-        execute: () => { configStore.format = "Json"; },
+        execute: () => { projectStore.setFormat("Json"); },
       },
       {
         id: "help.about",
@@ -262,9 +277,11 @@
         label: m.command_label_reset_all(),
         category: "action",
         icon: "↺",
-        enabled: () => SECTIONS_ORDERED.some(s => configStore.hasSectionChanges(s)),
+        enabled: () => projectStore.sections.length > 0 && projectStore.dirty,
         execute: () => {
-          for (const s of SECTIONS_ORDERED) configStore.resetSection(s);
+          for (const s of SECTIONS_ORDERED) {
+            projectStore.resetSection(sectionToTable(s));
+          }
           toastStore.info(m.app_all_sections_reset(), m.app_restored_to_scan_state());
         },
       },
@@ -273,9 +290,13 @@
         label: m.command_label_reset_section({ section: SECTION_DISPLAY_NAMES[section] }),
         category: "action",
         icon: "↺",
-        enabled: () => configStore.hasSectionChanges(section),
+        enabled: () => {
+          const table = sectionToTable(section);
+          const entries = projectStore.getEntries(table);
+          return entries.some(e => e._is_new || e._is_modified || e._is_deleted);
+        },
         execute: () => {
-          configStore.resetSection(section);
+          projectStore.resetSection(sectionToTable(section));
           toastStore.info(m.app_section_reset(), m.app_section_restored({ section: SECTION_DISPLAY_NAMES[section] }));
         },
       })),
@@ -287,14 +308,14 @@
         icon: "⏏",
         enabled: () => !!modStore.scanResult,
         execute: async () => {
-          if (configStore.isDirty) {
+          if (projectStore.dirty) {
             const confirmed = await ask(
               m.app_unsaved_changes_exit(),
               { title: m.app_unsaved_changes_title(), kind: "warning" },
             );
             if (!confirmed) return;
           }
-          configStore.reset();
+          projectStore.reset();
           modStore.reset();
           modStore.selectedModPath = "";
           toastStore.info(m.app_mod_closed(), m.app_all_data_cleared());
@@ -451,6 +472,39 @@
     }
   });
 
+  // ── Save project via new export pipeline ──
+  let isSaving = $state(false);
+  async function handleSave() {
+    if (!modStore.selectedModPath || isSaving) return;
+    isSaving = true;
+    try {
+      const dbPaths = await getDbPaths();
+      const result = await saveProject(
+        dbPaths.staging,
+        dbPaths.base,
+        modStore.selectedModPath,
+        modStore.modName,
+        modStore.modFolder,
+        false,
+        false,
+      );
+      if (result.errors.length === 0) {
+        projectStore.markClean();
+        const fileCount = result.files_created.length + result.files_updated.length;
+        toastStore.success(
+          `Saved ${fileCount} file${fileCount !== 1 ? "s" : ""}`,
+          `${result.total_entries} entries exported`,
+        );
+      } else {
+        toastStore.error("Save failed", result.errors.join(", "));
+      }
+    } catch (e: unknown) {
+      toastStore.error("Save failed", getErrorMessage(e));
+    } finally {
+      isSaving = false;
+    }
+  }
+
   // Global keyboard shortcuts
   function handleAppKeydown(e: KeyboardEvent) {
     // AI-31: Dispatch to registry-matched command shortcuts first
@@ -466,7 +520,7 @@
       uiStore.toggleSidebar();
       return;
     }
-    // IX-03A: Ctrl+S → save the currently active file/tab + pin preview tab
+    // IX-03A: Ctrl+S → save project + pin preview tab + save active file
     if (e.ctrlKey && !e.shiftKey && e.key === "s") {
       e.preventDefault();
       // Pin the active tab if it's a preview
@@ -474,28 +528,34 @@
       if (active?.preview) {
         uiStore.pinTab(active.id);
       }
+      // Save active file tab if applicable
       if (active?.type === "meta-lsx") {
         window.dispatchEvent(new CustomEvent("save-active-file"));
       } else {
-        // Generic dispatch — any tab component can listen for this
         window.dispatchEvent(new CustomEvent("save-active-file"));
+      }
+      // Save project via new export pipeline
+      if (projectStore.dirty && modStore.selectedModPath) {
+        handleSave();
       }
     }
     // IX-03A + ER-01: Ctrl+Z → undo
     if (e.ctrlKey && !e.shiftKey && e.key === "z") {
       e.preventDefault();
-      const label = undoStore.undo();
-      if (label) {
-        toastStore.info(m.toast_undo_title(), m.app_undid({ label }));
-      }
+      undoStore.undo().then(label => {
+        if (label) {
+          toastStore.info(m.toast_undo_title(), m.app_undid({ label }));
+        }
+      });
     }
     // IX-03A + ER-01: Ctrl+Y or Ctrl+Shift+Z → redo
     if ((e.ctrlKey && !e.shiftKey && e.key === "y") || (e.ctrlKey && e.shiftKey && e.key === "Z")) {
       e.preventDefault();
-      const label = undoStore.redo();
-      if (label) {
-        toastStore.info(m.toast_redo_title(), m.app_redid({ label }));
-      }
+      undoStore.redo().then(label => {
+        if (label) {
+          toastStore.info(m.toast_redo_title(), m.app_redid({ label }));
+        }
+      });
     }
   }
 
@@ -526,7 +586,7 @@
         const mod = await import("@tauri-apps/api/window");
         const win = mod.getCurrentWindow();
         const unlisten = await win.onCloseRequested(async (event) => {
-          if (configStore.isDirty) {
+          if (projectStore.dirty) {
             const confirmed = await ask(
               m.app_unsaved_changes_exit(),
               { title: m.app_unsaved_changes_title(), kind: "warning" },
@@ -603,7 +663,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleAppKeydown} oncontextmenu={handleGlobalContextMenu} onbeforeunload={(e) => { settingsStore.persistNow(); if (configStore.isDirty) { e.preventDefault(); } }} />
+<svelte:window onkeydown={handleAppKeydown} oncontextmenu={handleGlobalContextMenu} onbeforeunload={(e) => { settingsStore.persistNow(); if (projectStore.dirty) { e.preventDefault(); } }} />
 
 <div bind:this={appContainer} use:clampSidebarOnResize class="app-frame flex flex-col h-screen bg-[var(--th-sidebar-bg-deep,var(--th-bg-950))] text-[var(--th-text-100)] {isMaximized ? 'maximized' : ''}">
   <!-- Custom titlebar with hamburger menu & command palette integration -->

@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SelectedEntry, SerializeOptions, AnchorGroup } from "../types/index.js";
-import type { ManualEntry } from "../stores/configStore.svelte.js";
+import type { SelectedEntry, SerializeOptions, AnchorGroup, ManualEntry } from "../types/index.js";
 
 export async function generateConfig(
   entries: SelectedEntry[],

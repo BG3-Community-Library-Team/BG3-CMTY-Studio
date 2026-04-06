@@ -1,7 +1,7 @@
 <script lang="ts">
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import type { SectionResult, Section, DiffEntry } from "../lib/types/index.js";
   import { SECTIONS_ORDERED } from "../lib/types/index.js";
   import { BG3_CORE_FOLDERS, type FolderNode } from "../lib/data/bg3FolderStructure.js";
@@ -95,8 +95,8 @@
     if (sec) return sec;
 
     // Check if there are manual entries for this section
-    const hasManual = configStore.manualEntries.some(
-      (e: { section: string }) => e.section === category,
+    const hasManual = projectStore.sections.some(
+      s => s.table_name === sectionToTable(category) && s.new_rows > 0,
     );
     if (hasManual) {
       return { section: category as Section, entries: [] };

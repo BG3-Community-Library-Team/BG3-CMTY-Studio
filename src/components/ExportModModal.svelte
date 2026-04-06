@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore } from "../lib/stores/projectStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { type Section, getErrorMessage } from "../lib/types/index.js";
   import { diffEntryToLsx, getRegionId } from "../lib/utils/entryToLsx.js";
@@ -20,6 +20,7 @@
   import ScrollText from "@lucide/svelte/icons/scroll-text";
   import { focusTrap } from "../lib/utils/focusTrap.js";
   import { generateRaceTagGoalFile } from "../lib/utils/osirisGoalWriter.js";
+  import type { LocaFileEntry } from "../lib/types/index.js";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -29,6 +30,52 @@
   let exportErrors: string[] = $state([]);
   let exportFileErrors: Record<string, string[]> = $state({});
   let exportedCount = $state(0);
+
+  // Staging meta-loaded data (async on mount)
+  let locaEntries: LocaFileEntry[] = $state([]);
+  let autoLocaEntries: Map<string, { text: string; version: number }> = $state(new Map());
+  let osirisGoalEntries: Map<string, { raceTagName: string; raceTagUuid: string; reallyTagName: string; reallyTagUuid: string }> = $state(new Map());
+  let osirisGoalFileUuid: string = $state("");
+
+  // Load meta data from staging DB on mount
+  $effect(() => {
+    (async () => {
+      try {
+        const locaRaw = await projectStore.getMeta("loca_entries");
+        if (locaRaw) locaEntries = JSON.parse(locaRaw);
+
+        const osirisRaw = await projectStore.getMeta("osiris_goal_entries");
+        if (osirisRaw) {
+          const parsed = JSON.parse(osirisRaw);
+          const map = new Map<string, { raceTagName: string; raceTagUuid: string; reallyTagName: string; reallyTagUuid: string }>();
+          if (Array.isArray(parsed)) {
+            for (const p of parsed) {
+              if (p.raceTagUuid) map.set(p.raceTagUuid, p);
+            }
+          }
+          osirisGoalEntries = map;
+        }
+
+        const fileUuid = await projectStore.getMeta("osiris_goal_file_uuid");
+        if (fileUuid) osirisGoalFileUuid = fileUuid;
+
+        // Auto loca entries from loca__english section
+        const locaRows = await projectStore.loadSection("loca__english");
+        if (locaRows.length > 0) {
+          const map = new Map<string, { text: string; version: number }>();
+          for (const row of locaRows) {
+            const handle = String(row["contentuid"] ?? "");
+            const text = String(row["text"] ?? "");
+            const version = parseInt(String(row["version"] ?? "1"), 10) || 1;
+            if (handle) map.set(handle, { text, version });
+          }
+          autoLocaEntries = map;
+        }
+      } catch (err) {
+        console.warn("Failed to load export meta from staging:", err);
+      }
+    })();
+  });
 
   let scanResult = $derived(modStore.scanResult);
   let modPath = $derived(modStore.selectedModPath);
@@ -70,7 +117,7 @@
     const specs: { outputPath: string; content: string; label: string; count: number }[] = [];
 
     // User-authored localization entries from the Localization panel
-    for (const entry of configStore.locaEntries) {
+    for (const entry of locaEntries) {
       if (!entry.label.trim() || entry.values.length === 0) continue;
       const fileName = entry.label.trim();
       const outputPath = `${modPath}/Localization/English/${fileName}.xml`;
@@ -83,15 +130,15 @@
     }
 
     // Auto-generated localization entries from TranslatedString fields
-    if (configStore.autoLocaEntries.size > 0) {
+    if (autoLocaEntries.size > 0) {
       const autoLines: string[] = [];
-      for (const [handle, { text, version }] of configStore.autoLocaEntries) {
+      for (const [handle, { text, version }] of autoLocaEntries) {
         const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         autoLines.push(`  <content contentuid="${handle}" version="${version}">${escaped}</content>`);
       }
       const outputPath = `${modPath}/Localization/English/english.xml`;
       const content = `<?xml version="1.0" encoding="utf-8"?>\n<contentList date="${dateStr}">\n${autoLines.join("\n")}\n</contentList>`;
-      specs.push({ outputPath, content, label: "english", count: configStore.autoLocaEntries.size });
+      specs.push({ outputPath, content, label: "english", count: autoLocaEntries.size });
     }
 
     return specs;
@@ -99,14 +146,14 @@
 
   /** Osiris goal file spec for DB_RaceTags. */
   let osirisSpec = $derived.by((): { outputPath: string; content: string; label: string; count: number } | null => {
-    if (!modPath || !modFolder || configStore.osirisGoalEntries.size === 0) return null;
+    if (!modPath || !modFolder || osirisGoalEntries.size === 0) return null;
 
-    const pairs = Array.from(configStore.osirisGoalEntries.values());
+    const pairs = Array.from(osirisGoalEntries.values());
     const content = generateRaceTagGoalFile(pairs);
     if (!content) return null;
 
     const modName = scanResult?.mod_meta.name ?? modFolder;
-    const fileUuid = configStore.osirisGoalFileUuid;
+    const fileUuid = osirisGoalFileUuid;
     const fileName = `${modName}_NewRace_Tags-${fileUuid}.txt`;
 
     return {
@@ -182,7 +229,7 @@
       const totalErrorCount = result.errors.length + Object.values(result.file_errors).reduce((n, arr) => n + arr.length, 0);
 
       if (totalErrorCount === 0) {
-        configStore.markClean();
+        projectStore.markClean();
         toastStore.registerToastAction(
           "open-export-dir",
           () => { openPath(modPath!).catch(console.error); },

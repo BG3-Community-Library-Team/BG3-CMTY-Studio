@@ -1,6 +1,6 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { rediffMod } from "../lib/utils/tauri.js";
   import { SECTIONS_ORDERED, isCoreSection } from "../lib/types/index.js";
   import type { SectionResult, Section } from "../lib/types/index.js";
@@ -71,7 +71,15 @@
 
     // Collect sections that have manual entries but no scan entries
     const existingSections = new Set(base.map(s => s.section));
-    const manualSections = new Set(configStore.manualEntries.map(e => e.section));
+    const manualSections = new Set(
+      projectStore.sections
+        .filter(s => s.new_rows > 0)
+        .map(s => {
+          // Convert table_name back to section name (strip "lsx__" prefix)
+          const t = s.table_name;
+          return t.startsWith("lsx__") ? t.slice(5) : t;
+        })
+    );
     const stubs: SectionResult[] = [];
     for (const section of SECTIONS_ORDERED) {
       if (manualSections.has(section) && !existingSections.has(section)) {

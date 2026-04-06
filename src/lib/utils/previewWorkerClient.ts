@@ -22,8 +22,7 @@
  * the internal scheduling strategy changes.
  */
 
-import type { SelectedEntry } from "../types/index.js";
-import type { ManualEntry } from "../stores/configStore.svelte.js";
+import type { SelectedEntry, ManualEntry } from "../types/index.js";
 
 export type GenerateFn = (
   entries: SelectedEntry[],

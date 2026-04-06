@@ -1,14 +1,12 @@
 <script lang="ts">
-  import type { SectionResult } from "../lib/types/index.js";
+  import type { SectionResult, ManualEntry } from "../lib/types/index.js";
   import { SECTION_DISPLAY_NAMES, getErrorMessage } from "../lib/types/index.js";
   import type { Section } from "../lib/types/index.js";
-  import { configStore } from "../lib/stores/configStore.svelte.js";
+  import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { undoStore } from "../lib/stores/undoStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { saveLsx, type LsxPreviewEntry } from "../lib/utils/tauri.js";
-  import { diffEntryToLsx, getRegionId } from "../lib/utils/entryToLsx.js";
   import EntryRow from "./EntryRow.svelte";
   import UnifiedForm from "./UnifiedForm.svelte";
   import ManualEntryCard from "./ManualEntryCard.svelte";
@@ -45,6 +43,28 @@
 
   let filter = $state("");
   let showManualForm = $state(false);
+
+  /** Staging DB table name for this section */
+  let table = $derived(sectionToTable(sectionResult.section));
+
+  /** Ensure section data is loaded in projectStore (lazy) */
+  $effect(() => {
+    const t = table;
+    if (!projectStore.isSectionLoaded(t)) {
+      projectStore.loadSection(t).catch(err => {
+        console.warn(`[SectionPanel] Failed to load table ${t}:`, err);
+      });
+    }
+  });
+
+  /** All staging entries for this section (reactive) */
+  let stagingEntries = $derived(projectStore.getEntries(table));
+
+  /** Quick lookup: is a specific entry deleted in the staging DB? */
+  function isEntryEnabled(uuid: string): boolean {
+    const e = stagingEntries.find(se => se._pk === uuid);
+    return e ? !e._is_deleted : true;
+  }
 
   // Entry-level context menu state (Races: Add Sub-Race, Edit)
   let entryCtxMenu: { entry: DiffEntry; x: number; y: number } | null = $state(null);
@@ -129,15 +149,9 @@
   }
 
   function toggleGroupAll(entries: import("../lib/types/index.js").DiffEntry[]) {
-    const section = sectionResult.section;
-    const allEnabled = entries.every(e => configStore.isEnabled(section, e.uuid));
-    for (const e of entries) {
-      if (allEnabled) {
-        if (configStore.isEnabled(section, e.uuid)) configStore.toggleEntry(section, e.uuid);
-      } else {
-        if (!configStore.isEnabled(section, e.uuid)) configStore.toggleEntry(section, e.uuid);
-      }
-    }
+    const allEnabled = entries.every(e => isEntryEnabled(e.uuid));
+    const pks = entries.map(e => e.uuid);
+    projectStore.batchToggle(table, pks, allEnabled);
   }
 
   let displayName = $derived(
@@ -248,27 +262,26 @@
   let timelineEntries = $derived.by((): DiffEntry[] => {
     if (sectionResult.section !== 'Progressions') return mergedEntries;
 
-    const manuals = configStore.getManualEntriesForSection(sectionResult.section);
-    if (manuals.length === 0) return mergedEntries;
+    const newEntries = stagingEntries.filter(e => e._is_new);
+    if (newEntries.length === 0) return mergedEntries;
 
-    // Filter manual entries by entryFilter if present (e.g. ProgressionType === "0" for Class)
-    // encodeFormState stores fields with "Field:" prefix, so prefix the filter key
+    // Filter new entries by entryFilter if present (e.g. ProgressionType === "0" for Class)
     const filtered = entryFilter
-      ? manuals.filter(m => m.entry.fields[`Field:${entryFilter!.field}`] === entryFilter!.value)
-      : manuals;
+      ? newEntries.filter(e => String(e[`Field:${entryFilter!.field}`] ?? e[entryFilter!.field] ?? "") === entryFilter!.value)
+      : newEntries;
     if (filtered.length === 0) return mergedEntries;
 
-    // Convert ManualEntry → DiffEntry stub
-    // Strip "Field:" prefix from encoded keys so raw_attributes matches backend format
-    const stubs: DiffEntry[] = filtered.map(({ entry }) => {
+    // Convert staging EntryRow → DiffEntry stub
+    const stubs: DiffEntry[] = filtered.map(e => {
       const rawAttrs: Record<string, string> = {};
-      for (const [k, v] of Object.entries(entry.fields)) {
-        if (k.startsWith("Field:")) rawAttrs[k.slice(6)] = v;
-        else if (!k.includes(":") && !k.startsWith("_")) rawAttrs[k] = v;
+      for (const [k, v] of Object.entries(e)) {
+        if (k.startsWith("_")) continue;
+        if (k.startsWith("Field:")) rawAttrs[k.slice(6)] = String(v ?? "");
+        else if (!k.includes(":")) rawAttrs[k] = String(v ?? "");
       }
       return {
-        uuid: entry.fields.UUID ?? entry.fields.EntryName ?? `manual-${Math.random().toString(36).slice(2, 10)}`,
-        display_name: rawAttrs.Name ?? entry.fields._entryLabel ?? entry.fields.UUID ?? 'New Entry',
+        uuid: e._pk,
+        display_name: rawAttrs.Name ?? String(e["_entryLabel"] ?? e._pk ?? 'New Entry'),
         source_file: '',
         entry_kind: 'New' as const,
         changes: [],
@@ -352,14 +365,14 @@
 
   // PF-032: Group entries (after mergedEntries is available)
   let groupedEntries = $derived(
-    groupEntries(visibleMergedEntries, groupingMode, sectionResult.section, (s, u) => configStore.isEnabled(s, u))
+    groupEntries(visibleMergedEntries, groupingMode, sectionResult.section, (_s, u) => isEntryEnabled(u))
   );
 
   // ---- Combined entry list: auto-detected + manual entries for unified pagination ----
   interface CombinedEntry {
     type: "auto" | "manual";
     autoEntry?: import("../lib/types/index.js").DiffEntry;
-    manualEntry?: { entry: import("../lib/stores/configStore.svelte.js").ManualEntry; globalIndex: number };
+    manualEntry?: { entry: ManualEntry; globalIndex: number };
   }
 
   let combinedEntries = $derived.by((): CombinedEntry[] => {
@@ -367,7 +380,7 @@
     for (const e of visibleMergedEntries) {
       entries.push({ type: "auto", autoEntry: e });
     }
-    for (const me of manualEntries) {
+    for (const me of manualEntriesCompat) {
       entries.push({ type: "manual", manualEntry: me });
     }
     return entries;
@@ -397,7 +410,21 @@
     });
   });
 
-  let manualEntries = $derived(configStore.getManualEntriesForSection(sectionResult.section));
+  /** New entries from projectStore — adapted to ManualEntry shape for ManualEntryCard compatibility */
+  let manualEntriesCompat = $derived.by(() => {
+    return stagingEntries
+      .filter(e => e._is_new)
+      .map((e, i) => {
+        const fields: Record<string, string> = {};
+        for (const [k, v] of Object.entries(e)) {
+          if (!k.startsWith("_") && v != null) fields[k] = String(v);
+        }
+        return {
+          entry: { section: sectionResult.section, fields } as ManualEntry,
+          globalIndex: i,
+        };
+      });
+  });
 
   // Expansion state persists across tab switches via uiStore (defaults to expanded)
   let expanded = $derived(uiStore.expandedSections[sectionResult.section] ?? true);
@@ -417,7 +444,7 @@
   /** Guard: has the auto-expand already fired once? Prevents re-expanding after user collapses. */
   let didAutoExpand = $state(false);
   $effect(() => {
-    if (!didAutoExpand && manualEntries.length > 0 && !expanded && sectionResult.entries.length === 0) {
+    if (!didAutoExpand && manualEntriesCompat.length > 0 && !expanded && sectionResult.entries.length === 0) {
       setExpanded(true);
       didAutoExpand = true;
     }
@@ -430,27 +457,30 @@
     }
   });
 
-  let allEnabled = $derived(configStore.isSectionFullyEnabled(sectionResult.section));
+  let allEnabled = $derived(stagingEntries.length === 0 || stagingEntries.every(e => !e._is_deleted));
 
   /** Count of auto entries currently active (not disabled) */
   let activeCount = $derived(
-    sectionResult.entries.filter(e => configStore.isEnabled(sectionResult.section, e.uuid)).length
+    sectionResult.entries.filter(e => isEntryEnabled(e.uuid)).length
   );
 
   /** Count of auto entries explicitly disabled by the user */
   let disabledCount = $derived(sectionResult.entries.length - activeCount);
 
   /** Whether section has any user changes (disabled entries or manual entries) */
-  let hasChanges = $derived(disabledCount > 0 || manualEntries.length > 0);
+  let hasChanges = $derived(disabledCount > 0 || manualEntriesCompat.length > 0);
 
-  /** Whether section has resettable user-made changes (excludes pristine imported state) */
-  let hasResettableChanges = $derived(configStore.hasSectionChanges(sectionResult.section));
+  /** Whether section has resettable user-made changes */
+  let hasResettableChanges = $derived(
+    stagingEntries.some(e => e._is_new || e._is_modified || e._is_deleted)
+  );
 
   /** Primary mod folder name for self-diff prevention */
   let primaryModFolder = $derived(modStore.selectedModPath?.split(/[\\/]/).pop() ?? "");
 
-  let sectionErrors = $derived(configStore.validationSummary.errors.filter(e => e.section === sectionResult.section));
-  let sectionWarnings = $derived(configStore.validationSummary.warnings.filter(w => w.section === sectionResult.section));
+  // TODO: Wire validation summary from projectStore when validation engine is migrated
+  let sectionErrors: { section: string; uuid: string; displayName: string; message: string }[] = $derived([]);
+  let sectionWarnings: { section: string; uuid: string; displayName: string; message: string }[] = $derived([]);
 
   async function scrollToSectionEntry(section: string, uuid: string) {
     setExpanded(true);
@@ -460,10 +490,11 @@
   }
 
   function toggleAll(): void {
+    const pks = sectionResult.entries.map(e => e.uuid);
     if (allEnabled) {
-      configStore.disableSection(sectionResult.section);
+      projectStore.batchToggle(table, pks, true);
     } else {
-      configStore.enableSection(sectionResult.section);
+      projectStore.batchToggle(table, pks, false);
     }
   }
 </script>
@@ -513,8 +544,8 @@
         <span class="text-zinc-400">{disabledCount} disabled</span>
         <span class="text-[var(--th-text-500)]">/</span>
       {/if}
-      {sectionResult.entries.length + manualEntries.length}
-      {(sectionResult.entries.length + manualEntries.length) === 1 ? "entry" : "entries"}
+      {sectionResult.entries.length + manualEntriesCompat.length}
+      {(sectionResult.entries.length + manualEntriesCompat.length) === 1 ? "entry" : "entries"}
     </span>
   </button>
 
@@ -527,7 +558,7 @@
           {#if !allEnabled}
             <button
               class="text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors select-none px-2 py-1 rounded border border-sky-400/30 hover:border-sky-300/40"
-              onclick={() => { configStore.enableSection(sectionResult.section); toastStore.info(m.section_panel_enabled_toast_title(), m.section_panel_enabled_toast_message({ section: displayName }), { label: "Undo", actionId: "undo" }); }}
+              onclick={() => { projectStore.batchToggle(table, sectionResult.entries.map(e => e.uuid), false); toastStore.info(m.section_panel_enabled_toast_title(), m.section_panel_enabled_toast_message({ section: displayName }), { label: "Undo", actionId: "undo" }); }}
               use:tooltip={m.section_panel_enable_all_tooltip()}
               aria-label={m.section_panel_enable_all_aria()}
             >{m.section_panel_enable_all()}</button>
@@ -535,7 +566,7 @@
           {#if allEnabled && sectionResult.entries.length > 0}
             <button
               class="text-xs font-medium text-red-400 hover:text-red-300 transition-colors select-none px-2 py-1 rounded border border-red-400/30 hover:border-red-300/40"
-              onclick={() => { configStore.disableSection(sectionResult.section); toastStore.info(m.section_panel_disabled_toast_title(), m.section_panel_disabled_toast_message({ section: displayName }), { label: "Undo", actionId: "undo" }); }}
+              onclick={() => { projectStore.batchToggle(table, sectionResult.entries.map(e => e.uuid), true); toastStore.info(m.section_panel_disabled_toast_title(), m.section_panel_disabled_toast_message({ section: displayName }), { label: "Undo", actionId: "undo" }); }}
               use:tooltip={m.section_panel_disable_all_tooltip()}
               aria-label={m.section_panel_disable_all_aria()}
             >{m.section_panel_disable_all()}</button>
@@ -613,36 +644,9 @@
               nodeId={entryFilter?.field === "node_id" ? entryFilter.value : undefined}
               prefill={subraceParentUuid ? { 'Field:ParentGuid': subraceParentUuid } : null}
               onclose={() => { showManualForm = false; subraceParentUuid = null; }}
-              onsave={(result) => {
+              onsave={() => {
                 showManualForm = false;
                 toastStore.success(m.section_panel_entry_added_title(), m.section_panel_entry_added_message({ section: sectionResult.section }));
-
-                // Persist identity fields to LSX file on disk
-                const folder = modStore.scanResult?.mod_meta?.folder;
-                const modPath = modStore.selectedModPath;
-                if (!folder || !modPath) return;
-                const uuid = result.UUID ?? result.EntryName ?? "";
-                if (!uuid) return;
-                const regionId = getRegionId(sectionResult.section as Section);
-                const nodeId = result["_nodeType"] ?? regionId.replace(/s$/, "");
-                // Extract only LSX-worthy identity attributes
-                const lsxAttrs: Record<string, string> = {};
-                if (result.UUID) lsxAttrs["UUID"] = result.UUID;
-                if (result.Name) lsxAttrs["Name"] = result.Name;
-                const newEntry: LsxPreviewEntry = {
-                  uuid,
-                  node_id: nodeId,
-                  raw_attributes: lsxAttrs,
-                  raw_attribute_types: {},
-                  raw_children: {},
-                };
-                const existingEntries: LsxPreviewEntry[] = (sectionResult.entries ?? []).map(diffEntryToLsx);
-                const allEntries = [...existingEntries, newEntry];
-                const outputPath = `${modPath}/Public/${folder}/${regionId}/${regionId}.lsx`;
-                saveLsx(allEntries, regionId, outputPath).catch(err => {
-                  console.error("Failed to save LSX:", err);
-                  toastStore.error(m.section_panel_lsx_save_failed(), getErrorMessage(err));
-                });
               }}
             />
           {:else}
@@ -652,32 +656,6 @@
               onsave={(result) => {
                 showManualForm = false;
                 toastStore.success(m.section_panel_entry_added_title(), m.section_panel_entry_added_schema_message({ nodeId: result["_nodeType"] ?? sectionResult.section }));
-
-                // Persist identity fields to LSX file on disk
-                const folder = modStore.scanResult?.mod_meta?.folder;
-                const modPath = modStore.selectedModPath;
-                if (!folder || !modPath) return;
-                const uuid = result.UUID ?? result.EntryName ?? "";
-                if (!uuid) return;
-                const regionId = getRegionId(sectionResult.section as Section);
-                const nodeId = result["_nodeType"] ?? regionId.replace(/s$/, "");
-                const lsxAttrs: Record<string, string> = {};
-                if (result.UUID) lsxAttrs["UUID"] = result.UUID;
-                if (result.Name) lsxAttrs["Name"] = result.Name;
-                const newEntry: LsxPreviewEntry = {
-                  uuid,
-                  node_id: nodeId,
-                  raw_attributes: lsxAttrs,
-                  raw_attribute_types: {},
-                  raw_children: {},
-                };
-                const existingEntries: LsxPreviewEntry[] = (sectionResult.entries ?? []).map(diffEntryToLsx);
-                const allEntries = [...existingEntries, newEntry];
-                const outputPath = `${modPath}/Public/${folder}/${regionId}/${regionId}.lsx`;
-                saveLsx(allEntries, regionId, outputPath).catch(err => {
-                  console.error("Failed to save LSX:", err);
-                  toastStore.error(m.section_panel_lsx_save_failed(), getErrorMessage(err));
-                });
               }}
             />
           {/if}
@@ -778,7 +756,7 @@
         >{m.common_cancel()}</button>
         <button
           class="px-4 py-1.5 text-xs rounded bg-amber-600 text-white hover:bg-amber-500 transition-colors"
-          onclick={() => { configStore.resetSection(sectionResult.section); closeResetModal(); toastStore.info(m.section_panel_reset_toast_title(), m.section_panel_reset_toast_message({ section: displayName })); }}
+          onclick={() => { projectStore.resetSection(table); closeResetModal(); toastStore.info(m.section_panel_reset_toast_title(), m.section_panel_reset_toast_message({ section: displayName })); }}
         >{m.common_reset()}</button>
       </div>
     </div>
@@ -792,10 +770,10 @@
     section={sectionResult.section}
     x={entryCtxMenu.x}
     y={entryCtxMenu.y}
-    isEnabled={configStore.isEnabled(sectionResult.section, entryCtxMenu.entry.uuid)}
+    isEnabled={isEntryEnabled(entryCtxMenu.entry.uuid)}
     onclose={() => entryCtxMenu = null}
     onedit={handleEditEntry}
-    ontoggle={(entry) => { configStore.toggleEntry(sectionResult.section, entry.uuid); entryCtxMenu = null; }}
+    ontoggle={(entry) => { projectStore.toggleEntry(table, entry.uuid); entryCtxMenu = null; }}
     onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined}
   />
 {/if}
