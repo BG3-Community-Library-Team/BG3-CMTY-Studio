@@ -8,6 +8,7 @@ use std::path::Path;
 use rusqlite::Connection;
 use crate::models::Section;
 use crate::{VanillaEntryInfo, StatEntryInfo, ListItemsInfo, LocaEntry, SectionInfo, ChildTableInfo};
+use crate::schema::infer::{NodeSchema, AttrSchema, ChildSchema};
 
 /// SQL ORDER BY fragment that prefers root tables (parent_tables IS NULL),
 /// then direct children of root, then deeper children, then highest row_count.
@@ -1118,6 +1119,233 @@ pub fn query_available_sections(db_path: &Path) -> Result<Vec<SectionInfo>, Stri
     }
 
     Ok(sections)
+}
+
+/// Build a region_id → Section parse_name lookup from the Section enum.
+/// For regions that map to a Section variant (e.g. "ConditionErrors" → "ErrorDescriptions"),
+/// we return the variant name. For regions without a Section variant, returns None.
+fn region_to_section_name() -> HashMap<&'static str, String> {
+    let mut map = HashMap::new();
+    for section in Section::all_ordered() {
+        // region_id() → Section variant Debug name (= parse_name key = ts-rs string)
+        for rid in section.region_ids() {
+            map.insert(*rid, format!("{:?}", section));
+        }
+    }
+    map
+}
+
+/// Query complete node schemas directly from DB metadata (`_table_meta` + `_column_types`).
+///
+/// This replaces the slow `infer_schemas` path that had to scan actual row data.
+/// Returns one `NodeSchema` per (region, node_id) pair in the database, with
+/// attribute types drawn from `_column_types` and child relationships from junction tables.
+pub fn query_db_schemas(db_path: &Path) -> Result<Vec<NodeSchema>, String> {
+    let conn = open_ro(db_path)?;
+    let region_map = region_to_section_name();
+
+    // 1. Fetch all root-level LSX tables (non-junction, with data)
+    let mut meta_stmt = conn
+        .prepare(
+            "SELECT table_name, region_id, node_id, row_count \
+             FROM _table_meta \
+             WHERE source_type = 'lsx' AND row_count > 0 \
+             ORDER BY region_id, row_count DESC",
+        )
+        .map_err(|e| format!("Prepare meta: {e}"))?;
+
+    struct MetaRow {
+        table_name: String,
+        region_id: String,
+        node_id: String,
+        row_count: i64,
+    }
+
+    let meta_rows: Vec<MetaRow> = meta_stmt
+        .query_map([], |row| {
+            Ok(MetaRow {
+                table_name: row.get(0)?,
+                region_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                node_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                row_count: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Query meta: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // 2. Identify junction tables and build parent→children map
+    let mut jct_stmt = conn
+        .prepare(
+            "SELECT table_name, region_id, node_id, row_count, parent_tables \
+             FROM _table_meta \
+             WHERE table_name LIKE '%\\_\\_to\\_\\_%' ESCAPE '\\' AND row_count > 0",
+        )
+        .map_err(|e| format!("Prepare junctions: {e}"))?;
+
+    // junction parent_table → Vec<(group_id, child_node_id, child_row_count)>
+    let mut children_by_parent: HashMap<String, Vec<(String, String, i64)>> = HashMap::new();
+
+    let jct_rows = jct_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,       // table_name
+                row.get::<_, Option<String>>(2)?, // node_id
+                row.get::<_, i64>(3)?,           // row_count
+            ))
+        })
+        .map_err(|e| format!("Query junctions: {e}"))?;
+
+    for jct_row in jct_rows.flatten() {
+        let (jt_name, child_node_id, child_rc) = jct_row;
+        // Parse junction table name: lsx__Region__ParentNode__to__ChildNode
+        if let Some(to_pos) = jt_name.find("__to__") {
+            let parent_part = &jt_name[..to_pos]; // lsx__Region__ParentNode
+            let child_part = &jt_name[to_pos + 6..]; // ChildNode
+            let group_id = child_part.to_string();
+            let child_nid = child_node_id.unwrap_or_else(|| child_part.to_string());
+            children_by_parent
+                .entry(parent_part.to_string())
+                .or_default()
+                .push((group_id, child_nid, child_rc));
+        }
+    }
+
+    // 3. Identify child tables (tables that appear as children of junction tables)
+    //    so we can exclude them from top-level results
+    let child_tables: std::collections::HashSet<String> = children_by_parent
+        .values()
+        .flatten()
+        .flat_map(|(_, child_nid, _)| {
+            // Child tables follow the pattern: lsx__Region__ChildNodeId
+            // We'll collect all table_names that are targets of junction relationships
+            meta_rows.iter()
+                .filter(|m| m.node_id == *child_nid)
+                .map(|m| m.table_name.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // 4. Load all column types in bulk for efficiency
+    let mut col_stmt = conn
+        .prepare(
+            "SELECT table_name, column_name, bg3_type \
+             FROM _column_types \
+             WHERE table_name LIKE 'lsx%' \
+             ORDER BY table_name, column_name",
+        )
+        .map_err(|e| format!("Prepare columns: {e}"))?;
+
+    let mut columns_by_table: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let col_rows = col_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(|e| format!("Query columns: {e}"))?;
+
+    for col_row in col_rows.flatten() {
+        let (tbl, col_name, bg3_type) = col_row;
+        // Skip internal columns
+        if col_name.starts_with('_') {
+            continue;
+        }
+        columns_by_table
+            .entry(tbl)
+            .or_default()
+            .push((col_name, bg3_type.unwrap_or_else(|| "FixedString".to_string())));
+    }
+
+    // 5. Build NodeSchema per (region_id, node_id) — only root-level tables
+    //    For each region, pick the table with the most rows whose node_id is not "root"
+    //    (some regions like "Color" have a single "root" node — use region_id as node_id)
+    let mut seen: HashMap<(String, String), usize> = HashMap::new(); // dedup key
+    let mut schemas = Vec::new();
+
+    for meta in &meta_rows {
+        if meta.region_id.is_empty() || meta.node_id.is_empty() {
+            continue;
+        }
+        // Skip child tables and junction tables themselves
+        if child_tables.contains(&meta.table_name) {
+            continue;
+        }
+        if meta.table_name.contains("__to__") {
+            continue;
+        }
+
+        // Resolve the section name: Section variant name if exists, else region_id
+        let section_name = region_map
+            .get(meta.region_id.as_str())
+            .cloned()
+            .unwrap_or_else(|| meta.region_id.clone());
+
+        // Use node_id as the schema key; treat "root" as the region_id
+        let effective_node_id = if meta.node_id == "root" {
+            meta.region_id.clone()
+        } else {
+            meta.node_id.clone()
+        };
+
+        // Dedup: keep only the first (highest row_count) table per (section, node_id)
+        let dedup_key = (section_name.clone(), effective_node_id.clone());
+        if seen.contains_key(&dedup_key) {
+            continue;
+        }
+        seen.insert(dedup_key, schemas.len());
+
+        // Build attributes from column types
+        let cols = columns_by_table.get(&meta.table_name).cloned().unwrap_or_default();
+        let mut attributes: Vec<AttrSchema> = cols
+            .into_iter()
+            .map(|(name, attr_type)| AttrSchema {
+                name,
+                attr_type,
+                frequency: 1.0, // DB columns are always present
+                examples: vec![], // No examples from metadata alone
+            })
+            .collect();
+
+        // Sort: UUID/MapKey first, then alphabetically
+        attributes.sort_by(|a, b| {
+            let a_pk = a.name == "UUID" || a.name == "MapKey";
+            let b_pk = b.name == "UUID" || b.name == "MapKey";
+            if a_pk && !b_pk {
+                return std::cmp::Ordering::Less;
+            }
+            if b_pk && !a_pk {
+                return std::cmp::Ordering::Greater;
+            }
+            a.name.cmp(&b.name)
+        });
+
+        // Build children from junction tables
+        let children_raw = children_by_parent
+            .get(&meta.table_name)
+            .cloned()
+            .unwrap_or_default();
+        let children: Vec<ChildSchema> = children_raw
+            .into_iter()
+            .map(|(group_id, child_node_id, _child_rc)| ChildSchema {
+                group_id,
+                child_node_id,
+                frequency: 1.0, // Junction presence = always applicable
+            })
+            .collect();
+
+        schemas.push(NodeSchema {
+            node_id: effective_node_id,
+            section: section_name,
+            sample_count: meta.row_count as usize,
+            attributes,
+            children,
+        });
+    }
+
+    Ok(schemas)
 }
 
 /// Query entries from any section by region_id string (unified replacement for

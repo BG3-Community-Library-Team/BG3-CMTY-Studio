@@ -1693,6 +1693,21 @@ async fn cmd_infer_schemas(app: tauri::AppHandle) -> Result<Vec<schema::infer::N
     .await
 }
 
+/// Dump node schemas from DB metadata (no data scanning required).
+/// Replaces the slow `cmd_infer_schemas` path with a metadata-only query.
+#[tauri::command]
+async fn cmd_dump_db_schemas(app: tauri::AppHandle) -> Result<Vec<schema::infer::NodeSchema>, AppError> {
+    blocking(move || {
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths not available: {e}"))?;
+        if !db_paths.base.exists() {
+            return Err(format!("Reference DB not found at {}", db_paths.base.display()));
+        }
+        reference_db::queries::query_db_schemas(&db_paths.base)
+    })
+    .await
+}
+
 // ─── Pak Section Listing & On-Demand Extraction ─────────────────────
 
 /// List which data sections exist inside a .pak file without extracting it.
@@ -1888,6 +1903,7 @@ pub fn run() {
             cmd_export_mod,
             cmd_region_id_for_section,
             cmd_infer_schemas,
+            cmd_dump_db_schemas,
             cmd_create_mod_scaffold,
             cmd_list_pak_sections,
             cmd_list_mod_files,

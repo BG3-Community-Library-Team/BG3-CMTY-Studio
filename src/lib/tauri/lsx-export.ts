@@ -96,3 +96,8 @@ export interface NodeSchema {
 export async function inferSchemas(): Promise<NodeSchema[]> {
   return invoke("cmd_infer_schemas");
 }
+
+/** Dump node schemas directly from DB metadata (fast, no data scanning). */
+export async function dumpDbSchemas(): Promise<NodeSchema[]> {
+  return invoke("cmd_dump_db_schemas");
+}

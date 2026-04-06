@@ -179,11 +179,8 @@ export async function loadVanillaData(): Promise<void> {
   }
   modStore.vanillaLoadFailures = failedNames;
 
-  // P3: Load LSX schemas in parallel (doesn't block vanilla data display)
-  const vanillaPath = settingsStore.vanillaPath || "";
-  if (vanillaPath) {
-    schemaStore.load();
-  }
+  // Load LSX schemas from the reference DB (needed for schema-tier form rendering)
+  await schemaStore.load();
 
   // Invalidate the display name map so it rebuilds with the new data (P3)
   modStore.invalidateDisplayNameMap();

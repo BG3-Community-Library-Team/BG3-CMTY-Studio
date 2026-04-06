@@ -563,6 +563,25 @@ export const FOLDER_NODE_MAP: Record<string, FolderNode> = (() => {
 })();
 
 /**
+ * Set of all section keys already represented in the static sidebar tree.
+ * Used to identify DB regions that need dynamic discovery entries.
+ */
+export const STATIC_SIDEBAR_SECTIONS: ReadonlySet<string> = (() => {
+  const sections = new Set<string>();
+  function walk(nodes: FolderNode[]): void {
+    for (const n of nodes) {
+      if (n.Section) sections.add(n.Section);
+      if (n.groupSections) for (const s of n.groupSections) sections.add(s);
+      if (n.children) walk(n.children);
+    }
+  }
+  walk(BG3_CORE_FOLDERS);
+  walk(BG3_ADDITIONAL_FOLDERS);
+  walk(BG3_STATS_FOLDERS);
+  return sections;
+})();
+
+/**
  * Maps a CF section name to its corresponding BG3 folder node.
  */
 export const CF_SECTION_TO_FOLDER: Record<string, FolderNode> = (() => {

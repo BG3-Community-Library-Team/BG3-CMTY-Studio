@@ -7,10 +7,12 @@
     BG3_CORE_FOLDERS,
     BG3_ADDITIONAL_FOLDERS,
     BG3_STATS_FOLDERS,
+    STATIC_SIDEBAR_SECTIONS,
     type FolderNode,
   } from "../lib/data/bg3FolderStructure.js";
   import { openPath } from "../lib/utils/tauri.js";
   import { localeCompare } from "../lib/utils/localeSort.js";
+  import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import ContextMenu from "./ContextMenu.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
@@ -352,6 +354,29 @@
   let isAdditionalExpanded = $derived(uiStore.expandedNodes["_Additional"] ?? false);
   let isStatsExpanded = $derived(uiStore.expandedNodes["Stats"] ?? false);
   let isModsExpanded = $derived(uiStore.expandedNodes["Mods"] ?? false);
+  let isDiscoveredExpanded = $derived(uiStore.expandedNodes["_Discovered"] ?? false);
+
+  /** DB-discovered sections not in the static sidebar tree. */
+  let discoveredSections = $derived.by((): FolderNode[] => {
+    if (!schemaStore.loaded) return [];
+    const nodes: FolderNode[] = [];
+    // sectionMap keys are section names (Section variant names or region_ids)
+    for (const [sectionKey, schemas] of schemaStore.sectionEntries()) {
+      if (STATIC_SIDEBAR_SECTIONS.has(sectionKey)) continue;
+      // Use the first schema's node_id as the primary node type
+      const primary = schemas[0];
+      if (!primary) continue;
+      nodes.push({
+        name: sectionKey,
+        label: sectionKey.replace(/([A-Z])/g, " $1").trim(),
+        nodeTypes: schemas.map(s => s.node_id),
+        Section: sectionKey,
+        regionId: sectionKey,
+      });
+    }
+    nodes.sort((a, b) => a.label.localeCompare(b.label));
+    return nodes;
+  });
 
   /** Derive the active node name/section from the current tab */
   let activeNodeKey = $derived.by(() => {
@@ -692,6 +717,40 @@
                     {/if}
                   {/each}
                 </div>
+              {/if}
+
+              <!-- Discovered Data (DB regions not in static sidebar) -->
+              {#if discoveredSections.length > 0}
+                <button
+                  class="tree-node separator-node"
+                  onclick={() => uiStore.toggleNode("_Discovered")}
+                >
+                  <ChevronRight size={14} class="chevron {isDiscoveredExpanded ? 'expanded' : ''}" />
+                  {#if isDiscoveredExpanded}
+                    <FolderOpen size={14} class="text-[var(--th-text-600)] opacity-50" />
+                  {:else}
+                    <Folder size={14} class="text-[var(--th-text-600)] opacity-50" />
+                  {/if}
+                  <span class="node-label text-[var(--th-text-600)] text-[10px] uppercase tracking-wider">Discovered Data</span>
+                  <span class="entry-count">{discoveredSections.length}</span>
+                </button>
+
+                {#if isDiscoveredExpanded}
+                  <div class="tree-children">
+                    {#each discoveredSections as node (node.name)}
+                      <button
+                        class="tree-node"
+                        class:active-node={isActiveNode(node)}
+                        onclick={() => openNode(node)}
+                        ondblclick={() => openNode(node, false)}
+                      >
+                        <span class="w-3.5 shrink-0"></span>
+                        <File size={14} class="text-[var(--th-text-600)] opacity-40" />
+                        <span class="node-label truncate text-muted">{node.label}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
               {/if}
             </div>
           {/if}

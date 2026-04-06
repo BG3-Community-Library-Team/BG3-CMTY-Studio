@@ -323,6 +323,11 @@
     : _hasSectionCaps ? 'caps'
     : 'schema'; // Tier 3/4 resolved at render time based on schemas availability
 
+  // Defensive: if schemas haven't loaded yet (e.g. form opened before scan completed), trigger load
+  if (tier === 'schema' && !schemaStore.loaded && !schemaStore.loading) {
+    schemaStore.load();
+  }
+
   const isFallback = $derived(tier === 'schema' && schemas.length === 0 && schemaStore.loaded);
   const isSchemaLoading = $derived(tier === 'schema' && schemas.length === 0 && !schemaStore.loaded);
 

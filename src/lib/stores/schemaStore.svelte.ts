@@ -1,11 +1,11 @@
 /**
- * Schema store — loads and caches LSX node schemas inferred from vanilla data.
+ * Schema store — loads and caches LSX node schemas from DB metadata.
  *
  * Schemas describe what attributes and children each LSX node_id type has,
  * enabling generic form rendering for sections without hardcoded SECTION_CAPS.
  */
 
-import { inferSchemas, type NodeSchema } from "../utils/tauri.js";
+import { dumpDbSchemas, type NodeSchema } from "../utils/tauri.js";
 
 /** Map of node_id → NodeSchema for O(1) lookup. */
 let schemasMap = $state<Map<string, NodeSchema>>(new Map());
@@ -42,12 +42,17 @@ export const schemaStore = {
     return sectionMap.get(section) ?? [];
   },
 
+  /** Iterate over all (section, schemas[]) pairs. */
+  sectionEntries(): IterableIterator<[string, NodeSchema[]]> {
+    return sectionMap.entries();
+  },
+
   /** Load schemas from vanilla data. No-op if already loaded. */
   async load(): Promise<void> {
     if (loaded || loading) return;
     loading = true;
     try {
-      const schemas = await inferSchemas();
+      const schemas = await dumpDbSchemas();
       const byNodeId = new Map<string, NodeSchema>();
       const bySection = new Map<string, NodeSchema[]>();
       for (const schema of schemas) {
@@ -58,10 +63,10 @@ export const schemaStore = {
       }
       schemasMap = byNodeId;
       sectionMap = bySection;
-      loaded = true;
     } catch (e) {
       console.warn("Failed to load schemas:", e);
     } finally {
+      loaded = true;
       loading = false;
     }
   },
