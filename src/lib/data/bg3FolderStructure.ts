@@ -35,6 +35,70 @@ export interface FolderNode {
   entryFilter?: { field: string; value: string };
 }
 
+// ─── Stats Data Children ─────────────────────────────────────────────────
+
+/** Stats file nodes — defined before core folders so _Stats group can reference them. */
+const STATS_DATA_CHILDREN: FolderNode[] = [
+  {
+    name: "_Spells",
+    label: "Spells",
+    isGroup: true,
+    groupSections: ["Spells"],
+    Section: "Spells",
+    entryFilter: { field: "node_id", value: "SpellData" },
+    children: [
+      { name: "Spell_Projectile", label: "Projectile", statsFile: "Spell_Projectile.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_ProjectileStrike", label: "Projectile Strike", statsFile: "Spell_ProjectileStrike.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Rush", label: "Rush", statsFile: "Spell_Rush.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Shout", label: "Shout", statsFile: "Spell_Shout.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Target", label: "Target", statsFile: "Spell_Target.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Teleportation", label: "Teleportation", statsFile: "Spell_Teleportation.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Throw", label: "Throw", statsFile: "Spell_Throw.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Spell_Zone", label: "Zone", statsFile: "Spell_Zone.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+    ],
+  },
+  {
+    name: "_Statuses",
+    label: "Statuses",
+    isGroup: true,
+    groupSections: ["Spells"],
+    Section: "Spells",
+    entryFilter: { field: "node_id", value: "StatusData" },
+    children: [
+      { name: "Status_BOOST", label: "Boost", statsFile: "Status_BOOST.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_DEACTIVATED", label: "Deactivated", statsFile: "Status_DEACTIVATED.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_DOWNED", label: "Downed", statsFile: "Status_DOWNED.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_EFFECT", label: "Effect", statsFile: "Status_EFFECT.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_FEAR", label: "Fear", statsFile: "Status_FEAR.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_HEAL", label: "Heal", statsFile: "Status_HEAL.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_INCAPACITATED", label: "Incapacitated", statsFile: "Status_INCAPACITATED.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_INVISIBLE", label: "Invisible", statsFile: "Status_INVISIBLE.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_KNOCKED_DOWN", label: "Knocked Down", statsFile: "Status_KNOCKED_DOWN.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_POLYMORPHED", label: "Polymorphed", statsFile: "Status_POLYMORPHED.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+      { name: "Status_SNEAKING", label: "Sneaking", statsFile: "Status_SNEAKING.txt", Section: "Spells", entryFilter: { field: "node_id", value: "StatusData" } },
+    ],
+  },
+  { name: "Passive", label: "Passives", statsFile: "Passive.txt", Section: "Spells", entryFilter: { field: "node_id", value: "PassiveData" } },
+  { name: "Interrupt", label: "Interrupts", statsFile: "Interrupt.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Interrupt" } },
+  { name: "Armor", label: "Armor", statsFile: "Armor.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Armor" } },
+  { name: "Weapon", label: "Weapons", statsFile: "Weapon.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Weapon" } },
+  { name: "Object", label: "Objects", statsFile: "Object.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Object" } },
+  { name: "Character", label: "Characters", statsFile: "Character.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Character" } },
+  {
+    name: "_StatsOther",
+    label: "Other Stats",
+    isGroup: true,
+    children: [
+      { name: "BloodTypes", label: "Blood Types", statsFile: "BloodTypes.txt", Section: "Spells", entryFilter: { field: "node_id", value: "BloodTypes" } },
+      { name: "CriticalHitTypes", label: "Critical Hit Types", statsFile: "CriticalHitTypes.txt", Section: "Spells", entryFilter: { field: "node_id", value: "CriticalHitTypes" } },
+      { name: "ItemColor", label: "Item Colors", statsFile: "ItemColor.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemColor" } },
+      { name: "ItemProgressionNames", label: "Item Progression Names", statsFile: "ItemProgressionNames.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemProgressionNames" } },
+      { name: "ItemProgressionVisuals", label: "Item Progression Visuals", statsFile: "ItemProgressionVisuals.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemProgressionVisuals" } },
+      { name: "XPData", label: "XP Data", statsFile: "XPData.txt", Section: "Spells", entryFilter: { field: "node_id", value: "XPData" } },
+    ],
+  },
+];
+
 // ─── Core Modding Folders (grouped) ──────────────────────────────────────
 
 /**
@@ -67,28 +131,12 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     ],
   },
   {
-    name: "_Backgrounds",
+    name: "Backgrounds",
     label: "Backgrounds",
-    isGroup: true,
-    groupSections: ["Backgrounds", "BackgroundGoals"],
-    children: [
-      {
-        name: "Backgrounds",
-        label: "Backgrounds",
-        nodeTypes: ["Background"],
-        Section: "Backgrounds",
-        regionId: "Backgrounds",
-        defaultFile: "Backgrounds.lsx",
-      },
-      {
-        name: "BackgroundGoals",
-        label: "Background Goals",
-        nodeTypes: ["BackgroundGoal"],
-        Section: "BackgroundGoals",
-        regionId: "Goals",
-        defaultFile: "BackgroundGoals.lsx",
-      },
-    ],
+    nodeTypes: ["Background"],
+    Section: "Backgrounds",
+    regionId: "Backgrounds",
+    defaultFile: "Backgrounds.lsx",
   },
   {
     name: "_CharacterCreation",
@@ -96,23 +144,46 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     isGroup: true,
     children: [
       {
-        name: "CharacterCreation",
-        label: "Appearance & Colors",
-        nodeTypes: [
-          "CharacterCreationAccessorySet",
-          "CharacterCreationAppearanceMaterial",
-          "CharacterCreationAppearanceVisual",
-          "CharacterCreationColor",
-          "CharacterCreationEyeColor",
-          "CharacterCreationHairColor",
-          "CharacterCreationIconSettings",
-          "CharacterCreationMaterialOverride",
-          "CharacterCreationPassiveAppearance",
-          "CharacterCreationSharedVisual",
-          "CharacterCreationSkinColor",
-        ],
+        name: "CC_AccessorySet",
+        label: "Accessory Sets",
         Section: "CharacterCreation",
-        regionId: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationAccessorySet" },
+      },
+      {
+        name: "CC_AppearanceMaterial",
+        label: "Appearance Materials",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationAppearanceMaterial" },
+      },
+      {
+        name: "CC_AppearanceVisual",
+        label: "Appearance Visuals",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationAppearanceVisual" },
+      },
+      {
+        name: "CC_IconSettings",
+        label: "Icon Settings",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationIconSettings" },
+      },
+      {
+        name: "CC_MaterialOverride",
+        label: "Material Overrides",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationMaterialOverride" },
+      },
+      {
+        name: "CC_PassiveAppearance",
+        label: "Passive Appearances",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationPassiveAppearance" },
+      },
+      {
+        name: "CC_SharedVisual",
+        label: "Shared Visuals",
+        Section: "CharacterCreation",
+        entryFilter: { field: "node_id", value: "CharacterCreationSharedVisual" },
       },
       {
         name: "CCPresets_Preset",
@@ -122,27 +193,17 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
       },
       {
         name: "CCPresets_AccessorySet",
-        label: "Accessory Sets",
+        label: "Preset Accessory Sets",
         Section: "CharacterCreationPresets",
         entryFilter: { field: "node_id", value: "CharacterCreationAccessorySet" },
       },
       {
-        name: "CCPresets_EyeColor",
-        label: "Eye Colors",
-        Section: "CharacterCreationPresets",
-        entryFilter: { field: "node_id", value: "CharacterCreationEyeColor" },
-      },
-      {
-        name: "CCPresets_SkinColor",
-        label: "Skin Colors",
-        Section: "CharacterCreationPresets",
-        entryFilter: { field: "node_id", value: "CharacterCreationSkinColor" },
-      },
-      {
-        name: "CCPresets_HairColor",
-        label: "Hair Colors",
-        Section: "CharacterCreationPresets",
-        entryFilter: { field: "node_id", value: "CharacterCreationHairColor" },
+        name: "CompanionPresets",
+        label: "Companion Presets",
+        nodeTypes: ["CompanionPreset"],
+        Section: "CompanionPresets",
+        regionId: "CompanionPresets",
+        defaultFile: "CompanionPresets.lsx",
       },
     ],
   },
@@ -221,7 +282,7 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
   },
   {
     name: "_Lists",
-    label: "Lists & Colors",
+    label: "Lists",
     isGroup: true,
     groupSections: ["Lists", "SpellLists", "SkillLists", "PassiveLists", "EquipmentLists", "AbilityLists"],
     children: [
@@ -267,12 +328,16 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
         entryFilter: { field: "node_id", value: "EquipmentList" },
       },
       {
-        name: "ColorDefinitions",
-        label: "Color Definitions",
-        nodeTypes: ["ColorDefinition"],
-        Section: "ColorDefinitions",
-        regionId: "ColorDefinitions",
-        defaultFile: "ColorDefinitions.lsx",
+        name: "AvatarContainerTemplates",
+        label: "Avatar Container Templates",
+        Section: "AvatarContainerTemplates",
+        regionId: "AvatarContainerTemplates",
+      },
+      {
+        name: "CampChestTemplates",
+        label: "Camp Chest Templates",
+        Section: "CampChestTemplates",
+        regionId: "CampChestTemplates",
       },
     ],
   },
@@ -280,7 +345,7 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     name: "_Origins",
     label: "Origins",
     isGroup: true,
-    groupSections: ["Origins", "CompanionPresets"],
+    groupSections: ["Origins", "OriginIntroEntities"],
     children: [
       {
         name: "Origins_Companions",
@@ -300,12 +365,10 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
         entryFilter: { field: "IsHenchman", value: "true" },
       },
       {
-        name: "CompanionPresets",
-        label: "Companion Presets",
-        nodeTypes: ["CompanionPreset"],
-        Section: "CompanionPresets",
-        regionId: "CompanionPresets",
-        defaultFile: "CompanionPresets.lsx",
+        name: "OriginIntroEntities",
+        label: "Intro Entities",
+        Section: "OriginIntroEntities",
+        regionId: "OriginIntroEntities",
       },
     ],
   },
@@ -334,18 +397,90 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     ],
   },
   {
-    name: "Tags",
-    label: "Tags",
-    nodeTypes: ["Tag"],
-    Section: "Tags",
-    regionId: "Tags",
+    name: "_TagsFlags",
+    label: "Tags / Flags",
+    isGroup: true,
+    groupSections: ["Tags", "Flags", "FlagSoundStates"],
+    children: [
+      {
+        name: "Tags",
+        label: "Tags",
+        nodeTypes: ["Tag"],
+        Section: "Tags",
+        regionId: "Tags",
+      },
+      {
+        name: "Flags",
+        label: "Flags",
+        Section: "Flags",
+        regionId: "Flags",
+      },
+      {
+        name: "FlagSoundStates",
+        label: "Flag Sound States",
+        Section: "FlagSoundStates",
+        regionId: "FlagSoundStates",
+      },
+    ],
   },
   {
-    name: "Visuals",
-    label: "Visuals",
-    nodeTypes: ["Visual"],
-    Section: "Visuals",
-    regionId: "Visuals",
+    name: "_Colors",
+    label: "Colors",
+    isGroup: true,
+    children: [
+      {
+        name: "CCPresets_EyeColor",
+        label: "Eye Colors",
+        Section: "CharacterCreationPresets",
+        entryFilter: { field: "node_id", value: "CharacterCreationEyeColor" },
+      },
+      {
+        name: "CCPresets_SkinColor",
+        label: "Skin Colors",
+        Section: "CharacterCreationPresets",
+        entryFilter: { field: "node_id", value: "CharacterCreationSkinColor" },
+      },
+      {
+        name: "CCPresets_HairColor",
+        label: "Hair Colors",
+        Section: "CharacterCreationPresets",
+        entryFilter: { field: "node_id", value: "CharacterCreationHairColor" },
+      },
+      {
+        name: "ColorDefinitions",
+        label: "Color Definitions",
+        nodeTypes: ["ColorDefinition"],
+        Section: "ColorDefinitions",
+        regionId: "ColorDefinitions",
+        defaultFile: "ColorDefinitions.lsx",
+      },
+      {
+        name: "GameColors",
+        label: "Game Colors",
+        Section: "Color",
+        regionId: "Color",
+      },
+    ],
+  },
+  {
+    name: "_Content",
+    label: "Content",
+    isGroup: true,
+    groupSections: ["Content", "Visuals"],
+    children: [
+      { name: "Content", label: "Content Banks", Section: "Content", regionId: "Content" },
+      { name: "Visuals", label: "Visual Banks", nodeTypes: ["Visual"], Section: "Visuals", regionId: "Visuals" },
+    ],
+  },
+  {
+    name: "_VFX",
+    label: "VFX",
+    isGroup: true,
+    groupSections: ["VFX"],
+    children: [
+      { name: "VFX", label: "VFX", Section: "VFX", regionId: "VFX" },
+      { name: "DeathEffects", label: "Death Effects", Section: "DeathEffects", regionId: "DeathEffects" },
+    ],
   },
   {
     name: "RootTemplates",
@@ -353,6 +488,13 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     nodeTypes: ["GameObjects"],
     Section: "RootTemplates",
     regionId: "Templates",
+  },
+  {
+    name: "_Stats",
+    label: "Stats",
+    isGroup: true,
+    groupSections: ["Spells"],
+    children: STATS_DATA_CHILDREN,
   },
 ];
 
@@ -363,20 +505,80 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
  * These aren't CF-managed but exist in the game and mods can add to them.
  */
 export const BG3_ADDITIONAL_FOLDERS: FolderNode[] = [
-  { name: "Animation", label: "Animation", Section: "Animation", regionId: "Animation" },
-  { name: "AnimationOverrides", label: "Animation Overrides", Section: "AnimationOverrides", regionId: "AnimationOverrides" },
-  { name: "Calendar", label: "Calendar", Section: "Calendar", regionId: "Calendar" },
+  {
+    name: "_Animations",
+    label: "Animations",
+    isGroup: true,
+    groupSections: ["Animation", "AnimationOverrides"],
+    children: [
+      { name: "Animation", label: "Animation", Section: "Animation", regionId: "Animation" },
+      { name: "AnimationOverrides", label: "Animation Overrides", Section: "AnimationOverrides", regionId: "AnimationOverrides" },
+    ],
+  },
+  {
+    name: "_Calendar",
+    label: "Calendar",
+    isGroup: true,
+    groupSections: ["Calendar", "DayRanges"],
+    children: [
+      { name: "Calendar", label: "Calendar", Section: "Calendar", regionId: "Calendar" },
+      { name: "DayRanges", label: "Day Ranges", Section: "DayRanges", regionId: "DayRanges" },
+    ],
+  },
   { name: "CinematicArenaFrequencyGroups", label: "Cinematic Arena Groups", Section: "CinematicArenaFrequencyGroups", regionId: "CinematicArenaFrequencyGroups" },
   { name: "CombatCameraGroups", label: "Combat Camera Groups", Section: "CombatCameraGroups", regionId: "CombatCameraGroups" },
-  { name: "Content", label: "Content", Section: "Content", regionId: "Content" },
+  { name: "Crime", label: "Crime", Section: "Crime", regionId: "Crime" },
+  {
+    name: "_CrowdCharacters",
+    label: "Crowd Characters",
+    isGroup: true,
+    groupSections: ["CrowdCharacterClothsColors", "CrowdCharacterEyeColors", "CrowdCharacterMaterialPresets", "CrowdCharacterSkinColors", "CrowdCharacterTemplates"],
+    children: [
+      { name: "CrowdCharacterClothsColors", label: "Cloths Colors", Section: "CrowdCharacterClothsColors", regionId: "CrowdCharacterClothsColors" },
+      { name: "CrowdCharacterEyeColors", label: "Eye Colors", Section: "CrowdCharacterEyeColors", regionId: "CrowdCharacterEyeColors" },
+      { name: "CrowdCharacterMaterialPresets", label: "Material Presets", Section: "CrowdCharacterMaterialPresets", regionId: "CrowdCharacterMaterialPresets" },
+      { name: "CrowdCharacterSkinColors", label: "Skin Colors", Section: "CrowdCharacterSkinColors", regionId: "CrowdCharacterSkinColors" },
+      { name: "CrowdCharacterTemplates", label: "Templates", Section: "CrowdCharacterTemplates", regionId: "CrowdCharacterTemplates" },
+    ],
+  },
   { name: "CustomDice", label: "Custom Dice", Section: "CustomDice", regionId: "CustomDice" },
   { name: "DefaultValues", label: "Default Values", Section: "DefaultValues", regionId: "DefaultValues" },
   { name: "DifficultyClasses", label: "Difficulty Classes", Section: "DifficultyClasses", regionId: "DifficultyClasses" },
   { name: "Disturbances", label: "Disturbances", Section: "Disturbances", regionId: "DisturbanceProperties" },
   { name: "Encumbrance", label: "Encumbrance", Section: "Encumbrance", regionId: "WeightCategories" },
+  {
+    name: "_Emotes",
+    label: "Emotes",
+    isGroup: true,
+    groupSections: ["EmoteAnimations", "EmoteCollections", "EmotePoses"],
+    children: [
+      { name: "EmoteAnimations", label: "Emote Animations", Section: "EmoteAnimations", regionId: "EmoteAnimations" },
+      { name: "EmoteCollections", label: "Emote Collections", Section: "EmoteCollections", regionId: "EmoteCollections" },
+      { name: "EmotePoses", label: "Emote Poses", Section: "EmotePoses", regionId: "EmotePoses" },
+    ],
+  },
   { name: "EquipmentTypes", label: "Equipment Types", Section: "EquipmentTypes", regionId: "EquipmentTypes" },
-  { name: "Factions", label: "Factions", Section: "Factions", regionId: "FactionContainer" },
-  { name: "Flags", label: "Flags", Section: "Flags", regionId: "Flags" },
+  {
+    name: "_FaceExpressions",
+    label: "Face Expressions",
+    isGroup: true,
+    groupSections: ["FaceExpressions", "FaceExpressionCollections"],
+    children: [
+      { name: "FaceExpressions", label: "Face Expressions", Section: "FaceExpressions", regionId: "FaceExpressions" },
+      { name: "FaceExpressionCollections", label: "Collections", Section: "FaceExpressionCollections", regionId: "FaceExpressionCollections" },
+    ],
+  },
+  {
+    name: "_Factions",
+    label: "Factions",
+    isGroup: true,
+    groupSections: ["Factions", "FactionManager"],
+    children: [
+      { name: "Factions", label: "Factions", Section: "Factions", regionId: "FactionContainer" },
+      { name: "FactionManager", label: "Faction Manager", Section: "FactionManager", regionId: "FactionManager" },
+    ],
+  },
+
   { name: "FixedHotBarSlots", label: "Fixed Hotbar Slots", Section: "FixedHotBarSlots", regionId: "FixedHotBarSlots" },
   { name: "GUI", label: "GUI", Section: "GUI", regionId: "GUI" },
   { name: "ItemThrowParams", label: "Item Throw Params", Section: "ItemThrowParams", regionId: "ItemThrowParams" },
@@ -385,24 +587,91 @@ export const BG3_ADDITIONAL_FOLDERS: FolderNode[] = [
   { name: "MultiEffectInfos", label: "Multi-Effect Infos", Section: "MultiEffectInfos", regionId: "MultiEffectInfos" },
   { name: "ProjectileDefaults", label: "Projectile Defaults", Section: "ProjectileDefaults", regionId: "ProjectileDefaults" },
   { name: "RandomCasts", label: "Random Casts", Section: "RandomCasts", regionId: "RandomCasts" },
-  { name: "Ruleset", label: "Ruleset", Section: "Ruleset", regionId: "Rulesets" },
-  { name: "Shapeshift", label: "Shapeshift", Section: "Shapeshift", regionId: "Shapeshift" },
-  { name: "Sound", label: "Sound", Section: "Sound", regionId: "Sound" },
+  {
+    name: "_Ruleset",
+    label: "Ruleset",
+    isGroup: true,
+    groupSections: ["Ruleset", "RulesetModifierOptions", "RulesetSelectionPresets"],
+    children: [
+      { name: "Ruleset", label: "Ruleset", Section: "Ruleset", regionId: "Rulesets" },
+      { name: "RulesetModifierOptions", label: "Modifier Options", Section: "RulesetModifierOptions", regionId: "RulesetModifierOptions" },
+      { name: "RulesetSelectionPresets", label: "Selection Presets", Section: "RulesetSelectionPresets", regionId: "RulesetSelectionPresets" },
+    ],
+  },
+  {
+    name: "_ScriptMaterial",
+    label: "Script Material",
+    isGroup: true,
+    groupSections: ["ScriptMaterialOverrideParameters", "ScriptMaterialOverridePresets"],
+    children: [
+      { name: "ScriptMaterialOverrideParameters", label: "Override Parameters", Section: "ScriptMaterialOverrideParameters", regionId: "ScriptMaterialOverrideParameters" },
+      { name: "ScriptMaterialOverridePresets", label: "Override Presets", Section: "ScriptMaterialOverridePresets", regionId: "ScriptMaterialOverridePresets" },
+    ],
+  },
+  {
+    name: "_Shapeshift",
+    label: "Shapeshift",
+    isGroup: true,
+    groupSections: ["Shapeshift", "Rulebook"],
+    children: [
+      { name: "Shapeshift", label: "Shapeshift", Section: "Shapeshift", regionId: "Shapeshift" },
+      { name: "Rulebook", label: "Rulebook", Section: "Rulebook", regionId: "Rulebook" },
+    ],
+  },
+  {
+    name: "_ShortNames",
+    label: "Short Names",
+    isGroup: true,
+    groupSections: ["ShortNameCategories", "ShortNames"],
+    children: [
+      { name: "ShortNameCategories", label: "Categories", Section: "ShortNameCategories", regionId: "ShortNameCategories" },
+      { name: "ShortNames", label: "Short Names", Section: "ShortNames", regionId: "ShortNames" },
+    ],
+  },
+  {
+    name: "_Sound",
+    label: "Sound",
+    isGroup: true,
+    groupSections: ["Sound"],
+    children: [
+      { name: "Sound", label: "Sound Banks", Section: "Sound", regionId: "Sound" },
+    ],
+  },
   { name: "Spell", label: "Spell Metadata", Section: "SpellMetadata", regionId: "Spell" },
   { name: "Status", label: "Status Metadata", Section: "StatusMetadata", regionId: "Status" },
   { name: "Surface", label: "Surface", Section: "Surface", regionId: "Surface" },
   { name: "TooltipExtras", label: "Tooltip Extras", Section: "TooltipExtras", regionId: "TooltipExtraTexts" },
   { name: "TrajectoryRules", label: "Trajectory Rules", Section: "TrajectoryRules", regionId: "TrajectoryRules" },
-  { name: "Tutorials", label: "Tutorials", Section: "Tutorials", regionId: "Tutorials" },
-  { name: "VFX", label: "VFX", Section: "VFX", regionId: "VFX" },
+  {
+    name: "_Tutorials",
+    label: "Tutorials",
+    isGroup: true,
+    groupSections: ["Tutorials", "TutorialEvents", "TutorialInputEvents", "UnifiedTutorials"],
+    children: [
+      { name: "Tutorials", label: "Tutorials", Section: "Tutorials", regionId: "Tutorials" },
+      { name: "TutorialEvents", label: "Tutorial Events", Section: "TutorialEvents", regionId: "TutorialEvents" },
+      { name: "TutorialInputEvents", label: "Tutorial Input Events", Section: "TutorialInputEvents", regionId: "TutorialInputEvents" },
+      { name: "UnifiedTutorials", label: "Unified Tutorials", Section: "UnifiedTutorials", regionId: "UnifiedTutorials" },
+    ],
+  },
   { name: "Voices", label: "Voices", Section: "Voices", regionId: "Voices" },
   { name: "WeaponAnimationSetData", label: "Weapon Animation Sets", Section: "WeaponAnimationSetData", regionId: "WeaponAnimationSetData" },
   { name: "ErrorDescriptions", label: "Error Descriptions", Section: "ErrorDescriptions", regionId: "ConditionErrors" },
   { name: "ExperienceRewards", label: "Experience Rewards", Section: "ExperienceRewards", regionId: "ExperienceRewards" },
   { name: "GoldValues", label: "Gold Values", Section: "GoldValues", regionId: "GoldValues" },
-  { name: "DeathEffects", label: "Death Effects", Section: "DeathEffects", regionId: "DeathEffects" },
+
   { name: "SpeakerGroups", label: "Speaker Groups", Section: "SpeakerGroups", regionId: "SpeakerGroups" },
   { name: "Gossips", label: "Gossips", Section: "Gossips", regionId: "Gossips" },
+  {
+    name: "_Controller",
+    label: "Controller",
+    isGroup: true,
+    groupSections: ["LightbarHaptics", "LightbarSounds"],
+    children: [
+      { name: "LightbarHaptics", label: "Lightbar Haptics", Section: "LightbarHaptics", regionId: "LightbarHaptics" },
+      { name: "LightbarSounds", label: "Lightbar Sounds", Section: "LightbarSounds", regionId: "LightbarSounds" },
+    ],
+  },
 ];
 
 /** All Public/{ModFolder}/ folders — core groups first, then additional folders */
@@ -421,61 +690,7 @@ export const BG3_STATS_FOLDERS: FolderNode[] = [
   {
     name: "Data",
     label: "Stats Data",
-    children: [
-      {
-        name: "_Spells",
-        label: "Spells",
-        isGroup: true,
-        Section: "Spells",
-        children: [
-          { name: "Spell_Projectile", label: "Projectile", statsFile: "Spell_Projectile.txt", Section: "Spells" },
-          { name: "Spell_ProjectileStrike", label: "Projectile Strike", statsFile: "Spell_ProjectileStrike.txt", Section: "Spells" },
-          { name: "Spell_Rush", label: "Rush", statsFile: "Spell_Rush.txt", Section: "Spells" },
-          { name: "Spell_Shout", label: "Shout", statsFile: "Spell_Shout.txt", Section: "Spells" },
-          { name: "Spell_Target", label: "Target", statsFile: "Spell_Target.txt", Section: "Spells" },
-          { name: "Spell_Teleportation", label: "Teleportation", statsFile: "Spell_Teleportation.txt", Section: "Spells" },
-          { name: "Spell_Throw", label: "Throw", statsFile: "Spell_Throw.txt", Section: "Spells" },
-          { name: "Spell_Zone", label: "Zone", statsFile: "Spell_Zone.txt", Section: "Spells" },
-        ],
-      },
-      {
-        name: "_Statuses",
-        label: "Statuses",
-        isGroup: true,
-        children: [
-          { name: "Status_BOOST", label: "Boost", statsFile: "Status_BOOST.txt" },
-          { name: "Status_DEACTIVATED", label: "Deactivated", statsFile: "Status_DEACTIVATED.txt" },
-          { name: "Status_DOWNED", label: "Downed", statsFile: "Status_DOWNED.txt" },
-          { name: "Status_EFFECT", label: "Effect", statsFile: "Status_EFFECT.txt" },
-          { name: "Status_FEAR", label: "Fear", statsFile: "Status_FEAR.txt" },
-          { name: "Status_HEAL", label: "Heal", statsFile: "Status_HEAL.txt" },
-          { name: "Status_INCAPACITATED", label: "Incapacitated", statsFile: "Status_INCAPACITATED.txt" },
-          { name: "Status_INVISIBLE", label: "Invisible", statsFile: "Status_INVISIBLE.txt" },
-          { name: "Status_KNOCKED_DOWN", label: "Knocked Down", statsFile: "Status_KNOCKED_DOWN.txt" },
-          { name: "Status_POLYMORPHED", label: "Polymorphed", statsFile: "Status_POLYMORPHED.txt" },
-          { name: "Status_SNEAKING", label: "Sneaking", statsFile: "Status_SNEAKING.txt" },
-        ],
-      },
-      { name: "Passive", label: "Passives", statsFile: "Passive.txt" },
-      { name: "Interrupt", label: "Interrupts", statsFile: "Interrupt.txt" },
-      { name: "Armor", label: "Armor", statsFile: "Armor.txt" },
-      { name: "Weapon", label: "Weapons", statsFile: "Weapon.txt" },
-      { name: "Object", label: "Objects", statsFile: "Object.txt" },
-      { name: "Character", label: "Characters", statsFile: "Character.txt" },
-      {
-        name: "_StatsOther",
-        label: "Other Stats",
-        isGroup: true,
-        children: [
-          { name: "BloodTypes", label: "Blood Types", statsFile: "BloodTypes.txt" },
-          { name: "CriticalHitTypes", label: "Critical Hit Types", statsFile: "CriticalHitTypes.txt" },
-          { name: "ItemColor", label: "Item Colors", statsFile: "ItemColor.txt" },
-          { name: "ItemProgressionNames", label: "Item Progression Names", statsFile: "ItemProgressionNames.txt" },
-          { name: "ItemProgressionVisuals", label: "Item Progression Visuals", statsFile: "ItemProgressionVisuals.txt" },
-          { name: "XPData", label: "XP Data", statsFile: "XPData.txt" },
-        ],
-      },
-    ],
+    children: STATS_DATA_CHILDREN,
   },
 ];
 
@@ -580,6 +795,16 @@ export const STATIC_SIDEBAR_SECTIONS: ReadonlySet<string> = (() => {
   walk(BG3_STATS_FOLDERS);
   return sections;
 })();
+
+/**
+ * Sections to exclude from the dynamic "discovered" pool.
+ * Meta is internal-only (has a specialized form). Localization is handled separately.
+ */
+export const SECTIONS_EXCLUDED_FROM_DISCOVERY: ReadonlySet<string> = new Set([
+  "Meta",
+  "Localization",
+  "BackgroundGoals",
+]);
 
 /**
  * Maps a CF section name to its corresponding BG3 folder node.

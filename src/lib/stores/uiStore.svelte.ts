@@ -83,7 +83,7 @@ class UiStore {
 
   /** Form navigation sections exposed by the currently open ManualEntryForm (if any).
    *  CommandPalette reads this to offer "Jump to: section" entries. */
-  formNavSections: { id: string; label: string }[] = $state([]);
+  formNavSections: { id: string; label: string; children?: { id: string; label: string }[] }[] = $state([]);
 
   /** Summary drawer state — when non-null, the summary sidebar is visible in App.svelte */
   summaryDrawer: SummaryDrawerState | null = $state(null);

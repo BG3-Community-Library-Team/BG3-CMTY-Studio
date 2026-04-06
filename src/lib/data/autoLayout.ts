@@ -55,7 +55,11 @@ function groupBySemantics(keys: string[]): [LayoutRow[], string[]] {
 
   for (const [, members] of prefixGroups) {
     if (members.length >= 2) {
-      rows.push({ items: members.map(fieldItem) });
+      // Cap prefix groups to rows of 3 to prevent overflow
+      for (let i = 0; i < members.length; i += 3) {
+        const chunk = members.slice(i, i + 3);
+        rows.push({ items: chunk.map(fieldItem) });
+      }
       for (const k of members) used.add(k);
     }
   }

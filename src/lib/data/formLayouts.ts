@@ -42,6 +42,8 @@ export interface LayoutSubsection {
   rows: LayoutRow[];
   /** String type keys to render inside this subsection (e.g., ["Boosts", "PassivesAdded"]) */
   stringKeys?: string[];
+  /** Tag type keys to render inside this subsection (e.g., ["Tags"]) */
+  tagKeys?: string[];
   /**
    * Boolean toggles rendered adjacent to a specific string type field.
    * Maps string type key → { boolKey, label }.
@@ -155,6 +157,14 @@ const BACKGROUNDS: FormLayout = {
   noRemoveButtons: true,
   handledFieldKeys: ['DisplayName', 'Description'],
   handledBooleanKeys: ['Hidden'],
+  subsections: [
+    {
+      title: 'Attributes',
+      rows: [],
+      stringKeys: ['Passives'],
+      tagKeys: ['Tags'],
+    },
+  ],
 };
 
 const CLASS_DESCRIPTIONS: FormLayout = {

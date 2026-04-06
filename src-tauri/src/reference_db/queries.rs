@@ -1345,6 +1345,85 @@ pub fn query_db_schemas(db_path: &Path) -> Result<Vec<NodeSchema>, String> {
         });
     }
 
+    // ── Phase 6: Stats table schemas ──────────────────────────────────
+    // Each stats__<type> table gets a NodeSchema with its columns as attributes.
+    // Section and node_id both use the entry_type (e.g. "SpellData", "Armor").
+    let mut stats_stmt = conn
+        .prepare(
+            "SELECT table_name, row_count \
+             FROM _table_meta \
+             WHERE source_type = 'stats' AND row_count > 0 \
+             ORDER BY row_count DESC",
+        )
+        .map_err(|e| format!("Prepare stats meta: {e}"))?;
+
+    let stats_rows: Vec<(String, i64)> = stats_stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| format!("Query stats meta: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Load stats column types in bulk
+    let mut stats_col_stmt = conn
+        .prepare(
+            "SELECT table_name, column_name, bg3_type \
+             FROM _column_types \
+             WHERE table_name LIKE 'stats%' \
+             ORDER BY table_name, column_name",
+        )
+        .map_err(|e| format!("Prepare stats col: {e}"))?;
+
+    let mut stats_columns_by_table: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let stats_col_rows = stats_col_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|e| format!("Query stats cols: {e}"))?;
+
+    let stats_internal = ["_entry_name", "_file_id", "_type", "_using"];
+    for row in stats_col_rows {
+        if let Ok((tn, cn, bt)) = row {
+            if stats_internal.contains(&cn.as_str()) || cn.ends_with("_version") {
+                continue;
+            }
+            stats_columns_by_table.entry(tn).or_default().push((cn, bt));
+        }
+    }
+
+    for (table_name, row_count) in &stats_rows {
+        // Entry type from table name: "stats__SpellData" → "SpellData"
+        let entry_type = table_name.strip_prefix("stats__").unwrap_or(table_name);
+
+        let cols = stats_columns_by_table
+            .get(table_name)
+            .cloned()
+            .unwrap_or_default();
+
+        let attributes: Vec<AttrSchema> = cols
+            .into_iter()
+            .map(|(name, attr_type)| AttrSchema {
+                name,
+                attr_type,
+                frequency: 1.0,
+                examples: vec![],
+            })
+            .collect();
+
+        schemas.push(NodeSchema {
+            node_id: entry_type.to_string(),
+            section: format!("stats:{}", entry_type),
+            sample_count: *row_count as usize,
+            attributes,
+            children: vec![],
+        });
+    }
+
     Ok(schemas)
 }
 

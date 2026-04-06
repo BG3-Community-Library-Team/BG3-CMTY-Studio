@@ -37,6 +37,7 @@
   import FormChildrenGroups from "./manual-entry/FormChildrenGroups.svelte";
   import FormSectionCard from "./manual-entry/FormSectionCard.svelte";
   import FormIdentityCard from "./manual-entry/FormIdentityCard.svelte";
+  import BackgroundGoalsPanel from "./manual-entry/BackgroundGoalsPanel.svelte";
   import RaceProgressionPanel from "./manual-entry/RaceProgressionPanel.svelte";
   import RaceTagPanel from "./manual-entry/RaceTagPanel.svelte";
   import RacePresetPanel from "./manual-entry/RacePresetPanel.svelte";
@@ -174,6 +175,9 @@
   let raceProgressionPanel: RaceProgressionPanel | undefined = $state(undefined);
   let raceTagPanel: RaceTagPanel | undefined = $state(undefined);
 
+  // Background goals panel ref (for syncing on save)
+  let backgroundGoalsPanel: BackgroundGoalsPanel | undefined = $state(undefined);
+
   // Lazy-load Tier D vanilla data when form opens for a lazy category
   $effect(() => {
     const sec = section as VanillaCategory;
@@ -305,6 +309,16 @@
   // Schema data (reactive — may load asynchronously)
   let schemas = $derived(schemaStore.getBySection(_section));
 
+  // Stats schema: when isSpell section has a known entry type, look up per-type schema
+  const _nodeId = untrack(() => snapshot(nodeId));
+  const _entryFilterSnap = untrack(() => snapshot(entryFilter));
+  const _statsEntryType = (SECTION_CAPS[_section] as SectionCapabilities | undefined)?.isSpell
+    ? (_nodeId ?? (_entryFilterSnap?.field === "node_id" ? _entryFilterSnap.value : null))
+    : null;
+  let statsSchema = $derived(
+    _statsEntryType ? schemaStore.getByNodeId(_statsEntryType) : undefined
+  );
+
   // svelte-ignore state_referenced_locally — intentional one-time snapshot
   let selectedSchemaNodeId = $state(snapshot(nodeId) ?? "");
   $effect(() => {
@@ -373,8 +387,14 @@
   }
 
   // For schema-only sections, synthesize caps from schema
+  // For isSpell sections with per-type stats schema, merge schema caps with isSpell
   let effectiveCaps = $derived.by((): SectionCapabilities => {
-    if (_hasSectionCaps) return baseCaps;
+    if (_hasSectionCaps) {
+      if (baseCaps.isSpell && statsSchema) {
+        return { ...capsFromSchema(statsSchema), isSpell: true };
+      }
+      return baseCaps;
+    }
     if (activeSchema) return capsFromSchema(activeSchema);
     return {};
   });
@@ -383,7 +403,10 @@
   const staticLayout = _hasFormLayout ? (FORM_LAYOUTS[_section] as FormLayout) : undefined;
   let baseLayout = $derived.by((): FormLayout | undefined => {
     if (staticLayout) return staticLayout;
-    if (_hasSectionCaps) return autoLayoutFromCaps(SECTION_CAPS[_section]);
+    if (_hasSectionCaps) {
+      if (baseCaps.isSpell && statsSchema) return autoLayoutFromSchema(statsSchema);
+      return autoLayoutFromCaps(SECTION_CAPS[_section]);
+    }
     if (activeSchema) return autoLayoutFromSchema(activeSchema);
     return undefined;
   });
@@ -402,18 +425,23 @@
   });
 
   // For schema/fallback tiers, initialize fields from effectiveCaps after schema loads
+  // Also triggers for isSpell sections with per-type stats schema
   $effect(() => {
-    if (tier !== 'layout' && !_hasSectionCaps && effectiveCaps.fieldKeys) {
-      const existingFieldKeys = new Set(fields.map(f => f.key));
-      for (const key of effectiveCaps.fieldKeys ?? []) {
-        if (!existingFieldKeys.has(key)) {
-          fields = [...fields, { key, value: "" }];
+    if ((tier !== 'layout' && !_hasSectionCaps) || statsSchema) {
+      if (effectiveCaps.fieldKeys) {
+        const existingFieldKeys = new Set(fields.map(f => f.key));
+        for (const key of effectiveCaps.fieldKeys ?? []) {
+          if (!existingFieldKeys.has(key)) {
+            fields = [...fields, { key, value: "" }];
+          }
         }
       }
-      const existingBoolKeys = new Set(booleans.map(b => b.key));
-      for (const key of effectiveCaps.booleanKeys ?? []) {
-        if (!existingBoolKeys.has(key)) {
-          booleans = [...booleans, { key, value: false }];
+      if (effectiveCaps.booleanKeys) {
+        const existingBoolKeys = new Set(booleans.map(b => b.key));
+        for (const key of effectiveCaps.booleanKeys ?? []) {
+          if (!existingBoolKeys.has(key)) {
+            booleans = [...booleans, { key, value: false }];
+          }
         }
       }
     }
@@ -429,7 +457,7 @@
 
   /** Merge base caps with per-node-type overrides, using effectiveCaps for schema-only sections. */
   let caps = $derived.by((): SectionCapabilities => {
-    const base = _hasSectionCaps ? baseCaps : effectiveCaps;
+    const base = (_hasSectionCaps && !statsSchema) ? baseCaps : effectiveCaps;
     if (!base.nodeTypeCaps || !selectedNodeType) return base;
     const override = base.nodeTypeCaps[selectedNodeType];
     if (!override) return base;
@@ -830,6 +858,16 @@
       : undefined
   );
 
+  /** Tag types rendered inside a subsection (not in standalone block) */
+  let subsectionTagKeys = $derived(
+    new Set((layout?.subsections ?? []).flatMap(s => s.tagKeys ?? []))
+  );
+
+  /** Whether ALL tag types are handled by subsections (standalone block hidden) */
+  let allTagsInSubsections = $derived(
+    subsectionTagKeys.size > 0 && allowedTagTypes.every(t => subsectionTagKeys.has(t))
+  );
+
   let allTagTypesUsed = $derived(
     allowedTagTypes.length > 0 && tags.length >= allowedTagTypes.length
   );
@@ -861,7 +899,7 @@
   let formContainerEl: HTMLElement | undefined = $state(undefined);
 
   let navSections = $derived.by(() => {
-    const sections: { id: string; label: string }[] = [{ id: 'section-identity', label: 'Basic Info' }];
+    const sections: { id: string; label: string; children?: { id: string; label: string }[] }[] = [{ id: 'section-identity', label: 'Basic Info' }];
     if (layout?.subsections) {
       for (const sub of layout.subsections) {
         if (sub.component) continue;
@@ -873,9 +911,28 @@
     if (caps.hasFields && unhandledFields.length > 0) sections.push({ id: 'section-fields', label: 'Fields' });
     if (caps.hasSelectors) sections.push({ id: 'section-selectors', label: 'Selectors' });
     if (caps.hasStrings && (caps.stringTypes ?? []).some(t => !subsectionStringKeys.has(t))) sections.push({ id: 'section-strings', label: 'Strings' });
-    if (caps.hasTags) sections.push({ id: 'section-tags', label: 'Tags' });
+    if (caps.hasTags && !allTagsInSubsections) sections.push({ id: 'section-tags', label: 'Tags' });
+    if (_section === 'Backgrounds') {
+      const levelGroups = backgroundGoalsPanel?.getLevelGroups() ?? [];
+      sections.push({
+        id: 'section-background-goals',
+        label: 'Background Goals',
+        children: levelGroups.map(g => ({
+          id: `section-bg-goal-level-${g.level}`,
+          label: `Level ${g.level}`,
+        })),
+      });
+    }
     if (_section === 'Races') {
-      sections.push({ id: 'section-race-progressions', label: 'Race Progressions' });
+      const levelGroups = raceProgressionPanel?.getLevelGroups() ?? [];
+      sections.push({
+        id: 'section-race-progressions',
+        label: 'Race Progressions',
+        children: levelGroups.map(g => ({
+          id: `section-race-prog-level-${g.level}`,
+          label: `Level ${g.level}`,
+        })),
+      });
       sections.push({ id: 'section-race-tags', label: 'Race Tags' });
       sections.push({ id: 'section-cc-presets', label: 'CC Presets' });
     }
@@ -947,6 +1004,20 @@
         configStore.updateManualEntry(upd.index, upd.section, upd.fields);
       }
       // Remove in reverse index order to avoid index shifting
+      for (const idx of [...toRemove].sort((a, b) => b - a)) {
+        configStore.removeManualEntry(idx);
+      }
+    }
+
+    // Sync background goals satellite entries
+    if (_section === 'Backgrounds' && backgroundGoalsPanel) {
+      const { toCreate, toUpdate, toRemove } = backgroundGoalsPanel.syncGoals();
+      if (toCreate.length > 0) {
+        configStore.addManualEntries(toCreate, m.manual_form_create_background_goals());
+      }
+      for (const upd of toUpdate) {
+        configStore.updateManualEntry(upd.index, upd.section, upd.fields);
+      }
       for (const idx of [...toRemove].sort((a, b) => b - a)) {
         configStore.removeManualEntry(idx);
       }
@@ -1101,6 +1172,7 @@
         {caps}
         bind:strings
         bind:children
+        bind:tags
         {getFieldValue}
         {setFieldValue}
         {getBoolValue}
@@ -1111,7 +1183,19 @@
         {availablePassiveNames}
         {warnKeys}
         {getChildValueOptions}
+        {allowedTagTypes}
+        {getTagOptionsForType}
       />
+    {/if}
+
+    <!-- Background Goals inline panel -->
+    {#if _section === 'Backgrounds'}
+      <FormSectionCard title={m.manual_form_background_goals()} id="section-background-goals" open={false}>
+        <BackgroundGoalsPanel
+          bind:this={backgroundGoalsPanel}
+          backgroundUuid={uuids[0] ?? ''}
+        />
+      </FormSectionCard>
     {/if}
 
     <!-- Race Progressions inline panel -->
@@ -1215,7 +1299,7 @@
     />
     </div>
 
-    {#if caps.hasTags}
+    {#if caps.hasTags && !allTagsInSubsections}
       <FormSectionCard title={m.form_section_tags()} id="section-tags">
         <TagFieldset
           bind:tags
@@ -1246,8 +1330,8 @@
       </FormSectionCard>
     {/if}
 
-    <!-- Spell fields — progressive disclosure -->
-    {#if caps.isSpell}
+    <!-- Spell fields — progressive disclosure (skipped when per-type stats schema drives the form) -->
+    {#if caps.isSpell && !statsSchema}
       <FormSectionCard title="{m.manual_form_stat_fields()} ({spellFields.length})" bind:open={openSpellFields}>
         {#snippet headerActions()}
           <span class="text-[10px] text-[var(--th-text-600)] font-normal">(optional)</span>

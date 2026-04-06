@@ -569,6 +569,8 @@
   "manual_form_entry_updated_title": "Entry updated",
   "manual_form_entry_updated_message": "Manual entry updated for {section}",
   "manual_form_create_race_progressions": "Create race progressions",
+  "manual_form_background_goals": "Background Goals",
+  "manual_form_create_background_goals": "Create background goals",
 
   "form_section_attributes": "Attributes",
   "form_section_booleans": "Booleans",

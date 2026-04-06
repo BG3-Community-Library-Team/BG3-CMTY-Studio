@@ -149,6 +149,20 @@
       })
   );
 
+  /** Progressions grouped by level, sorted ascending */
+  let progressionsByLevel = $derived.by(() => {
+    const map = new Map<number, ProgressionSubform[]>();
+    for (const sub of sortedSubforms) {
+      const lvl = parseInt(sub.level || '0', 10) || 0;
+      const existing = map.get(lvl);
+      if (existing) existing.push(sub);
+      else map.set(lvl, [sub]);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([level, progressions]) => ({ level, progressions }));
+  });
+
   let deletedSubforms = $derived(subforms.filter(s => s.markedForDeletion));
 
   let newLevel: string | number = $state('');
@@ -189,6 +203,11 @@
     if (!sub) return;
     sub.markedForDeletion = false;
     subforms = [...subforms];
+  }
+
+  /** Expose the level groups so UnifiedForm can build nav children */
+  export function getLevelGroups(): { level: number; count: number }[] {
+    return progressionsByLevel.map(g => ({ level: g.level, count: g.progressions.length }));
   }
 
   /**
@@ -262,83 +281,100 @@
       </div>
     </div>
   {:else}
-    {#each sortedSubforms as sub (sub.id)}
-      <details class="progression-subform" open>
-        <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none flex items-center gap-1.5">
-          <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
-          Level {sub.level || '?'}
-          {#if sub.name}
-            <span class="font-normal text-[var(--th-text-500)]">— {sub.name}</span>
-          {/if}
-          {#if sub.existingIndex != null}
-            <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
-          {/if}
-          <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{sub.id}</span>
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <span class="ml-auto" onclick={(e) => e.stopPropagation()}>
-            <button type="button" class="text-xs text-red-400 hover:text-red-300 px-1.5 min-w-6 min-h-6 inline-flex items-center justify-center"
-              onclick={() => removeSubform(sub.id)} aria-label="Remove progression">
-              <X size={14} />
-            </button>
-          </span>
-        </summary>
+    <!-- Timeline visual grouped by level -->
+    <div class="timeline-container">
+      {#each progressionsByLevel as group (group.level)}
+        <div class="timeline-level-group" id="section-race-prog-level-{group.level}">
+          <!-- Level marker with circle on the track -->
+          <div class="timeline-level-header">
+            <span class="timeline-level-circle bg-sky-500">{group.level}</span>
+            <span class="text-xs font-semibold text-[var(--th-text-200)]">Level {group.level}</span>
+            <span class="text-[10px] text-[var(--th-text-500)]">{group.progressions.length} {group.progressions.length === 1 ? 'progression' : 'progressions'}</span>
+          </div>
 
-        <div class="progression-fields space-y-2 mt-2">
-          <div class="flex gap-2">
-            <div class="flex flex-col gap-0.5 text-xs w-16 shrink-0">
-              <label class="text-[var(--th-text-400)]" for="prog-level-{sub.id}">Level <span class="text-red-400">*</span></label>
-              <input id="prog-level-{sub.id}" type="number" class="form-input w-full" min="1" max="20"
-                bind:value={sub.level} required />
-            </div>
-            <div class="flex flex-col gap-0.5 text-xs w-48 shrink-0">
-              <label class="text-[var(--th-text-400)]" for="prog-name-{sub.id}">Name <span class="text-red-400">*</span></label>
-              <input id="prog-name-{sub.id}" type="text" class="form-input w-full"
-                bind:value={sub.name} placeholder="e.g., Elf" required />
-            </div>
-          </div>
-          <div class="flex gap-2 items-end">
-            <div class="flex flex-col gap-0.5 text-xs flex-1 min-w-0">
-              <label class="text-[var(--th-text-400)]" for="prog-boosts-{sub.id}">Boosts</label>
-              <input id="prog-boosts-{sub.id}" type="text" class="form-input w-full"
-                bind:value={sub.boosts} placeholder="e.g., ActionResource(Movement,9,0);Proficiency(LightArmor)" />
-            </div>
-            <label class="shrink-0 h-8 inline-flex items-center gap-2 text-xs cursor-pointer px-2 rounded">
-              <button type="button"
-                class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {sub.allowImprovement ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
-                role="switch" aria-checked={sub.allowImprovement} aria-label="Allow Improvement"
-                onclick={() => { sub.allowImprovement = !sub.allowImprovement; subforms = [...subforms]; }}>
-                <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {sub.allowImprovement ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
-              </button>
-              <span class="whitespace-nowrap {sub.allowImprovement ? 'text-sky-400' : 'text-[var(--th-text-500)]'}">Grant Feat</span>
-            </label>
-          </div>
-          <div class="flex flex-col gap-0.5 text-xs">
-            <span class="text-[var(--th-text-400)]">Passives Added</span>
-            <MultiSelectCombobox
-              options={passiveOptions}
-              selected={sub.passivesAdded ? sub.passivesAdded.split(';').map(v => v.trim()).filter(Boolean) : []}
-              onchange={(vals) => { sub.passivesAdded = vals.join(';'); subforms = [...subforms]; }}
-              placeholder="e.g., Darkvision, KeenSenses"
-            />
-          </div>
-          <div class="flex flex-col gap-0.5 text-xs">
-            <span class="text-[var(--th-text-400)]">Passives Removed</span>
-            <MultiSelectCombobox
-              options={passiveOptions}
-              selected={sub.passivesRemoved ? sub.passivesRemoved.split(';').map(v => v.trim()).filter(Boolean) : []}
-              onchange={(vals) => { sub.passivesRemoved = vals.join(';'); subforms = [...subforms]; }}
-              placeholder="Passives removed at this level"
-            />
-          </div>
-        </div>
+          <!-- Progressions within this level -->
+          {#each group.progressions as sub (sub.id)}
+            <div class="timeline-item">
+              <details class="progression-subform" open>
+                <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none flex items-center gap-1.5">
+                  <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
+                  Progression
+                  {#if sub.name}
+                    <span class="font-normal text-[var(--th-text-500)]">— {sub.name}</span>
+                  {/if}
+                  {#if sub.existingIndex != null}
+                    <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
+                  {/if}
+                  <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{sub.id}</span>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <span class="ml-auto" onclick={(e) => e.stopPropagation()}>
+                    <button type="button" class="text-xs text-red-400 hover:text-red-300 px-1.5 min-w-6 min-h-6 inline-flex items-center justify-center"
+                      onclick={() => removeSubform(sub.id)} aria-label="Remove progression">
+                      <X size={14} />
+                    </button>
+                  </span>
+                </summary>
 
-        <!-- Selectors -->
-        <div class="mt-2">
-          <FormSelectors bind:selectors={sub.selectors} warnKeys={new Set()} />
+                <div class="progression-fields space-y-2 mt-2">
+                  <div class="flex gap-2">
+                    <div class="flex flex-col gap-0.5 text-xs w-16 shrink-0">
+                      <label class="text-[var(--th-text-400)]" for="prog-level-{sub.id}">Level <span class="text-red-400">*</span></label>
+                      <input id="prog-level-{sub.id}" type="number" class="form-input w-full" min="1" max="20"
+                        bind:value={sub.level} required />
+                    </div>
+                    <div class="flex flex-col gap-0.5 text-xs w-48 shrink-0">
+                      <label class="text-[var(--th-text-400)]" for="prog-name-{sub.id}">Name <span class="text-red-400">*</span></label>
+                      <input id="prog-name-{sub.id}" type="text" class="form-input w-full"
+                        bind:value={sub.name} placeholder="e.g., Elf" required />
+                    </div>
+                  </div>
+                  <div class="flex gap-2 items-end">
+                    <div class="flex flex-col gap-0.5 text-xs flex-1 min-w-0">
+                      <label class="text-[var(--th-text-400)]" for="prog-boosts-{sub.id}">Boosts</label>
+                      <input id="prog-boosts-{sub.id}" type="text" class="form-input w-full"
+                        bind:value={sub.boosts} placeholder="e.g., ActionResource(Movement,9,0);Proficiency(LightArmor)" />
+                    </div>
+                    <label class="shrink-0 h-8 inline-flex items-center gap-2 text-xs cursor-pointer px-2 rounded">
+                      <button type="button"
+                        class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {sub.allowImprovement ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
+                        role="switch" aria-checked={sub.allowImprovement} aria-label="Allow Improvement"
+                        onclick={() => { sub.allowImprovement = !sub.allowImprovement; subforms = [...subforms]; }}>
+                        <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {sub.allowImprovement ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
+                      </button>
+                      <span class="whitespace-nowrap {sub.allowImprovement ? 'text-sky-400' : 'text-[var(--th-text-500)]'}">Grant Feat</span>
+                    </label>
+                  </div>
+                  <div class="flex flex-col gap-0.5 text-xs">
+                    <span class="text-[var(--th-text-400)]">Passives Added</span>
+                    <MultiSelectCombobox
+                      options={passiveOptions}
+                      selected={sub.passivesAdded ? sub.passivesAdded.split(';').map(v => v.trim()).filter(Boolean) : []}
+                      onchange={(vals) => { sub.passivesAdded = vals.join(';'); subforms = [...subforms]; }}
+                      placeholder="e.g., Darkvision, KeenSenses"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-0.5 text-xs">
+                    <span class="text-[var(--th-text-400)]">Passives Removed</span>
+                    <MultiSelectCombobox
+                      options={passiveOptions}
+                      selected={sub.passivesRemoved ? sub.passivesRemoved.split(';').map(v => v.trim()).filter(Boolean) : []}
+                      onchange={(vals) => { sub.passivesRemoved = vals.join(';'); subforms = [...subforms]; }}
+                      placeholder="Passives removed at this level"
+                    />
+                  </div>
+                </div>
+
+                <!-- Selectors -->
+                <div class="mt-2">
+                  <FormSelectors bind:selectors={sub.selectors} warnKeys={new Set()} />
+                </div>
+              </details>
+            </div>
+          {/each}
         </div>
-      </details>
-    {/each}
+      {/each}
+    </div>
 
     {#if deletedSubforms.length > 0}
       <div class="space-y-1">
@@ -370,6 +406,49 @@
 </div>
 
 <style>
+  .timeline-container {
+    background: var(--th-bg-900);
+    border: 1px solid var(--th-border-700);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .timeline-level-group {
+    position: relative;
+    padding-left: 1.25rem;
+    border-left: 2px solid var(--th-border-700);
+    margin-left: 0.5rem;
+  }
+
+  .timeline-level-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .timeline-level-circle {
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    margin-left: -1.625rem;
+  }
+
+  .timeline-item {
+    padding-left: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
   .progression-subform {
     padding: 0.375rem 0.5rem 0.5rem;
     border: 1px solid var(--th-border-700, #3f3f46);

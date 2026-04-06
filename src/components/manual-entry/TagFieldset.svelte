@@ -26,16 +26,14 @@
 
 <FieldsetShell items={tags} label="tag" allUsed={allTagTypesUsed} {hideRemoveButton} onadd={onaddTag} onremove={(i) => onremoveTag(i)} rowClass="items-start">
   {#snippet children(t, _i)}
-    <div class="flex-1 flex flex-col gap-1 min-w-0">
-      <div class="flex-1">
-        <MultiSelectCombobox
-          label={t.type}
-          options={getTagOptionsForType(t.type)}
-          selected={t.uuids}
-          placeholder="Search or paste tag UUID(s)…"
-          onchange={(vals) => t.uuids = vals}
-        />
-      </div>
+    <div class="flex-1 min-w-0">
+      <MultiSelectCombobox
+        label={t.type}
+        options={getTagOptionsForType(t.type)}
+        selected={t.uuids}
+        placeholder="Search or paste tag UUID(s)…"
+        onchange={(vals) => t.uuids = vals}
+      />
     </div>
   {/snippet}
 </FieldsetShell>

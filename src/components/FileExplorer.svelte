@@ -6,8 +6,8 @@
   import {
     BG3_CORE_FOLDERS,
     BG3_ADDITIONAL_FOLDERS,
-    BG3_STATS_FOLDERS,
     STATIC_SIDEBAR_SECTIONS,
+    SECTIONS_EXCLUDED_FROM_DISCOVERY,
     type FolderNode,
   } from "../lib/data/bg3FolderStructure.js";
   import { openPath } from "../lib/utils/tauri.js";
@@ -134,7 +134,7 @@
   let ctxNode = $state<FolderNode | undefined>(undefined);
 
   /** Resolve a filesystem path for a tree node, relative to the mod root. */
-  function resolveNodePath(nodeKey: string, kind: "root" | "public-folder" | "public-child" | "stats" | "stats-child" | "mods" | "meta" | "additional"): string {
+  function resolveNodePath(nodeKey: string, kind: "root" | "public-folder" | "public-child" | "mods" | "meta" | "additional"): string {
     const base = modStore.selectedModPath;
     if (!base) return "";
     switch (kind) {
@@ -142,8 +142,6 @@
       case "meta": return `${base}/Mods/${modFolder}`;
       case "public-folder": return `${base}/Public/${modFolder}/${nodeKey}`;
       case "public-child": return `${base}/Public/${modFolder}/${nodeKey}`;
-      case "stats": return `${base}/Public/${modFolder}/Stats/Generated/Data`;
-      case "stats-child": return `${base}/Public/${modFolder}/Stats/Generated/Data/${nodeKey}`;
       case "mods": return `${base}/Mods/${modFolder}`;
       case "additional": return `${base}/Public/${modFolder}/${nodeKey}`;
       default: return base;
@@ -352,30 +350,99 @@
   let isRootExpanded = $derived(uiStore.expandedNodes["root"] !== false);
   let isPublicExpanded = $derived(uiStore.expandedNodes["Public"] !== false);
   let isAdditionalExpanded = $derived(uiStore.expandedNodes["_Additional"] ?? false);
-  let isStatsExpanded = $derived(uiStore.expandedNodes["Stats"] ?? false);
   let isModsExpanded = $derived(uiStore.expandedNodes["Mods"] ?? false);
-  let isDiscoveredExpanded = $derived(uiStore.expandedNodes["_Discovered"] ?? false);
 
-  /** DB-discovered sections not in the static sidebar tree. */
-  let discoveredSections = $derived.by((): FolderNode[] => {
-    if (!schemaStore.loaded) return [];
-    const nodes: FolderNode[] = [];
-    // sectionMap keys are section names (Section variant names or region_ids)
+  /**
+   * DB-discovered sections not in the static sidebar tree.
+   * Splits into routing categories for injection into specific groups:
+   *  - cc: CharacterCreation-prefixed → injected into CC core folder
+   *  - content: *Bank* patterns → injected into _Content core folder
+   *  - vfx: Effect* patterns → injected into _VFX additional folder
+   *  - sound: Sound* patterns (but not "Sound" itself) → injected into _Sound additional folder
+   *  - general: everything else → merged into the Additional Data pool
+   */
+  let allDiscovered = $derived.by((): { cc: FolderNode[]; content: FolderNode[]; vfx: FolderNode[]; sound: FolderNode[]; general: FolderNode[] } => {
+    if (!schemaStore.loaded) return { cc: [], content: [], vfx: [], sound: [], general: [] };
+    const cc: FolderNode[] = [];
+    const content: FolderNode[] = [];
+    const vfx: FolderNode[] = [];
+    const sound: FolderNode[] = [];
+    const general: FolderNode[] = [];
     for (const [sectionKey, schemas] of schemaStore.sectionEntries()) {
       if (STATIC_SIDEBAR_SECTIONS.has(sectionKey)) continue;
-      // Use the first schema's node_id as the primary node type
+      if (SECTIONS_EXCLUDED_FROM_DISCOVERY.has(sectionKey)) continue;
+      // Stats schemas (stats:SpellData etc.) are represented by the Stats folder tree
+      if (sectionKey.startsWith("stats:")) continue;
+      // Skip sections where every schema has 0 attributes (no useful data structure)
+      if (schemas.every(s => s.attributes.length === 0)) continue;
       const primary = schemas[0];
       if (!primary) continue;
-      nodes.push({
+      const node: FolderNode = {
         name: sectionKey,
         label: sectionKey.replace(/([A-Z])/g, " $1").trim(),
         nodeTypes: schemas.map(s => s.node_id),
         Section: sectionKey,
         regionId: sectionKey,
-      });
+      };
+      if (sectionKey.startsWith("CharacterCreation")) {
+        cc.push(node);
+      } else if (/^Effect/i.test(sectionKey)) {
+        // Effect* (including EffectBanks) → VFX
+        vfx.push(node);
+      } else if (/Bank/i.test(sectionKey) || /Visual/i.test(sectionKey)) {
+        content.push(node);
+      } else if (/^Sound/i.test(sectionKey) && sectionKey !== "Sound") {
+        sound.push(node);
+      } else {
+        general.push(node);
+      }
     }
-    nodes.sort((a, b) => a.label.localeCompare(b.label));
-    return nodes;
+    const sorter = (a: FolderNode, b: FolderNode) => a.label.localeCompare(b.label);
+    cc.sort(sorter);
+    content.sort(sorter);
+    vfx.sort(sorter);
+    sound.sort(sorter);
+    general.sort(sorter);
+    return { cc, content, vfx, sound, general };
+  });
+
+  /** Core folders with discovered sections injected into matching groups. */
+  let enrichedCoreFolders = $derived.by((): FolderNode[] => {
+    const ccExtra = allDiscovered.cc;
+    const contentExtra = allDiscovered.content;
+    const vfxExtra = allDiscovered.vfx;
+    if (ccExtra.length === 0 && contentExtra.length === 0 && vfxExtra.length === 0) return BG3_CORE_FOLDERS;
+    return BG3_CORE_FOLDERS.map(f => {
+      if (f.name === "_CharacterCreation" && f.children && ccExtra.length > 0) {
+        return { ...f, children: [...f.children, ...ccExtra] };
+      }
+      if (f.name === "_Content" && f.children && contentExtra.length > 0) {
+        return { ...f, children: [...f.children, ...contentExtra] };
+      }
+      if (f.name === "_VFX" && f.children && vfxExtra.length > 0) {
+        return { ...f, children: [...f.children, ...vfxExtra] };
+      }
+      return f;
+    });
+  });
+
+  /** Additional folders merged with general discovered sections, sorted alphabetically. */
+  let mergedAdditionalSections = $derived.by((): FolderNode[] => {
+    const combined = [...BG3_ADDITIONAL_FOLDERS];
+    // Inject discovered sections into Sound group
+    const soundExtra = allDiscovered.sound;
+    if (soundExtra.length > 0) {
+      for (let i = 0; i < combined.length; i++) {
+        const node = combined[i];
+        if (node.name === "_Sound" && node.children && soundExtra.length > 0) {
+          combined[i] = { ...node, children: [...node.children, ...soundExtra] };
+        }
+      }
+    }
+    // Add remaining general discovered sections
+    combined.push(...allDiscovered.general);
+    combined.sort((a, b) => a.label.localeCompare(b.label));
+    return combined;
   });
 
   /** Derive the active node name/section from the current tab */
@@ -476,7 +543,7 @@
       </div>
     </div>
   {:else}
-    <div class="tree-root" role="tree">
+    <div class="tree-root" class:scanning={modStore.isScanning} role="tree" aria-busy={modStore.isScanning} inert={modStore.isScanning ? true : undefined}>
       <!-- Root: Mod name -->
       <button class="tree-node root-node" onclick={() => { uiStore.expandNode("root"); uiStore.openTab({ id: "meta.lsx", label: "meta.lsx", type: "meta-lsx", category: "meta", icon: "⚙" }); }} oncontextmenu={(e) => showContextMenu(e, resolveNodePath("", "root"), modName)}>
         <ChevronRight size={14} class="chevron {isRootExpanded ? 'expanded' : ''}" />
@@ -500,7 +567,7 @@
           {#if isPublicExpanded}
             <div class="tree-children">
               <!-- Core modding folders (with groupings) -->
-              {#each BG3_CORE_FOLDERS as node (node.name)}
+              {#each enrichedCoreFolders as node (node.name)}
                 {@const count = getGroupCount(node)}
                 {@const active = hasModFiles(node)}
                 {@const isExpanded = uiStore.expandedNodes[node.name] ?? false}
@@ -620,7 +687,7 @@
                 {/if}
               {/each}
 
-              <!-- Additional Data separator -->
+              <!-- Additional Data separator (merges static + DB-discovered) -->
               <button
                 class="tree-node separator-node"
                 onclick={() => uiStore.toggleNode("_Additional")}
@@ -636,82 +703,59 @@
 
               {#if isAdditionalExpanded}
                 <div class="tree-children">
-                  {#each BG3_ADDITIONAL_FOLDERS as node (node.name)}
-                    {@const adCount = getSectionCount(node.name)}
-                    <button class="tree-node" class:has-files={adCount > 0} class:active-node={isActiveNode(node)} onclick={() => openNode(node)} ondblclick={() => openNode(node, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'additional'), node.label, node.Section, node)}>
-                      <span class="w-3.5 shrink-0"></span>
-                      <File size={14} class={adCount > 0 ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                      <span class="node-label truncate" class:text-muted={adCount === 0}>{node.label}</span>
-                      {#if adCount > 0}
-                        <span class="entry-count">{adCount}</span>
-                      {/if}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-
-              <!-- ── Stats/Generated/Data (nested under Public) ── -->
-              <button class="tree-node separator-node" onclick={() => uiStore.toggleNode("Stats")}>
-                <ChevronRight size={14} class="chevron {isStatsExpanded ? 'expanded' : ''}" />
-                {#if isStatsExpanded}
-                  <FolderOpen size={14} class="text-[var(--th-text-violet-400)]" />
-                {:else}
-                  <Folder size={14} class="text-[var(--th-text-violet-400)]" />
-                {/if}
-                <span class="node-label">Stats</span>
-              </button>
-
-              {#if isStatsExpanded}
-                <div class="tree-children">
-                  {#each BG3_STATS_FOLDERS[0]?.children ?? [] as node (node.name)}
-                    {@const active = node.Section ? hasModFiles(node) : false}
-                    {@const isExpanded = uiStore.expandedNodes[node.name] ?? false}
-
+                  {#each mergedAdditionalSections as node (node.name)}
                     {#if node.children}
+                      <!-- Group node (e.g., Ruleset, Controller) -->
+                      {@const grpCount = getGroupCount(node)}
+                      {@const grpActive = node.children.some(c => hasModFiles(c))}
+                      {@const grpExpanded = uiStore.expandedNodes[node.name] ?? false}
                       <div
                         class="tree-node"
-                        class:has-files={active}
-                        oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'stats-child'), node.label, node.Section, node)}
+                        class:has-files={grpActive}
                         role="treeitem"
                         tabindex="0"
                         aria-selected="false"
-                        aria-expanded={isExpanded}
-                        aria-level={3}
+                        aria-expanded={grpExpanded}
                       >
                         <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(node.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(node.name); } }} role="button" tabindex="0" aria-label="Toggle {node.label}">
-                          <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
+                          <ChevronRight size={14} class="chevron {grpExpanded ? 'expanded' : ''}" />
                         </span>
-                        <button class="tree-node-label" onclick={() => openNode(node)}>
-                          {#if isExpanded}
-                            <FolderOpen size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                        <button class="tree-node-label" onclick={() => { if (node.isGroup && node.groupSections) openNode(node); else uiStore.toggleNode(node.name); }}>
+                          {#if grpExpanded}
+                            <FolderOpen size={14} class={grpActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                           {:else}
-                            <Folder size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                            <Folder size={14} class={grpActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                           {/if}
-                          <span class="node-label truncate" class:text-muted={!active}>{node.label}</span>
+                          <span class="node-label truncate" class:text-muted={!grpActive}>{node.label}</span>
+                          {#if grpCount > 0}
+                            <span class="entry-count">{grpCount}</span>
+                          {/if}
                         </button>
                       </div>
-
-                      {#if isExpanded}
+                      {#if grpExpanded}
                         <div class="tree-children">
                           {#each node.children as child (child.name)}
-                            <button class="tree-node" onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, 'stats-child'), child.label, child.Section, child)}>
+                            {@const childCount = getSectionCount(child.Section ?? child.name)}
+                            <button class="tree-node" class:has-files={childCount > 0} class:active-node={isActiveNode(child)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, 'additional'), child.label, child.Section, child)}>
                               <span class="w-3.5 shrink-0"></span>
-                              <FileCode2 size={14} class="text-[var(--th-text-600)] opacity-50" />
-                              <span class="node-label truncate text-muted">{child.label}</span>
-                              {#if child.statsFile}
-                                <span class="text-[9px] text-[var(--th-text-600)] opacity-50">.txt</span>
+                              <File size={14} class={childCount > 0 ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                              <span class="node-label truncate" class:text-muted={childCount === 0}>{child.label}</span>
+                              {#if childCount > 0}
+                                <span class="entry-count">{childCount}</span>
                               {/if}
                             </button>
                           {/each}
                         </div>
                       {/if}
                     {:else}
-                      <button class="tree-node" onclick={() => openNode(node)} ondblclick={() => openNode(node, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'stats-child'), node.label, node.Section, node)}>
+                      <!-- Leaf node -->
+                      {@const adCount = getSectionCount(node.Section ?? node.name)}
+                      <button class="tree-node" class:has-files={adCount > 0} class:active-node={isActiveNode(node)} onclick={() => openNode(node)} ondblclick={() => openNode(node, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'additional'), node.label, node.Section, node)}>
                         <span class="w-3.5 shrink-0"></span>
-                        <FileCode2 size={14} class="text-[var(--th-text-600)] opacity-50" />
-                        <span class="node-label truncate text-muted">{node.label}</span>
-                        {#if node.statsFile}
-                          <span class="text-[9px] text-[var(--th-text-600)] opacity-50">.txt</span>
+                        <File size={14} class={adCount > 0 ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                        <span class="node-label truncate" class:text-muted={adCount === 0}>{node.label}</span>
+                        {#if adCount > 0}
+                          <span class="entry-count">{adCount}</span>
                         {/if}
                       </button>
                     {/if}
@@ -719,39 +763,7 @@
                 </div>
               {/if}
 
-              <!-- Discovered Data (DB regions not in static sidebar) -->
-              {#if discoveredSections.length > 0}
-                <button
-                  class="tree-node separator-node"
-                  onclick={() => uiStore.toggleNode("_Discovered")}
-                >
-                  <ChevronRight size={14} class="chevron {isDiscoveredExpanded ? 'expanded' : ''}" />
-                  {#if isDiscoveredExpanded}
-                    <FolderOpen size={14} class="text-[var(--th-text-600)] opacity-50" />
-                  {:else}
-                    <Folder size={14} class="text-[var(--th-text-600)] opacity-50" />
-                  {/if}
-                  <span class="node-label text-[var(--th-text-600)] text-[10px] uppercase tracking-wider">Discovered Data</span>
-                  <span class="entry-count">{discoveredSections.length}</span>
-                </button>
-
-                {#if isDiscoveredExpanded}
-                  <div class="tree-children">
-                    {#each discoveredSections as node (node.name)}
-                      <button
-                        class="tree-node"
-                        class:active-node={isActiveNode(node)}
-                        onclick={() => openNode(node)}
-                        ondblclick={() => openNode(node, false)}
-                      >
-                        <span class="w-3.5 shrink-0"></span>
-                        <File size={14} class="text-[var(--th-text-600)] opacity-40" />
-                        <span class="node-label truncate text-muted">{node.label}</span>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              {/if}
+              <!-- ── Stats/Generated/Data (merged into core via _Stats group) ── -->
             </div>
           {/if}
         </div>
@@ -886,6 +898,11 @@
 
   .tree-root {
     padding: 0 4px;
+  }
+
+  .tree-root.scanning {
+    opacity: 0.4;
+    cursor: progress;
   }
 
   .tree-node {

@@ -7,6 +7,7 @@
   import LayoutCell from "./LayoutCell.svelte";
   import FormSectionCard from "./FormSectionCard.svelte";
   import StringFieldset from "./StringFieldset.svelte";
+  import TagFieldset from "./TagFieldset.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
 
   let {
@@ -24,6 +25,9 @@
     availablePassiveNames,
     warnKeys,
     getChildValueOptions,
+    tags = $bindable(),
+    allowedTagTypes = [],
+    getTagOptionsForType,
   }: {
     layout: FormLayout;
     caps: SectionCapabilities;
@@ -39,6 +43,9 @@
     availablePassiveNames: ComboboxOption[];
     warnKeys: Set<string>;
     getChildValueOptions: (type: string) => ComboboxOption[];
+    tags?: { uuids: string[]; action: string; type: string; modGuid: string }[];
+    allowedTagTypes?: string[];
+    getTagOptionsForType?: (tagType: string) => ComboboxOption[];
   } = $props();
 
   function removeChild(i: number) { childItems = childItems.filter((_, idx) => idx !== i); }
@@ -89,7 +96,7 @@
       {/each}
     </div>
     {:else}
-    {@const colCount = layout.maxFieldColumns ? Math.max(row.items.length, layout.maxFieldColumns) : row.items.length}
+    {@const colCount = layout.maxFieldColumns ? Math.min(row.items.length, layout.maxFieldColumns) : row.items.length}
     <div class="grid gap-2" style="grid-template-columns: repeat({colCount}, minmax(0, 1fr));">
       {#each row.items as item}
         <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
@@ -136,7 +143,7 @@
             {/each}
           </div>
           {:else}
-          {@const subColCount = sub.maxFieldColumns ? Math.max(row.items.length, sub.maxFieldColumns) : row.items.length}
+          {@const subColCount = sub.maxFieldColumns ? Math.min(row.items.length, sub.maxFieldColumns) : row.items.length}
           <div class="grid gap-2" style="grid-template-columns: repeat({subColCount}, minmax(0, 1fr));">
             {#each row.items as item}
               <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
@@ -166,6 +173,27 @@
             adjacentBooleans={sub.stringAdjacentBooleans}
             {getBoolValue}
             {setBoolValue}
+          />
+        </div>
+      {/if}
+      {#if sub.tagKeys && tags && getTagOptionsForType}
+        {@const subTags = tags.filter(t => sub.tagKeys!.includes(t.type))}
+        {@const subTagTypesUsed = new Set(subTags.map(t => t.type))}
+        {@const allSubTagTypesUsed = sub.tagKeys!.every(k => subTagTypesUsed.has(k))}
+        {@const subAllowedTagTypes = allowedTagTypes.filter(t => sub.tagKeys!.includes(t))}
+        <div class="mt-2">
+          <TagFieldset
+            bind:tags
+            allowedTagTypes={subAllowedTagTypes}
+            {getTagOptionsForType}
+            {warnKeys}
+            allTagTypesUsed={allSubTagTypesUsed}
+            hideRemoveButton={layout.noRemoveButtons ?? false}
+            onaddTag={() => {
+              const first = sub.tagKeys!.find(k => !subTagTypesUsed.has(k)) ?? sub.tagKeys![0];
+              if (tags) tags = [...tags, { uuids: [], action: "Insert", type: first, modGuid: "" }];
+            }}
+            onremoveTag={(i) => { if (tags) tags = tags.filter((_, idx) => idx !== i); }}
           />
         </div>
       {/if}

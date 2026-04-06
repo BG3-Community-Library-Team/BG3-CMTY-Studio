@@ -610,6 +610,7 @@
             <UnifiedForm
               section={sectionResult.section}
               {entryFilter}
+              nodeId={entryFilter?.field === "node_id" ? entryFilter.value : undefined}
               prefill={subraceParentUuid ? { 'Field:ParentGuid': subraceParentUuid } : null}
               onclose={() => { showManualForm = false; subraceParentUuid = null; }}
               onsave={(result) => {

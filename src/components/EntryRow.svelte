@@ -380,6 +380,7 @@
           rawAttributes={entry.raw_attributes}
           rawChildren={entry.raw_children}
           sourceFile={entry.source_file}
+          nodeId={entry.node_id}
           initialShowSummary={openWithSummary}
           onclose={() => { editing = false; editCollapsed = false; openWithSummary = false; }}
         />

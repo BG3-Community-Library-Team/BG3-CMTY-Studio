@@ -6,13 +6,18 @@
     errorCounts = {},
     containerEl = undefined,
   }: {
-    /** Section identifiers with display labels */
-    sections: { id: string; label: string }[];
+    /** Section identifiers with display labels and optional nested children */
+    sections: { id: string; label: string; children?: { id: string; label: string }[] }[];
     /** Validation error/warning counts per section id */
     errorCounts?: Record<string, number>;
     /** Parent form container — scopes section lookups to this form only */
     containerEl?: HTMLElement;
   } = $props();
+
+  /** Flattened list of all section ids (including children) for intersection observer */
+  let flatSectionIds = $derived(
+    sections.flatMap(s => [s, ...(s.children ?? [])]).map(s => s.id)
+  );
 
   let activeSection: string = $state("");
 
@@ -77,8 +82,8 @@
       },
     );
 
-    for (const section of sections) {
-      const el = containerEl.querySelector<HTMLElement>(`#${CSS.escape(section.id)}`);
+    for (const id of flatSectionIds) {
+      const el = containerEl.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
       if (el) {
         observer.observe(el);
         targets.push(el);
@@ -141,7 +146,7 @@
           <button
             type="button"
             class="form-nav-item"
-            class:active={activeSection === section.id}
+            class:active={activeSection === section.id || (section.children?.some(c => c.id === activeSection) ?? false)}
             onclick={() => scrollToSection(section.id)}
           >
             <span class="form-nav-label">{section.label}</span>
@@ -152,6 +157,22 @@
               </span>
             {/if}
           </button>
+          {#if section.children?.length}
+            <ul class="form-nav-children">
+              {#each section.children as child (child.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="form-nav-item form-nav-child"
+                    class:active={activeSection === child.id}
+                    onclick={() => scrollToSection(child.id)}
+                  >
+                    <span class="form-nav-label">{child.label}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -234,5 +255,28 @@
     font-size: 0.5625rem;
     font-weight: 700;
     line-height: 1.125rem;
+  }
+
+  .form-nav-children {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .form-nav-child {
+    padding-left: 1rem;
+    font-size: 0.625rem;
+    color: var(--th-text-600);
+  }
+
+  .form-nav-child:hover {
+    color: var(--th-text-400);
+  }
+
+  .form-nav-child.active {
+    color: var(--th-text-200);
   }
 </style>
