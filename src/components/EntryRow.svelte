@@ -18,15 +18,21 @@
   import Eye from "@lucide/svelte/icons/eye";
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import MessageSquareOff from "@lucide/svelte/icons/message-square-off";
+  import FolderTree from "@lucide/svelte/icons/folder-tree";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
   import { tooltip } from "../lib/actions/tooltip.js";
   import { m } from "../paraglide/messages.js";
 
-  let { entry, section, depth = 0, oncontextmenu: onCtxMenu, onaddsubrace }: {
+  let { entry, section, depth = 0, hasChildren = false, childCount = 0, oncontextmenu: onCtxMenu, onaddsubrace, ontogglechildren }: {
     entry: DiffEntry;
     section: string;
     depth?: number;
+    hasChildren?: boolean;
+    childCount?: number;
     oncontextmenu?: (e: MouseEvent, entry: DiffEntry) => void;
     onaddsubrace?: (parentEntry: DiffEntry) => void;
+    ontogglechildren?: () => void;
   } = $props();
 
   let isVanilla = $derived(entry.entry_kind === 'Vanilla');
@@ -74,6 +80,14 @@
   let showDiff = $state(false);
   let diffContainer: HTMLDivElement | undefined = $state(undefined);
   let editing = $state(false);
+  let openWithSummary = $state(false);
+
+  function startEdit(withSummary = false) {
+    editing = true;
+    editCollapsed = false;
+    showDiff = false;
+    openWithSummary = withSummary;
+  }
 
   $effect(() => {
     if (showDiff && diffContainer) diffContainer.scrollTop = 0;
@@ -178,11 +192,6 @@
     return m.entry_row_changes({ count: n });
   });
 
-  function startEdit(): void {
-    editing = true;
-    showDiff = false;
-  }
-
   /** Convert the auto entry's changes into a prefill-compatible Record.
    *  If an override exists, use it; otherwise derive from diff changes. */
   let prefillFields = $derived.by(() => {
@@ -207,7 +216,7 @@
   class="entry-row flex flex-col rounded border transition-colors
          {isVanilla && !editing ? 'border-zinc-700/30 bg-zinc-800/30' : validation.hasError && dataState.enabled ? 'border-red-500/60 bg-red-950/20' : validation.status === 'warning' && dataState.enabled ? 'border-amber-500/60 border-dashed bg-amber-950/20' : dataState.enabled ? 'border-violet-700/40 bg-violet-950/20' : 'border-zinc-700/50 bg-zinc-800/50'}
          {isVanilla && !editing ? 'opacity-60' : dataState.enabled ? '' : 'opacity-60'}"
-  style={depth > 0 ? `margin-left: ${depth * 20}px` : ''}
+  style={depth > 0 ? `margin-left: ${depth * 1.25}rem` : ''}
   data-entry-id="{section}:{entry.uuid}"
   title={isVanilla && !editing ? m.entry_row_vanilla_tooltip() : dataState.enabled ? undefined : m.entry_row_disabled_tooltip()}
   oncontextmenu={(e) => { if (onCtxMenu) { e.preventDefault(); onCtxMenu(e, entry); } }}
@@ -217,9 +226,23 @@
     <div class="flex items-center gap-2 px-3 py-1">
       <span class="w-3.5 h-3.5 shrink-0"></span>
       <TagBadge tag="BASE" />
+      {#if hasChildren}
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer text-[var(--th-text-500)] hover:text-[var(--th-text-200)] transition-colors"
+          onclick={(e) => { e.stopPropagation(); ontogglechildren?.(); }}
+        >
+          <FolderTree size={14} />
+        </button>
+      {:else if depth > 0}
+        <FileText size={14} class="shrink-0 text-[var(--th-text-500)]" />
+      {/if}
       <span class="flex-1 text-sm font-medium truncate text-[var(--th-text-500)]">
         {resolvedDisplayName}
       </span>
+      {#if hasChildren && childCount > 0}
+        <span class="text-[10px] bg-[var(--th-bg-600)] text-[var(--th-text-400)] px-1.5 py-0.5 rounded-full">{childCount}</span>
+      {/if}
       <span class="entry-actions shrink-0 flex items-center gap-1">
         <button
           type="button"
@@ -275,9 +298,23 @@
       {#if validation.hasWarning && dataState.enabled}
         <span use:tooltip={validation.warningTooltip}><TagBadge tag="WARN" /></span>
       {/if}
+      {#if hasChildren}
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer text-[var(--th-text-500)] hover:text-[var(--th-text-200)] transition-colors"
+          onclick={(e) => { e.stopPropagation(); ontogglechildren?.(); }}
+        >
+          <FolderTree size={14} />
+        </button>
+      {:else if depth > 0}
+        <FileText size={14} class="shrink-0 text-[var(--th-text-500)]" />
+      {/if}
       <span class="flex-1 text-sm font-medium truncate">
         {resolvedDisplayName}
       </span>
+      {#if hasChildren && childCount > 0}
+        <span class="text-[10px] bg-[var(--th-bg-600)] text-[var(--th-text-400)] px-1.5 py-0.5 rounded-full">{childCount}</span>
+      {/if}
       <span class="text-xs text-zinc-400">{summary}</span>
 
       <!-- Hidden/IsHidden eye icon toggle (visible even in edit mode) -->
@@ -343,7 +380,8 @@
           rawAttributes={entry.raw_attributes}
           rawChildren={entry.raw_children}
           sourceFile={entry.source_file}
-          onclose={() => { editing = false; editCollapsed = false; }}
+          initialShowSummary={openWithSummary}
+          onclose={() => { editing = false; editCollapsed = false; openWithSummary = false; }}
         />
       </div>
     {/if}
@@ -355,7 +393,7 @@
         variant="ghost"
         size="icon"
         class="shrink-0"
-        onclick={startEdit}
+        onclick={() => startEdit()}
         aria-label={m.entry_row_expand_aria({ name: resolvedDisplayName })}
       >
         <ChevronDown class="w-3.5 h-3.5 text-zinc-600" />
@@ -378,10 +416,25 @@
         <span use:tooltip={validation.warningTooltip}><TagBadge tag="WARN" /></span>
       {/if}
 
+      {#if hasChildren}
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer text-[var(--th-text-500)] hover:text-[var(--th-text-200)] transition-colors"
+          onclick={(e) => { e.stopPropagation(); ontogglechildren?.(); }}
+        >
+          <FolderTree size={14} />
+        </button>
+      {:else if depth > 0}
+        <FileText size={14} class="shrink-0 text-[var(--th-text-500)]" />
+      {/if}
+
       <!-- Entry name / id (not clickable for expand) -->
       <span class="flex-1 text-sm font-medium truncate {dataState.enabled ? '' : 'line-through text-zinc-500'}">
         {resolvedDisplayName}
       </span>
+      {#if hasChildren && childCount > 0}
+        <span class="text-[10px] bg-[var(--th-bg-600)] text-[var(--th-text-400)] px-1.5 py-0.5 rounded-full">{childCount}</span>
+      {/if}
       {#if !dataState.enabled}
         <span class="shrink-0 text-zinc-500" use:tooltip={m.entry_row_disabled_tooltip()}><MessageSquareOff class="w-3.5 h-3.5" /></span>
       {/if}
@@ -432,7 +485,7 @@
         </button>
       {/if}
 
-      <!-- Edit + Add Subrace actions -->
+      <!-- Edit + Summary + Add Subrace actions -->
       <span class="entry-actions shrink-0 flex items-center gap-1">
         <button
           type="button"
@@ -442,6 +495,15 @@
           onclick={(e) => { e.stopPropagation(); startEdit(); }}
         >
           <Pencil size={12} />
+        </button>
+        <button
+          type="button"
+          class="p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-600)] transition-colors"
+          use:tooltip={"Toggle summary panel"}
+          aria-label="Toggle summary panel"
+          onclick={(e) => { e.stopPropagation(); startEdit(true); }}
+        >
+          <PanelRightOpen size={12} />
         </button>
         {#if section === 'Races' && onaddsubrace}
           <button

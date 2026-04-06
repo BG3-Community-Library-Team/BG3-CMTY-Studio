@@ -133,6 +133,67 @@ describe("colorContrast utilities", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Alpha compositing helper for semi-transparent badge backgrounds
+// ---------------------------------------------------------------------------
+
+/**
+ * Composite a semi-transparent foreground color onto a solid background.
+ * Returns "rgb(r, g, b)" string suitable for parseHexColor / computeContrastRatio.
+ */
+function compositeOnSurface(
+  fg: [number, number, number],
+  alpha: number,
+  bg: [number, number, number],
+): string {
+  const r = Math.round(alpha * fg[0] + (1 - alpha) * bg[0]);
+  const g = Math.round(alpha * fg[1] + (1 - alpha) * bg[1]);
+  const b = Math.round(alpha * fg[2] + (1 - alpha) * bg[2]);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// ---------------------------------------------------------------------------
+// Badge contrast pair definitions — now driven by theme tokens (not hardcoded)
+// ---------------------------------------------------------------------------
+
+/** Parse rgba(r,g,b,a) or rgba(r g b / a) into { rgb, alpha } */
+function parseRgba(val: string): { rgb: [number, number, number]; alpha: number } | null {
+  // rgba(109,40,217,.5) or rgba(109, 40, 217, 0.5)
+  let m = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([.\d]+)\s*\)/);
+  if (m) return { rgb: [+m[1], +m[2], +m[3]], alpha: +m[4] };
+  // rgba(109 40 217 / 0.5) or rgba(109 40 217 / .5)
+  m = val.match(/rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*([.\d]+)\s*\)/);
+  if (m) return { rgb: [+m[1], +m[2], +m[3]], alpha: +m[4] };
+  return null;
+}
+
+interface TokenBadgePair {
+  textToken: ThemeTokenKey;
+  bgToken: ThemeTokenKey;
+  surfaceToken: ThemeTokenKey;
+  minRatio: number;
+  label: string;
+}
+
+const TOKEN_BADGE_PAIRS: TokenBadgePair[] = [
+  // TagBadge badges (sit on --th-bg-900 surfaces in entry rows)
+  { textToken: "--th-badge-new-text",      bgToken: "--th-badge-new-bg",      surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge NEW" },
+  { textToken: "--th-badge-edit-text",     bgToken: "--th-badge-edit-bg",     surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge EDIT" },
+  { textToken: "--th-badge-muted-text",    bgToken: "--th-badge-muted-bg",    surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge DUP" },
+  { textToken: "--th-badge-import-text",   bgToken: "--th-badge-import-bg",   surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge IMP" },
+  { textToken: "--th-badge-warn-text",     bgToken: "--th-badge-warn-bg",     surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge WARN" },
+  { textToken: "--th-badge-error-text",    bgToken: "--th-badge-error-bg",    surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge ERR" },
+  { textToken: "--th-badge-info-text",     bgToken: "--th-badge-info-bg",     surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge MOD" },
+  { textToken: "--th-badge-override-text", bgToken: "--th-badge-override-bg", surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge OVRD" },
+  { textToken: "--th-badge-muted-text",    bgToken: "--th-badge-muted-bg",    surfaceToken: "--th-bg-900",  minRatio: 3.0, label: "TagBadge BASE" },
+
+  // LayoutCell type badges (sit on --th-card-bg surfaces in form cards)
+  { textToken: "--th-badge-new-text",   bgToken: "--th-badge-new-bg",   surfaceToken: "--th-card-bg", minRatio: 3.0, label: "LayoutCell UUID" },
+  { textToken: "--th-badge-info-text",  bgToken: "--th-badge-info-bg",  surfaceToken: "--th-card-bg", minRatio: 3.0, label: "LayoutCell number" },
+  { textToken: "--th-badge-muted-text", bgToken: "--th-badge-muted-bg", surfaceToken: "--th-card-bg", minRatio: 3.0, label: "LayoutCell text" },
+  { textToken: "--th-badge-warn-text",  bgToken: "--th-badge-warn-bg",  surfaceToken: "--th-card-bg", minRatio: 3.0, label: "LayoutCell decimal" },
+];
+
+// ---------------------------------------------------------------------------
 // Per-theme contrast validation
 // ---------------------------------------------------------------------------
 
@@ -162,6 +223,57 @@ describe("theme contrast compliance", () => {
             `${themeId}: ${pair.label} — contrast ${ratio.toFixed(2)}:1, need ${pair.minRatio}:1 (fg=${fgVal}, bg=${bgVal})`,
           ).toBeGreaterThanOrEqual(pair.minRatio);
         });
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Per-theme badge contrast validation — reads actual badge token values per theme
+// ---------------------------------------------------------------------------
+
+describe("badge contrast compliance", () => {
+  const themeIds = Object.keys(THEME_TOKENS) as Exclude<ThemeId, "custom">[];
+
+  for (const themeId of themeIds) {
+    describe(themeId, () => {
+      const tokens = THEME_TOKENS[themeId];
+
+      for (const pair of TOKEN_BADGE_PAIRS) {
+        const textVal = tokens[pair.textToken];
+        const bgVal = tokens[pair.bgToken];
+        const surfaceVal = tokens[pair.surfaceToken];
+
+        // Skip if surface isn't a solid parseable color
+        if (!isSolidColor(surfaceVal)) continue;
+        // Skip if text isn't a solid color
+        if (!isSolidColor(textVal)) continue;
+
+        // Determine the composited background:
+        // bg token may be rgba (semi-transparent) or solid hex
+        const rgbaInfo = parseRgba(bgVal);
+        if (rgbaInfo) {
+          // Semi-transparent: composite onto surface
+          it(`${pair.label} ≥ ${pair.minRatio}:1`, () => {
+            const surfaceRgb = parseHexColor(surfaceVal);
+            const compositedBg = compositeOnSurface(rgbaInfo.rgb, rgbaInfo.alpha, surfaceRgb);
+            const ratio = computeContrastRatio(textVal, compositedBg);
+            expect(
+              ratio,
+              `${themeId}: ${pair.label} — contrast ${ratio.toFixed(2)}:1, need ${pair.minRatio}:1 (text=${textVal}, bg=${bgVal} on surface=${surfaceVal})`,
+            ).toBeGreaterThanOrEqual(pair.minRatio);
+          });
+        } else if (isSolidColor(bgVal)) {
+          // Solid background — direct contrast
+          it(`${pair.label} ≥ ${pair.minRatio}:1`, () => {
+            const ratio = computeContrastRatio(textVal, bgVal);
+            expect(
+              ratio,
+              `${themeId}: ${pair.label} — contrast ${ratio.toFixed(2)}:1, need ${pair.minRatio}:1 (text=${textVal}, bg=${bgVal})`,
+            ).toBeGreaterThanOrEqual(pair.minRatio);
+          });
+        }
+        // else: skip if bg is not parseable
       }
     });
   }

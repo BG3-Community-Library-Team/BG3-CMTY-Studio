@@ -158,7 +158,8 @@ export function encodeSelectors(items: SelectorItem[], result: Record<string, st
     const relevantParams = SELECTOR_PARAMS_BY_FN[s.fn.trim()] ?? [];
     for (const pk of relevantParams) {
       const pv = s.params[pk as keyof SelectorParamValues];
-      if (pv?.trim()) result[indexedKey(FIELD_PREFIX.Selector, i, `Param:${pk}`)] = pv.trim();
+      const pvStr = typeof pv === "string" ? pv : pv != null ? String(pv) : "";
+      if (pvStr.trim()) result[indexedKey(FIELD_PREFIX.Selector, i, `Param:${pk}`)] = pvStr.trim();
     }
   }
 }

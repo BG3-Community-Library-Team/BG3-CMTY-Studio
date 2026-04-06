@@ -11,15 +11,15 @@
   let { tag }: { tag: TagType } = $props();
 
   const TAG_STYLES: Record<TagType, string> = {
-    NEW:  "bg-violet-800/50 text-violet-300",
-    EDIT: "bg-amber-700 text-amber-100",
-    DUP:  "bg-zinc-700 text-zinc-300",
-    IMP:  "bg-teal-800/50 text-teal-300",
-    WARN: "bg-amber-600/50 text-amber-300",
-    ERR:  "bg-red-700/50 text-red-300",
-    MOD:  "bg-sky-800/50 text-sky-300",
-    OVRD: "bg-orange-800/50 text-orange-300",
-    BASE: "bg-zinc-700/40 text-zinc-400",
+    NEW:  "badge-new",
+    EDIT: "badge-edit",
+    DUP:  "badge-muted",
+    IMP:  "badge-import",
+    WARN: "badge-warn",
+    ERR:  "badge-error",
+    MOD:  "badge-info",
+    OVRD: "badge-override",
+    BASE: "badge-muted",
   };
 
   const TAG_LABELS: Record<TagType, string> = {
@@ -94,3 +94,14 @@
     {TAG_TOOLTIPS[tag]}
   </span>
 {/if}
+
+<style>
+  .badge-new      { background-color: var(--th-badge-new-bg);      color: var(--th-badge-new-text); }
+  .badge-edit     { background-color: var(--th-badge-edit-bg);     color: var(--th-badge-edit-text); }
+  .badge-muted    { background-color: var(--th-badge-muted-bg);    color: var(--th-badge-muted-text); }
+  .badge-import   { background-color: var(--th-badge-import-bg);   color: var(--th-badge-import-text); }
+  .badge-warn     { background-color: var(--th-badge-warn-bg);     color: var(--th-badge-warn-text); }
+  .badge-error    { background-color: var(--th-badge-error-bg);    color: var(--th-badge-error-text); }
+  .badge-info     { background-color: var(--th-badge-info-bg);     color: var(--th-badge-info-text); }
+  .badge-override { background-color: var(--th-badge-override-bg); color: var(--th-badge-override-text); }
+</style>

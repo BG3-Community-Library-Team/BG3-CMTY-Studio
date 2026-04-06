@@ -18,6 +18,7 @@
   import HelpSidebarPanel from "./components/HelpSidebarPanel.svelte";
   import LoadedDataPanel from "./components/hamburger/LoadedDataPanel.svelte";
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
+  import EntrySummary from "./components/manual-entry/EntrySummary.svelte";
   import DuplicateModModal from "./components/DuplicateModModal.svelte";
   import { modImportService, type DuplicatePromptFn } from "./lib/services/modImportService.svelte.js";
   import { detectGameDataPath, type ModMetaInfo } from "./lib/utils/tauri.js";
@@ -315,6 +316,23 @@
 
   let sidebarWidth = $state(settingsStore.sidebarWidth);
   let appContainer: HTMLDivElement | undefined = $state(undefined);
+  let contentColumnEl: HTMLDivElement | undefined = $state(undefined);
+
+  // Keep --app-chrome-top and --app-chrome-bottom in sync with actual content offset (accounts for banners + statusbar)
+  $effect(() => {
+    if (!contentColumnEl) return;
+    const observer = new ResizeObserver(() => {
+      const rect = contentColumnEl!.getBoundingClientRect();
+      document.documentElement.style.setProperty("--app-chrome-top", `${rect.top}px`);
+      document.documentElement.style.setProperty("--app-chrome-bottom", `${window.innerHeight - rect.bottom}px`);
+    });
+    observer.observe(contentColumnEl);
+    // Also set on mount
+    const rect = contentColumnEl.getBoundingClientRect();
+    document.documentElement.style.setProperty("--app-chrome-top", `${rect.top}px`);
+    document.documentElement.style.setProperty("--app-chrome-bottom", `${window.innerHeight - rect.bottom}px`);
+    return () => observer.disconnect();
+  });
 
   // Left side-panel resizable width
   const LEFT_PANEL_MIN = 140;
@@ -621,7 +639,7 @@
       {/if}
 
       <!-- Main content area -->
-      <div class="flex flex-1 min-h-0">
+      <div bind:this={contentColumnEl} class="flex flex-1 min-h-0">
         <!-- Side panel: contextual view based on active activity -->
         {#if uiStore.sidebarVisible && (uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings")}
           <div class="side-panel" style="width: {leftPanelWidth}px; zoom: {settingsStore.zoomLevel / 100};">
@@ -687,6 +705,37 @@
             </div>
           {/if}
         </main>
+
+        <!-- Summary drawer: entry summary sidebar (flex child, same level as main + output preview) -->
+        {#if uiStore.summaryDrawer}
+          <aside class="summary-drawer" aria-label="Entry summary">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--th-border-700)]">
+              <span class="text-xs font-semibold text-[var(--th-text-300)] uppercase tracking-wide">Summary</span>
+              <button
+                type="button"
+                class="p-1 rounded text-[var(--th-text-400)] hover:text-[var(--th-text-100)] hover:bg-[var(--th-bg-700)] transition-colors"
+                title="Close summary"
+                aria-label="Close summary panel"
+                onclick={() => uiStore.closeSummaryDrawer()}
+              ><XIcon size={14} /></button>
+            </div>
+            <EntrySummary
+              section={uiStore.summaryDrawer.section}
+              displayName={uiStore.summaryDrawer.displayName}
+              uuids={uiStore.summaryDrawer.uuids}
+              validationErrors={uiStore.summaryDrawer.validationErrors}
+              fields={uiStore.summaryDrawer.fields}
+              booleans={uiStore.summaryDrawer.booleans}
+              strings={uiStore.summaryDrawer.strings}
+              rawAttributes={uiStore.summaryDrawer.rawAttributes}
+              rawChildren={uiStore.summaryDrawer.rawChildren}
+              vanillaAttributes={uiStore.summaryDrawer.vanillaAttributes}
+              autoEntryId={uiStore.summaryDrawer.autoEntryId}
+              nodeId={uiStore.summaryDrawer.nodeId}
+              rawAttributeTypes={uiStore.summaryDrawer.rawAttributeTypes}
+            />
+          </aside>
+        {/if}
 
         <!-- Gap between left pane scrollbar and splitter (hidden when preview collapsed) -->
         {#if !uiStore.previewCollapsed}

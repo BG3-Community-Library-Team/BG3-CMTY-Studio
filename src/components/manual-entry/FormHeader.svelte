@@ -1,5 +1,7 @@
 <script lang="ts">
   import X from "@lucide/svelte/icons/x";
+  import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
+  import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
   import { tooltip } from "../../lib/actions/tooltip.js";
   import type { SectionCapabilities } from "../../lib/data/sectionCaps.js";
   import { m } from "../../paraglide/messages.js";
@@ -14,9 +16,11 @@
     blacklist = $bindable(false),
     layout = undefined,
     rawAttributes = null,
+    showSummary = false,
     getBoolValue,
     setBoolValue,
     onclose,
+    ontoggleSummary = undefined,
   }: {
     isEdit: boolean;
     baseCaps: SectionCapabilities;
@@ -26,9 +30,11 @@
     blacklist: boolean;
     layout?: FormLayout;
     rawAttributes?: Record<string, string> | null;
+    showSummary?: boolean;
     getBoolValue: (key: string) => boolean;
     setBoolValue: (key: string, value: boolean) => void;
     onclose: () => void;
+    ontoggleSummary?: () => void;
   } = $props();
 </script>
 
@@ -86,7 +92,23 @@
       {/each}
     {/if}
   </div>
-  <button class="text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-200)] min-w-6 min-h-6 inline-flex items-center justify-center" onclick={onclose} aria-label={m.form_header_close_aria()}><X size={14} /></button>
+  <div class="flex items-center gap-1">
+    {#if ontoggleSummary}
+      <button
+        class="text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-200)] min-w-6 min-h-6 inline-flex items-center justify-center"
+        onclick={ontoggleSummary}
+        aria-label="Toggle summary panel"
+        use:tooltip={"Toggle summary panel"}
+      >
+        {#if showSummary}
+          <PanelRightClose size={14} />
+        {:else}
+          <PanelRightOpen size={14} />
+        {/if}
+      </button>
+    {/if}
+    <button class="text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-200)] min-w-6 min-h-6 inline-flex items-center justify-center" onclick={onclose} aria-label={m.form_header_close_aria()}><X size={14} /></button>
+  </div>
 </div>
 
 <style>

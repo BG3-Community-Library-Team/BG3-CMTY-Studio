@@ -85,13 +85,11 @@ describe("Theme compliance: hardcoded zinc color lint", () => {
     "src/components/FormatToggle.svelte": 10,
     "src/components/ManualEntryForm.svelte": 2,
     "src/components/ManualEntryCard.svelte": 5,
-    "src/components/SchemaForm.svelte": 4,
     "src/components/SectionAccordion.svelte": 6,
     "src/components/OutputSidebar.svelte": 1,
     "src/components/SectionPanel.svelte": 1,
     "src/components/MultiSelectCombobox.svelte": 10,
     "src/components/SingleSelectCombobox.svelte": 8,
-    "src/components/TagBadge.svelte": 4,
     // --- manual-entry sub-components ---
     "src/components/manual-entry/FieldsFieldset.svelte": 2,
     "src/components/manual-entry/FormBody.svelte": 1,

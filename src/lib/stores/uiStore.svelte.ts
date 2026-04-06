@@ -11,6 +11,23 @@ const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["explorer", "search", "loade
 
 export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "notifications";
 
+/** Data needed to render the summary drawer at the App layout level */
+export interface SummaryDrawerState {
+  section: string;
+  displayName: string;
+  uuids: string[];
+  validationErrors: Array<{ key: string; msg: string; level: "warn" | "error" }>;
+  fields: Record<string, string>;
+  booleans: Array<{ key: string; value: boolean }>;
+  strings: Array<{ action: string; type: string; values: string[] }>;
+  rawAttributes: Record<string, string> | null;
+  rawChildren: Record<string, string[]> | null;
+  vanillaAttributes: Record<string, string> | null;
+  autoEntryId: string | null;
+  nodeId: string | null;
+  rawAttributeTypes: Record<string, string> | null;
+}
+
 export interface EditorTab {
   /** Unique key for the tab — file path or special key */
   id: string;
@@ -67,6 +84,26 @@ class UiStore {
   /** Form navigation sections exposed by the currently open ManualEntryForm (if any).
    *  CommandPalette reads this to offer "Jump to: section" entries. */
   formNavSections: { id: string; label: string }[] = $state([]);
+
+  /** Summary drawer state — when non-null, the summary sidebar is visible in App.svelte */
+  summaryDrawer: SummaryDrawerState | null = $state(null);
+
+  /** Open the summary drawer with the given data */
+  openSummaryDrawer(data: SummaryDrawerState): void {
+    this.summaryDrawer = data;
+  }
+
+  /** Update the summary drawer data (no-op if closed) */
+  updateSummaryDrawer(data: Partial<SummaryDrawerState>): void {
+    if (this.summaryDrawer) {
+      this.summaryDrawer = { ...this.summaryDrawer, ...data };
+    }
+  }
+
+  /** Close the summary drawer */
+  closeSummaryDrawer(): void {
+    this.summaryDrawer = null;
+  }
 
   /** Persisted activity bar icon order */
   activityBarOrder: ActivityView[] = $state(UiStore.#loadActivityBarOrder());
@@ -200,6 +237,7 @@ class UiStore {
     this.expandedNodes = {};
     this.expandedSections = {};
     this.formNavSections = [];
+    this.summaryDrawer = null;
     this.activeView = "explorer";
     this.settingsSection = "";
     this.sidebarVisible = true;

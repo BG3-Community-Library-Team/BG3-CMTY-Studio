@@ -59,6 +59,7 @@
     editComment = "",
     entryFilter = undefined,
     sourceFile = undefined,
+    initialShowSummary = false,
   }: {
     section: string;
     onclose: () => void;
@@ -71,6 +72,7 @@
     editComment?: string;
     entryFilter?: { field: string; value: string };
     sourceFile?: string;
+    initialShowSummary?: boolean;
   } = $props();
 
   // ---- Core identity fields ----
@@ -112,6 +114,55 @@
   // Progressive disclosure state for remaining collapsible sections
   let openSubclasses = $state(true);
   let openSpellFields = $state(true);
+  let showSummary = $state(false);
+  $effect(() => { if (initialShowSummary) showSummary = true; });
+
+  // Listen for external summary toggle events (from ProgressionTimeline)
+  $effect(() => {
+    function onToggleSummary(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.section === section && detail?.uuid === autoEntryId) {
+        showSummary = !showSummary;
+      }
+    }
+    window.addEventListener('toggle-entry-summary', onToggleSummary);
+    return () => window.removeEventListener('toggle-entry-summary', onToggleSummary);
+  });
+
+  // Sync summary drawer state to uiStore for App-level rendering
+  $effect(() => {
+    if (showSummary) {
+      uiStore.openSummaryDrawer({
+        section,
+        displayName: _init.displayName ?? "",
+        uuids,
+        validationErrors: validationErrors.map(e => ({ key: e.key, msg: e.message, level: e.severity === "error" ? "error" as const : "warn" as const })),
+        fields: Object.fromEntries(fields.map(f => [f.key, f.value])),
+        booleans,
+        strings: strings.map(s => ({ action: s.action, type: s.type, values: s.values.split(";").map(v => v.trim()).filter(Boolean) })),
+        rawAttributes: rawAttributes ?? null,
+        rawChildren: rawChildren ?? null,
+        vanillaAttributes: rawAttributes ?? null,
+        autoEntryId: autoEntryId ?? null,
+        nodeId: selectedNodeType || rawAttributes?.node_id || section,
+        rawAttributeTypes: null,
+      });
+    } else {
+      uiStore.closeSummaryDrawer();
+    }
+  });
+
+  // Sync back: if drawer was closed externally (e.g. close button), update local state
+  $effect(() => {
+    if (showSummary && !uiStore.summaryDrawer) {
+      showSummary = false;
+    }
+  });
+
+  // Close summary when this form unmounts
+  $effect(() => {
+    return () => { uiStore.closeSummaryDrawer(); };
+  });
 
   // Race panel refs (for syncing on save)
   let raceProgressionPanel: RaceProgressionPanel | undefined = $state(undefined);
@@ -677,7 +728,7 @@
   let formContainerEl: HTMLElement | undefined = $state(undefined);
 
   let navSections = $derived.by(() => {
-    const sections: { id: string; label: string }[] = [];
+    const sections: { id: string; label: string }[] = [{ id: 'section-identity', label: 'Basic Info' }];
     if (layout?.subsections) {
       for (const sub of layout.subsections) {
         if (sub.component) continue;
@@ -784,9 +835,11 @@
     bind:blacklist
     {layout}
     {rawAttributes}
+    {showSummary}
     {getBoolValue}
     {setBoolValue}
     {onclose}
+    ontoggleSummary={() => { showSummary = !showSummary; }}
   />
 
   <div class="form-container" bind:this={formContainerEl}>
@@ -989,26 +1042,6 @@
     </FormSectionCard>
   {/if}
 
-  <!-- Raw LSX data -->
-  {#if rawAttributes && Object.keys(rawAttributes).length > 0}
-    <FormSectionCard title="{m.manual_form_raw_lsx_data()} ({Object.keys(rawAttributes).length} {m.manual_form_attributes()})" open={false}>
-      {#snippet headerActions()}
-        {#if sourceFile}
-          <span class="text-[10px] font-normal text-[var(--th-text-600)] truncate" title={sourceFile}>— {sourceFile.split(/[\\/]/).pop()}</span>
-        {/if}
-      {/snippet}
-      <div class="mt-1 lsx-codeblock">
-        <div class="lsx-codeblock-header">
-          <span>{m.manual_form_lsx()}</span>
-          {#if sourceFile}<span class="text-[10px] text-[var(--th-text-500)] ml-auto truncate" title={sourceFile}>{sourceFile}</span>{/if}
-        </div>
-        <pre class="lsx-codeblock-body">{#each Object.entries(rawAttributes) as [key, value]}<code><span class="lsx-attr-key">{key}</span><span class="lsx-punct">:</span> <span class="lsx-attr-val">{value}</span>
-</code>{/each}{#if rawChildren}{#each Object.entries(rawChildren) as [group, guids]}{#if guids.length > 0}<code><span class="lsx-child-key">{group}</span><span class="lsx-punct">:</span> <span class="lsx-child-val">{guids.join(', ')}</span>
-</code>{/if}{/each}{/if}</pre>
-      </div>
-    </FormSectionCard>
-  {/if}
-
 
 
     </div><!-- .form-content -->
@@ -1083,48 +1116,4 @@
       gap: 1rem;
     }
   }
-
-  .lsx-codeblock {
-    border: 1px solid var(--th-lsx-border);
-    border-radius: 0.375rem;
-    overflow: hidden;
-    max-height: 12rem;
-    font-size: 0.75rem;
-  }
-  .lsx-codeblock-header {
-    background: var(--th-lsx-header-bg);
-    padding: 0.25rem 0.5rem;
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--th-lsx-header-text);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--th-lsx-header-border);
-    user-select: none;
-  }
-  .lsx-codeblock-body {
-    background: var(--th-lsx-body-bg);
-    margin: 0;
-    padding: 0.5rem;
-    overflow-y: auto;
-    max-height: 10rem;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-all;
-    cursor: default;
-    user-select: text;
-  }
-  .lsx-attr-key { color: var(--th-lsx-attr-key); }
-  .lsx-attr-val { color: var(--th-lsx-attr-val); }
-  .lsx-child-key { color: var(--th-lsx-child-key); }
-  .lsx-child-val { color: var(--th-lsx-child-val); }
-  .lsx-punct { color: var(--th-lsx-punct); }
-
-
-
-
-
-
 </style>

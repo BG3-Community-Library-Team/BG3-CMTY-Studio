@@ -25,6 +25,7 @@
   import { tooltip } from "../lib/actions/tooltip.js";
   import TagBadge from "./TagBadge.svelte";
   import EntryContextMenu from "./EntryContextMenu.svelte";
+  import ProgressionTimeline from "./manual-entry/ProgressionTimeline.svelte";
   import type { DiffEntry } from "../lib/types/index.js";
   import { tick } from "svelte";
   import { m } from "../paraglide/messages.js";
@@ -238,12 +239,115 @@
     return ordered;
   });
 
+  /** For Progressions: merge manual entries (as DiffEntry stubs) into the timeline view */
+  let timelineEntries = $derived.by((): DiffEntry[] => {
+    if (sectionResult.section !== 'Progressions') return mergedEntries;
+
+    const manuals = configStore.getManualEntriesForSection(sectionResult.section);
+    if (manuals.length === 0) return mergedEntries;
+
+    // Filter manual entries by entryFilter if present (e.g. ProgressionType === "0" for Class)
+    // encodeFormState stores fields with "Field:" prefix, so prefix the filter key
+    const filtered = entryFilter
+      ? manuals.filter(m => m.entry.fields[`Field:${entryFilter!.field}`] === entryFilter!.value)
+      : manuals;
+    if (filtered.length === 0) return mergedEntries;
+
+    // Convert ManualEntry → DiffEntry stub
+    // Strip "Field:" prefix from encoded keys so raw_attributes matches backend format
+    const stubs: DiffEntry[] = filtered.map(({ entry }) => {
+      const rawAttrs: Record<string, string> = {};
+      for (const [k, v] of Object.entries(entry.fields)) {
+        if (k.startsWith("Field:")) rawAttrs[k.slice(6)] = v;
+        else if (!k.includes(":") && !k.startsWith("_")) rawAttrs[k] = v;
+      }
+      return {
+        uuid: entry.fields.UUID ?? entry.fields.EntryName ?? `manual-${Math.random().toString(36).slice(2, 10)}`,
+        display_name: rawAttrs.Name ?? entry.fields._entryLabel ?? entry.fields.UUID ?? 'New Entry',
+        source_file: '',
+        entry_kind: 'New' as const,
+        changes: [],
+        node_id: 'Progression',
+        raw_attributes: rawAttrs,
+        raw_attribute_types: {},
+        raw_children: {},
+      };
+    });
+
+    // Avoid duplicates: don't add stubs whose UUID already exists in mergedEntries
+    const existingUuids = new Set(mergedEntries.map(e => e.uuid));
+    const newStubs = stubs.filter(s => !existingUuids.has(s.uuid));
+
+    return newStubs.length > 0 ? [...mergedEntries, ...newStubs] : mergedEntries;
+  });
+
   /** Depth map for race tree indentation — populated by mergedEntries */
   let entryDepthMap: Map<string, number> = $state(new Map());
 
+  /** Whether each entry has children in the race tree */
+  let hasChildrenMap = $derived.by(() => {
+    const map = new Map<string, boolean>();
+    for (const e of mergedEntries) {
+      const pid = e.raw_attributes?.ParentGuid;
+      if (pid) {
+        map.set(pid, true);
+      }
+    }
+    return map;
+  });
+
+  /** Direct child count for each parent in the race tree */
+  let childCountMap = $derived.by(() => {
+    const map = new Map<string, number>();
+    for (const e of mergedEntries) {
+      const pid = e.raw_attributes?.ParentGuid;
+      if (pid) {
+        map.set(pid, (map.get(pid) ?? 0) + 1);
+      }
+    }
+    return map;
+  });
+
+  /** Collapse state for race tree parent nodes */
+  let raceTreeCollapsed: Map<string, boolean> = $state(new Map());
+
+  function toggleRaceCollapsed(uuid: string) {
+    const newMap = new Map(raceTreeCollapsed);
+    newMap.set(uuid, !(newMap.get(uuid) ?? false));
+    raceTreeCollapsed = newMap;
+  }
+
+  /** Visible entries after filtering out collapsed subtrees */
+  let visibleMergedEntries = $derived.by(() => {
+    if (sectionResult.section !== 'Races' || raceTreeCollapsed.size === 0) return mergedEntries;
+
+    const collapsedSet = new Set<string>();
+    for (const [uuid, collapsed] of raceTreeCollapsed) {
+      if (collapsed) collapsedSet.add(uuid);
+    }
+    if (collapsedSet.size === 0) return mergedEntries;
+
+    const result: DiffEntry[] = [];
+    let hideBelow = Infinity;
+
+    for (const entry of mergedEntries) {
+      const depth = entryDepthMap.get(entry.uuid) ?? 0;
+      if (depth <= hideBelow) {
+        hideBelow = Infinity;
+      }
+      if (depth > hideBelow) continue;
+      result.push(entry);
+      if (collapsedSet.has(entry.uuid)) {
+        hideBelow = depth;
+      }
+    }
+
+    return result;
+  });
+
   // PF-032: Group entries (after mergedEntries is available)
   let groupedEntries = $derived(
-    groupEntries(mergedEntries, groupingMode, sectionResult.section, (s, u) => configStore.isEnabled(s, u))
+    groupEntries(visibleMergedEntries, groupingMode, sectionResult.section, (s, u) => configStore.isEnabled(s, u))
   );
 
   // ---- Combined entry list: auto-detected + manual entries for unified pagination ----
@@ -255,7 +359,7 @@
 
   let combinedEntries = $derived.by((): CombinedEntry[] => {
     const entries: CombinedEntry[] = [];
-    for (const e of mergedEntries) {
+    for (const e of visibleMergedEntries) {
       entries.push({ type: "auto", autoEntry: e });
     }
     for (const me of manualEntries) {
@@ -281,7 +385,7 @@
   // e.g. same progression table at different levels in BG3 mods)
   let entryKeys: string[] = $derived.by(() => {
     const counts = new Map<string, number>();
-    return mergedEntries.map(entry => {
+    return visibleMergedEntries.map(entry => {
       const n = counts.get(entry.uuid) ?? 0;
       counts.set(entry.uuid, n + 1);
       return n === 0 ? entry.uuid : `${entry.uuid}#${n}`;
@@ -569,7 +673,15 @@
         </div>
       {/if}
 
-      <!-- Entries list -->
+      {#if sectionResult.section === 'Progressions'}
+        <div class="px-2 pt-2">
+          <ProgressionTimeline
+            entries={timelineEntries}
+            section={sectionResult.section}
+          />
+        </div>
+      {:else}
+      <!-- Entries list (skipped for Progressions — timeline handles them) -->
       {#if modStore.vanillaLoadFailures.includes(sectionResult.section)}
         <div class="mx-2 mb-1 px-3 py-1.5 rounded text-xs bg-[var(--th-bg-red-900-50)] text-[var(--th-text-red-300)] border border-[var(--th-border-red-700)]/30">
           {m.section_panel_vanilla_unavailable()}
@@ -588,7 +700,7 @@
             />
             {#if groupExpandState.get(group.key) ?? true}
               {#each group.entries as entry, gi (group.originalIndices[gi] < entryKeys.length ? entryKeys[group.originalIndices[gi]] : `${group.key}-${gi}`)}
-                <EntryRow {entry} section={sectionResult.section} depth={entryDepthMap.get(entry.uuid) ?? 0} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
+                <EntryRow {entry} section={sectionResult.section} depth={entryDepthMap.get(entry.uuid) ?? 0} hasChildren={hasChildrenMap.get(entry.uuid) ?? false} childCount={childCountMap.get(entry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(entry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
               {/each}
             {/if}
           {/each}
@@ -596,7 +708,8 @@
           <!-- Flat rendering with unified pagination (auto + manual entries) -->
           {#each paginatedCombined as item, pi (item.type === "auto" ? (entryKeys[currentPage * pageSize + pi] ?? `auto-${pi}`) : `man-${item.manualEntry?.globalIndex ?? pi}`)}
             {#if item.type === "auto" && item.autoEntry}
-              <EntryRow entry={item.autoEntry} section={sectionResult.section} depth={entryDepthMap.get(item.autoEntry.uuid) ?? 0} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
+              {@const autoEntry = item.autoEntry}
+              <EntryRow entry={autoEntry} section={sectionResult.section} depth={entryDepthMap.get(autoEntry.uuid) ?? 0} hasChildren={hasChildrenMap.get(autoEntry.uuid) ?? false} childCount={childCountMap.get(autoEntry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(autoEntry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
             {:else if item.type === "manual" && item.manualEntry}
               <ManualEntryCard entry={item.manualEntry.entry} globalIndex={item.manualEntry.globalIndex} section={sectionResult.section} />
             {/if}
@@ -614,6 +727,7 @@
           </p>
         {/if}
       </div>
+      {/if}
     </div>
   {/if}
 </section>

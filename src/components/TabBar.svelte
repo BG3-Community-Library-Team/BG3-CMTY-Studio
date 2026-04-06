@@ -10,6 +10,8 @@
   import Languages from "@lucide/svelte/icons/languages";
   import FileText from "@lucide/svelte/icons/file-text";
 
+  import Palette from "@lucide/svelte/icons/palette";
+
   const TAB_ICONS: Record<EditorTab["type"], typeof FileCode> = {
     section: FileCode,
     filteredSection: FileCode,
@@ -20,6 +22,7 @@
     localization: Languages,
     "file-preview": FileText,
     settings: Cog,
+    "theme-gallery": Palette,
   };
 
   let tabs = $derived(uiStore.openTabs);

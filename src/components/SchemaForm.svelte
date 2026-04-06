@@ -87,13 +87,13 @@
   /** Get a type badge label for display */
   function typeBadge(attr: AttrSchema): { label: string; classes: string } {
     const t = attr.attr_type;
-    if (t === "guid") return { label: "UUID", classes: "bg-violet-700/50 text-violet-300" };
-    if (t === "TranslatedString") return { label: "Loca", classes: "bg-amber-700/50 text-amber-300" };
-    if (t === "FixedString" || t === "LSString") return { label: "Text", classes: "bg-zinc-600/50 text-zinc-300" };
-    if (t.includes("int") || t.startsWith("uint")) return { label: "Int", classes: "bg-sky-700/50 text-sky-300" };
-    if (t === "float" || t === "double") return { label: "Float", classes: "bg-amber-700/50 text-amber-300" };
-    if (t === "bool") return { label: "Bool", classes: "bg-emerald-700/50 text-emerald-300" };
-    return { label: t, classes: "bg-zinc-600/50 text-zinc-400" };
+    if (t === "guid") return { label: "UUID", classes: "schema-badge-new" };
+    if (t === "TranslatedString") return { label: "Loca", classes: "schema-badge-warn" };
+    if (t === "FixedString" || t === "LSString") return { label: "Text", classes: "schema-badge-muted" };
+    if (t.includes("int") || t.startsWith("uint")) return { label: "Int", classes: "schema-badge-info" };
+    if (t === "float" || t === "double") return { label: "Float", classes: "schema-badge-warn" };
+    if (t === "bool") return { label: "Bool", classes: "schema-badge-success" };
+    return { label: t, classes: "schema-badge-muted" };
   }
 
   function handleSave() {
@@ -401,4 +401,9 @@
     border-radius: 0.375rem;
     padding: 0.75rem 1rem;
   }
+  .schema-badge-new     { background-color: var(--th-badge-new-bg);     color: var(--th-badge-new-text); }
+  .schema-badge-warn    { background-color: var(--th-badge-warn-bg);    color: var(--th-badge-warn-text); }
+  .schema-badge-muted   { background-color: var(--th-badge-muted-bg);   color: var(--th-badge-muted-text); }
+  .schema-badge-info    { background-color: var(--th-badge-info-bg);    color: var(--th-badge-info-text); }
+  .schema-badge-success { background-color: var(--th-badge-success-bg); color: var(--th-badge-success-text); }
 </style>

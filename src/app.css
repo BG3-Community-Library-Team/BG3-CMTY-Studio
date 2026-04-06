@@ -161,6 +161,26 @@ html {
   --th-card-border: var(--th-border-700);
   --th-card-header-bg: var(--th-bg-850);
   --th-card-shadow: 0 1px 3px rgba(0,0,0,.1);
+
+  /* Badge tokens (dark-theme defaults for first-paint fallback) */
+  --th-badge-new-bg: rgba(109,40,217,.5);
+  --th-badge-new-text: #c4b5fd;
+  --th-badge-edit-bg: rgba(180,83,9,.7);
+  --th-badge-edit-text: #fef3c7;
+  --th-badge-muted-bg: rgba(63,63,70,.7);
+  --th-badge-muted-text: #d4d4d8;
+  --th-badge-import-bg: rgba(17,94,89,.5);
+  --th-badge-import-text: #5eead4;
+  --th-badge-warn-bg: rgba(217,119,6,.5);
+  --th-badge-warn-text: #fcd34d;
+  --th-badge-error-bg: rgba(185,28,28,.5);
+  --th-badge-error-text: #fca5a5;
+  --th-badge-info-bg: rgba(7,89,133,.5);
+  --th-badge-info-text: #7dd3fc;
+  --th-badge-override-bg: rgba(154,52,18,.5);
+  --th-badge-override-text: #fdba74;
+  --th-badge-success-bg: rgba(4,120,87,.5);
+  --th-badge-success-text: #6ee7b7;
 }
 
 /* P-01: Light, Solarized Dark/Light, High Contrast, Aubergine, Balance,
@@ -269,6 +289,25 @@ html {
   --th-badge-cfg: var(--custom-badge-cfg, #eab308);
   --th-badge-cf: var(--custom-badge-cf, #0ea5e9);
   --th-badge-fallback: var(--custom-badge-fallback, #6b7280);
+  /* Entry tag / type-hint badge colors */
+  --th-badge-new-bg: var(--custom-badge-new-bg, rgba(109,40,217,.5));
+  --th-badge-new-text: var(--custom-badge-new-text, #c4b5fd);
+  --th-badge-edit-bg: var(--custom-badge-edit-bg, rgba(180,83,9,.7));
+  --th-badge-edit-text: var(--custom-badge-edit-text, #fef3c7);
+  --th-badge-muted-bg: var(--custom-badge-muted-bg, rgba(63,63,70,.7));
+  --th-badge-muted-text: var(--custom-badge-muted-text, #d4d4d8);
+  --th-badge-import-bg: var(--custom-badge-import-bg, rgba(17,94,89,.5));
+  --th-badge-import-text: var(--custom-badge-import-text, #5eead4);
+  --th-badge-warn-bg: var(--custom-badge-warn-bg, rgba(217,119,6,.5));
+  --th-badge-warn-text: var(--custom-badge-warn-text, #fcd34d);
+  --th-badge-error-bg: var(--custom-badge-error-bg, rgba(185,28,28,.5));
+  --th-badge-error-text: var(--custom-badge-error-text, #fca5a5);
+  --th-badge-info-bg: var(--custom-badge-info-bg, rgba(7,89,133,.5));
+  --th-badge-info-text: var(--custom-badge-info-text, #7dd3fc);
+  --th-badge-override-bg: var(--custom-badge-override-bg, rgba(154,52,18,.5));
+  --th-badge-override-text: var(--custom-badge-override-text, #fdba74);
+  --th-badge-success-bg: var(--custom-badge-success-bg, rgba(4,120,87,.5));
+  --th-badge-success-text: var(--custom-badge-success-text, #6ee7b7);
 }
 
 /* ===================================================================
@@ -789,4 +828,42 @@ details > :not(summary) > * {
 details[open] > :not(summary) {
   grid-template-rows: 1fr;
   opacity: 1;
+}
+
+/* --- Summary drawer (layout sidebar, flex child of content column) --- */
+.summary-drawer-backdrop {
+  position: fixed;
+  top: var(--app-chrome-top, 2.75rem);
+  right: 0;
+  bottom: var(--app-chrome-bottom, 1.75rem);
+  left: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 40;
+}
+
+.summary-drawer {
+  width: min(380px, 90vw);
+  min-width: 280px;
+  flex-shrink: 0;
+  background: var(--th-bg-900, #18181b);
+  border-left: 1px solid var(--th-border-700, #3f3f46);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .summary-drawer {
+    width: 100%;
+    min-width: 0;
+    max-height: 60vh;
+    border-left: none;
+    border-top: 1px solid var(--th-border-700, #3f3f46);
+  }
+}
+
+/* Respect reduced-motion preference */
+.reduced-motion .summary-drawer {
+  animation: none;
 }

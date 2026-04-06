@@ -10,7 +10,7 @@
   } = $props();
 </script>
 
-<div class="form-identity-card" style="border-left: 3px solid {accentColor}">
+<div id="section-identity" class="form-identity-card" style="border-left: 3px solid {accentColor}">
   {@render children()}
 </div>
 

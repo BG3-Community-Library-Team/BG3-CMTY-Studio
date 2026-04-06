@@ -8,6 +8,7 @@
   import { configStore } from "../../lib/stores/configStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import Shuffle from "@lucide/svelte/icons/shuffle";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
 
   let {
@@ -78,6 +79,13 @@
     setFieldValue(fieldKey, fieldValue);
   }
 
+  function jumpToReference(targetSection: string, uuid: string) {
+    window.dispatchEvent(new CustomEvent('navigate-to-section', { detail: { section: targetSection } }));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('entry-start-edit', { detail: { section: targetSection, uuid } }));
+    }, 50);
+  }
+
 </script>
 
 {#if item.type === 'field'}
@@ -118,13 +126,39 @@
         />
       </div>
     {:else if caps.fieldCombobox?.[item.key]}
-      <SingleSelectCombobox
-        options={fieldComboboxOptions(item.key)}
-        value={getFieldValue(item.key)}
-        placeholder={comboPlaceholder}
-        maxDisplayed={0}
-        onchange={(v) => setFieldValue(item.key, v)}
-      />
+      {@const descriptor = caps.fieldCombobox[item.key]}
+      {@const isSectionRef = descriptor.startsWith('section:')}
+      {@const targetSection = isSectionRef ? descriptor.split(':')[1] : ''}
+      {@const fieldValue = getFieldValue(item.key)}
+      {@const refDisplayName = isSectionRef && fieldValue ? modStore.lookupDisplayName(fieldValue) : undefined}
+      {#if isSectionRef && refDisplayName}
+        <div class="flex items-center gap-1">
+          <div class="flex-1 min-w-0">
+            <SingleSelectCombobox
+              options={fieldComboboxOptions(item.key)}
+              value={fieldValue}
+              placeholder={comboPlaceholder}
+              maxDisplayed={0}
+              onchange={(v) => setFieldValue(item.key, v)}
+            />
+          </div>
+          <button
+            type="button"
+            class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)] hover:text-sky-400 hover:bg-[var(--th-bg-600)] transition-colors cursor-pointer"
+            onclick={() => jumpToReference(targetSection, fieldValue)}
+            use:tooltip={`Jump to ${refDisplayName} in ${targetSection}`}
+            aria-label={`Jump to ${refDisplayName} in ${targetSection}`}
+          ><ExternalLink size={12} /></button>
+        </div>
+      {:else}
+        <SingleSelectCombobox
+          options={fieldComboboxOptions(item.key)}
+          value={getFieldValue(item.key)}
+          placeholder={comboPlaceholder}
+          maxDisplayed={0}
+          onchange={(v) => setFieldValue(item.key, v)}
+        />
+      {/if}
     {:else if item.colorField}
       <div class="flex items-center gap-2">
         <input
@@ -200,20 +234,20 @@
 
   /* Type-hint badges for layout-rendered fields */
   .badge-uuid {
-    background-color: var(--th-badge-uuid-bg, rgba(109, 40, 217, .15));
-    color: var(--th-badge-uuid-text, var(--th-text-violet-400, #c4b5fd));
+    background-color: var(--th-badge-new-bg);
+    color: var(--th-badge-new-text);
   }
   .badge-number {
-    background-color: var(--th-badge-number-bg, rgba(3, 105, 161, .15));
-    color: var(--th-badge-number-text, var(--th-text-sky-300, #7dd3fc));
+    background-color: var(--th-badge-info-bg);
+    color: var(--th-badge-info-text);
   }
   .badge-text {
-    background-color: var(--th-badge-text-bg, var(--th-bg-700, rgba(63, 63, 70, .5)));
-    color: var(--th-badge-text-text, var(--th-text-300, #d4d4d8));
+    background-color: var(--th-badge-muted-bg);
+    color: var(--th-badge-muted-text);
   }
   .badge-decimal {
-    background-color: var(--th-badge-decimal-bg, rgba(180, 83, 9, .15));
-    color: var(--th-badge-decimal-text, var(--th-text-amber-400, #fbbf24));
+    background-color: var(--th-badge-warn-bg);
+    color: var(--th-badge-warn-text);
   }
 
   /* Color picker swatch (UIColor fields) */
