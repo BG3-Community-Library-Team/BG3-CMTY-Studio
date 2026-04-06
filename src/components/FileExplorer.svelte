@@ -623,7 +623,7 @@
                             <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
                               <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
                             </span>
-                            <button class="tree-node-label" onclick={() => uiStore.toggleNode(child.name)}>
+                            <button class="tree-node-label" onclick={() => { if (child.isGroup && child.groupSections) { openNode(child); uiStore.expandNode(child.name); } else uiStore.toggleNode(child.name); }} ondblclick={() => { if (child.isGroup && child.groupSections) openNode(child, false); }}>
                               <Folder size={14} class={childActive ? "text-[var(--th-text-sky-400)] opacity-60" : "text-[var(--th-text-600)] opacity-30"} />
                               <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
                               {#if childCount > 0}

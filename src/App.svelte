@@ -683,8 +683,8 @@
         <main id="main-content" class="relative flex-1 overflow-y-auto scrollbar-thin bg-[var(--th-bg-800)]" style="min-width: 320px; zoom: {settingsStore.zoomLevel / 100};" inert={modStore.isScanning || showRediffOverlay}>
           {#if modStore.isScanning}
             <div class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[var(--th-bg-800)]/80 backdrop-blur-[2px]" transition:fade={{ duration: 150 }}>
-              <div class="loading-spinner"></div>
-              <p class="mt-3 text-xs text-[var(--th-text-400)]">{m.app_scanning_mod()}</p>
+              <div class="loading-spinner lg"></div>
+              <p class="mt-4 text-sm font-medium text-[var(--th-text-300)]">{m.app_scanning_mod()}</p>
             </div>
           {:else if showRediffOverlay}
             <div class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[var(--th-bg-800)]/80 backdrop-blur-[2px]" transition:fade={{ duration: 150 }}>
@@ -900,6 +900,11 @@
     border-top-color: var(--th-accent-500, #0ea5e9);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
+  }
+  .loading-spinner.lg {
+    width: 48px;
+    height: 48px;
+    border-width: 4px;
   }
   @keyframes spin {
     to { transform: rotate(360deg); }

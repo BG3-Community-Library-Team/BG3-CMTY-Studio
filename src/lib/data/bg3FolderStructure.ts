@@ -55,6 +55,7 @@ const STATS_DATA_CHILDREN: FolderNode[] = [
       { name: "Spell_Teleportation", label: "Teleportation", statsFile: "Spell_Teleportation.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
       { name: "Spell_Throw", label: "Throw", statsFile: "Spell_Throw.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
       { name: "Spell_Zone", label: "Zone", statsFile: "Spell_Zone.txt", Section: "Spells", entryFilter: { field: "node_id", value: "SpellData" } },
+      { name: "Interrupt", label: "Interrupts", statsFile: "Interrupt.txt", Section: "Spells", entryFilter: { field: "node_id", value: "InterruptData" } },
     ],
   },
   {
@@ -79,7 +80,6 @@ const STATS_DATA_CHILDREN: FolderNode[] = [
     ],
   },
   { name: "Passive", label: "Passives", statsFile: "Passive.txt", Section: "Spells", entryFilter: { field: "node_id", value: "PassiveData" } },
-  { name: "Interrupt", label: "Interrupts", statsFile: "Interrupt.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Interrupt" } },
   { name: "Armor", label: "Armor", statsFile: "Armor.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Armor" } },
   { name: "Weapon", label: "Weapons", statsFile: "Weapon.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Weapon" } },
   { name: "Object", label: "Objects", statsFile: "Object.txt", Section: "Spells", entryFilter: { field: "node_id", value: "Object" } },
@@ -90,7 +90,7 @@ const STATS_DATA_CHILDREN: FolderNode[] = [
     isGroup: true,
     children: [
       { name: "BloodTypes", label: "Blood Types", statsFile: "BloodTypes.txt", Section: "Spells", entryFilter: { field: "node_id", value: "BloodTypes" } },
-      { name: "CriticalHitTypes", label: "Critical Hit Types", statsFile: "CriticalHitTypes.txt", Section: "Spells", entryFilter: { field: "node_id", value: "CriticalHitTypes" } },
+      { name: "CriticalHitTypes", label: "Critical Hit Types", statsFile: "CriticalHitTypes.txt", Section: "Spells", entryFilter: { field: "node_id", value: "CriticalHitTypeData" } },
       { name: "ItemColor", label: "Item Colors", statsFile: "ItemColor.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemColor" } },
       { name: "ItemProgressionNames", label: "Item Progression Names", statsFile: "ItemProgressionNames.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemProgressionNames" } },
       { name: "ItemProgressionVisuals", label: "Item Progression Visuals", statsFile: "ItemProgressionVisuals.txt", Section: "Spells", entryFilter: { field: "node_id", value: "ItemProgressionVisuals" } },

@@ -697,19 +697,181 @@ fn discover_stats(file: &FileEntry) -> FileDiscovery {
         }
     }
 
-    // Raw text fallback
+    // Raw text fallback — only when the standard format found nothing AND
+    // the non-standard format also couldn't discover a schema.
     if !has_entries && !content.trim().is_empty() {
-        raw_tables
-            .entry("txt__raw".to_string())
-            .or_insert_with(|| {
-                let mut i = RawTableInfo::new("txt");
-                i.columns
-                    .insert("content".to_string(), "TEXT".to_string());
-                i
-            });
+        // Try non-standard stat formats (CSV entries, key-value, groups)
+        let file_stem = file
+            .abs_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if !file_stem.is_empty() {
+            discover_nonstandard_stats(&content, file_stem, &mut raw_tables);
+        }
+
+        // If non-standard discovery didn't create any table, fall back to raw text
+        if raw_tables.is_empty() {
+            raw_tables
+                .entry("txt__raw".to_string())
+                .or_insert_with(|| {
+                    let mut i = RawTableInfo::new("txt");
+                    i.columns
+                        .insert("content".to_string(), "TEXT".to_string());
+                    i
+                });
+        }
     }
 
     FileDiscovery { tables: raw_tables, region_node_ids: HashMap::new() }
+}
+
+/// Parse comma-separated values (quoted and unquoted) from a CSV-style line.
+pub fn parse_csv_values(input: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Skip whitespace
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        if bytes[i] == b'"' {
+            i += 1; // skip opening quote
+            let start = i;
+            while i < bytes.len() && bytes[i] != b'"' {
+                i += 1;
+            }
+            values.push(input[start..i].to_string());
+            if i < bytes.len() {
+                i += 1;
+            } // skip closing quote
+            // Skip comma/whitespace
+            while i < bytes.len() && (bytes[i] == b',' || bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+        } else if bytes[i] == b',' {
+            // Empty value between commas
+            values.push(String::new());
+            i += 1;
+        } else {
+            // Unquoted value
+            let start = i;
+            while i < bytes.len() && bytes[i] != b',' {
+                i += 1;
+            }
+            values.push(input[start..i].trim().to_string());
+            if i < bytes.len() {
+                i += 1;
+            } // skip comma
+        }
+    }
+    values
+}
+
+/// Discover schema for non-standard stats formats.
+///
+/// Handles three format families:
+/// - **CSV entries**: `new <keyword> "name","val1","val2",...` (BloodTypes, ItemColor)
+/// - **Key-value**: `key "name","value"` (XPData)
+/// - **Groups**: `new <keyword> "name"` + `add <sub> ...` (ItemProgressionNames/Visuals)
+fn discover_nonstandard_stats(
+    content: &str,
+    file_stem: &str,
+    raw_tables: &mut HashMap<String, RawTableInfo>,
+) {
+    let table_name = format!("stats__{}", sanitize_id(file_stem));
+    let mut has_key_format = false;
+    let mut has_new_keyword = false;
+    let mut max_csv_params = 0usize;
+    let mut add_keywords: HashSet<String> = HashSet::new();
+
+    for line in content.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with("//") {
+            continue;
+        }
+
+        if (t.starts_with("key ") || t.starts_with("key\t"))
+            && t.contains('"')
+        {
+            has_key_format = true;
+        } else if t.starts_with("new ")
+            && !t.to_ascii_lowercase().starts_with("new entry ")
+            && !t.to_ascii_lowercase().starts_with("new equipment ")
+        {
+            has_new_keyword = true;
+            // Extract CSV values after the keyword to count params
+            if let Some(q) = t.find('"') {
+                let csv_part = &t[q..];
+                let params = parse_csv_values(csv_part);
+                if params.len() > max_csv_params {
+                    max_csv_params = params.len();
+                }
+            }
+        } else if let Some(rest) = t.strip_prefix("add ") {
+            // Track sub-entry keywords for group formats
+            if let Some(kw) = rest
+                .split(|c: char| c.is_whitespace() || c == '"')
+                .find(|s| !s.is_empty())
+            {
+                add_keywords.insert(kw.to_string());
+            }
+        }
+    }
+
+    if !has_key_format && !has_new_keyword {
+        return;
+    }
+
+    let info = raw_tables.entry(table_name).or_insert_with(|| {
+        let mut i = RawTableInfo::new("stats");
+        i.columns
+            .insert("_entry_name".to_string(), "FixedString".to_string());
+        i.columns
+            .insert("_type".to_string(), "FixedString".to_string());
+        i.columns
+            .insert("_using".to_string(), "FixedString".to_string());
+        i
+    });
+
+    if has_key_format {
+        info.columns
+            .entry("Value".to_string())
+            .or_insert_with(|| "FixedString".to_string());
+    }
+
+    if has_new_keyword {
+        // Positional params (index 0 = name stored in _entry_name, 1..N = Param1..ParamN)
+        for idx in 1..max_csv_params {
+            info.columns
+                .entry(format!("Param{}", idx))
+                .or_insert_with(|| "FixedString".to_string());
+        }
+
+        // Group sub-entry keywords become columns (e.g. "name" → "Name", "levelgroup" → "Levelgroup")
+        for kw in &add_keywords {
+            let col = capitalize_first(kw);
+            info.columns
+                .entry(col)
+                .or_insert_with(|| "FixedString".to_string());
+        }
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => {
+            let mut out = c.to_uppercase().collect::<String>();
+            out.push_str(chars.as_str());
+            out
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

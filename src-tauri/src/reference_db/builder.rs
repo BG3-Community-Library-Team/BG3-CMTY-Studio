@@ -2958,7 +2958,20 @@ fn parse_stats_file(file: &FileEntry, schema: &DiscoveredSchema) -> ParsedConten
         if strip_prefix_ci(t, "modifier type \"").is_some() {
             return parse_modifier_content(&content, schema);
         }
-        // First significant line isn't equipment/valuelist/modifier — fall through to stats
+        if strip_prefix_ci(t, "new entry \"").is_some() {
+            break; // Standard stats format
+        }
+        // Non-standard: key "..." or new <keyword> "..." (not entry/equipment)
+        if t.starts_with("key ") || t.starts_with("key\t")
+            || (t.starts_with("new ") && t.contains('"'))
+        {
+            let file_stem = file
+                .abs_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown");
+            return parse_nonstandard_stats_content(&content, file_stem, schema);
+        }
         break;
     }
 
@@ -3047,6 +3060,147 @@ fn parse_stats_entries_content(content: &str, schema: &DiscoveredSchema) -> Pars
         } else {
             None
         },
+    }
+}
+
+/// Parse non-standard stats file formats: CSV entries, key-value pairs, groups.
+///
+/// Handles:
+/// - `new <keyword> "name","v1","v2",...` (BloodTypes, ItemColor)
+/// - `key "name","value"` (XPData)
+/// - `new <keyword> "name"` + `add <sub> ...` (ItemProgressionNames/Visuals)
+fn parse_nonstandard_stats_content(
+    content: &str,
+    file_stem: &str,
+    schema: &DiscoveredSchema,
+) -> ParsedContent {
+    use crate::reference_db::discovery::parse_csv_values;
+
+    let table_name = format!("stats__{}", sanitize_id(file_stem));
+    if !schema.tables.contains_key(&table_name) {
+        return ParsedContent::Stats {
+            entries: vec![],
+            last_type: Some(file_stem.to_string()),
+            raw_content: Some(content.to_string()),
+        };
+    }
+
+    let mut entries: Vec<ParsedStatsEntry> = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_data: Vec<(String, String)> = Vec::new();
+
+    let flush = |entries: &mut Vec<ParsedStatsEntry>,
+                 name: &Option<String>,
+                 data: &[(String, String)],
+                 table_name: &str,
+                 file_stem: &str| {
+        if let Some(name) = name {
+            entries.push(ParsedStatsEntry {
+                table_name: table_name.to_string(),
+                entry_name: name.clone(),
+                entry_type: file_stem.to_string(),
+                entry_using: None,
+                data: data.to_vec(),
+            });
+        }
+    };
+
+    for line in content.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with("//") {
+            // Empty line flushes the current entry (same as standard format)
+            if current_name.is_some() {
+                flush(&mut entries, &current_name, &current_data, &table_name, file_stem);
+                current_name = None;
+                current_data.clear();
+            }
+            continue;
+        }
+
+        // key "Name","Value" format (XPData)
+        if t.starts_with("key ") || t.starts_with("key\t") {
+            // Flush any pending entry
+            flush(&mut entries, &current_name, &current_data, &table_name, file_stem);
+            current_name = None;
+            current_data.clear();
+
+            if let Some(q) = t.find('"') {
+                let values = parse_csv_values(&t[q..]);
+                if let Some(name) = values.first() {
+                    let mut data = Vec::new();
+                    if let Some(val) = values.get(1) {
+                        data.push(("Value".to_string(), val.clone()));
+                    }
+                    entries.push(ParsedStatsEntry {
+                        table_name: table_name.clone(),
+                        entry_name: name.clone(),
+                        entry_type: file_stem.to_string(),
+                        entry_using: None,
+                        data,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // new <keyword> "name","v1","v2",...
+        if t.starts_with("new ") {
+            // Flush previous entry
+            flush(&mut entries, &current_name, &current_data, &table_name, file_stem);
+            current_data.clear();
+
+            if let Some(q) = t.find('"') {
+                let values = parse_csv_values(&t[q..]);
+                current_name = values.first().cloned();
+                for (i, val) in values.iter().enumerate().skip(1) {
+                    current_data.push((format!("Param{}", i), val.clone()));
+                }
+            } else {
+                current_name = None;
+            }
+            continue;
+        }
+
+        // add <keyword> <values> (sub-entries for groups)
+        if let Some(rest) = t.strip_prefix("add ") {
+            if let Some(kw_end) = rest.find(|c: char| c.is_whitespace() || c == '"') {
+                let keyword = &rest[..kw_end];
+                let remainder = rest[kw_end..].trim();
+                let values = parse_csv_values(remainder);
+                let val_str = values.join(";");
+
+                let col = capitalize_first(keyword);
+
+                // Append to existing value if multiple add lines for same keyword
+                if let Some(existing) = current_data.iter_mut().find(|(k, _)| *k == col) {
+                    existing.1.push('|');
+                    existing.1.push_str(&val_str);
+                } else {
+                    current_data.push((col, val_str));
+                }
+            }
+        }
+    }
+
+    // Flush last entry
+    flush(&mut entries, &current_name, &current_data, &table_name, file_stem);
+
+    ParsedContent::Stats {
+        entries,
+        last_type: Some(file_stem.to_string()),
+        raw_content: None,
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => {
+            let mut out = c.to_uppercase().collect::<String>();
+            out.push_str(chars.as_str());
+            out
+        }
     }
 }
 

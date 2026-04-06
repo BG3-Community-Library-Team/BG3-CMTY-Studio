@@ -441,7 +441,7 @@
     font-size: 10px;
     font-weight: 700;
     color: white;
-    margin-left: -1.625rem;
+    margin-left: calc(-1.875rem - 1px);
   }
 
   .timeline-item {

@@ -12,11 +12,18 @@ static RE_USING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^using "(.+)""
 
 /// Parse a Stats .txt file (Spell_*.txt, Status_*.txt) into entries.
 pub fn parse_stats_file(content: &str) -> Vec<StatsEntry> {
+    parse_stats_file_typed(content, None)
+}
+
+/// Parse a Stats .txt file with an optional type hint (file stem) for
+/// non-standard formats (BloodTypes, ItemColor, XPData, etc.).
+pub fn parse_stats_file_typed(content: &str, file_stem: Option<&str>) -> Vec<StatsEntry> {
     let mut entries = Vec::new();
     let mut current_name: Option<String> = None;
     let mut current_type = String::new();
     let mut current_parent: Option<String> = None;
     let mut current_data: HashMap<String, String> = HashMap::new();
+    let mut has_standard_entries = false;
 
     for line in content.lines() {
         let line = line.trim();
@@ -45,6 +52,7 @@ pub fn parse_stats_file(content: &str) -> Vec<StatsEntry> {
                 });
             }
             current_name = Some(caps[1].to_string());
+            has_standard_entries = true;
         } else if let Some(caps) = RE_TYPE.captures(line) {
             current_type = caps[1].to_string();
         } else if let Some(caps) = RE_DATA.captures(line) {
@@ -64,7 +72,172 @@ pub fn parse_stats_file(content: &str) -> Vec<StatsEntry> {
         });
     }
 
+    // If nothing was found with the standard parser and we have a type hint,
+    // try non-standard formats.
+    if entries.is_empty() && !has_standard_entries {
+        if let Some(stem) = file_stem {
+            return parse_nonstandard_stats(content, stem);
+        }
+    }
+
     entries
+}
+
+/// Parse non-standard stats formats: CSV entries, key-value, groups.
+fn parse_nonstandard_stats(content: &str, file_stem: &str) -> Vec<StatsEntry> {
+    let mut entries = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_data: HashMap<String, String> = HashMap::new();
+
+    for line in content.lines() {
+        let t = line.trim();
+
+        if t.is_empty() || t.starts_with("//") {
+            if let Some(name) = current_name.take() {
+                entries.push(StatsEntry {
+                    name,
+                    entry_type: file_stem.to_string(),
+                    parent: None,
+                    data: std::mem::take(&mut current_data),
+                });
+            }
+            continue;
+        }
+
+        // key "Name","Value" (XPData)
+        if t.starts_with("key ") || t.starts_with("key\t") {
+            if let Some(name) = current_name.take() {
+                entries.push(StatsEntry {
+                    name,
+                    entry_type: file_stem.to_string(),
+                    parent: None,
+                    data: std::mem::take(&mut current_data),
+                });
+            }
+            if let Some(q) = t.find('"') {
+                let values = parse_csv_values(&t[q..]);
+                if let Some(name) = values.first() {
+                    let mut data = HashMap::new();
+                    if let Some(val) = values.get(1) {
+                        data.insert("Value".to_string(), val.clone());
+                    }
+                    entries.push(StatsEntry {
+                        name: name.clone(),
+                        entry_type: file_stem.to_string(),
+                        parent: None,
+                        data,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // new <keyword> "name","v1","v2",...
+        if t.starts_with("new ") {
+            if let Some(name) = current_name.take() {
+                entries.push(StatsEntry {
+                    name,
+                    entry_type: file_stem.to_string(),
+                    parent: None,
+                    data: std::mem::take(&mut current_data),
+                });
+            }
+            if let Some(q) = t.find('"') {
+                let values = parse_csv_values(&t[q..]);
+                current_name = values.first().cloned();
+                current_data.clear();
+                for (i, val) in values.iter().enumerate().skip(1) {
+                    current_data.insert(format!("Param{}", i), val.clone());
+                }
+            }
+            continue;
+        }
+
+        // add <keyword> <values> (group sub-entries)
+        if let Some(rest) = t.strip_prefix("add ") {
+            if let Some(kw_end) = rest.find(|c: char| c.is_whitespace() || c == '"') {
+                let keyword = &rest[..kw_end];
+                let remainder = rest[kw_end..].trim();
+                let values = parse_csv_values(remainder);
+                let val_str = values.join(";");
+
+                let col = capitalize_first(keyword);
+                current_data
+                    .entry(col)
+                    .and_modify(|existing| {
+                        existing.push('|');
+                        existing.push_str(&val_str);
+                    })
+                    .or_insert(val_str);
+            }
+        }
+    }
+
+    // Flush last entry
+    if let Some(name) = current_name {
+        entries.push(StatsEntry {
+            name,
+            entry_type: file_stem.to_string(),
+            parent: None,
+            data: current_data,
+        });
+    }
+
+    entries
+}
+
+/// Parse comma-separated values (quoted and unquoted).
+fn parse_csv_values(input: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        if bytes[i] == b'"' {
+            i += 1;
+            let start = i;
+            while i < bytes.len() && bytes[i] != b'"' {
+                i += 1;
+            }
+            values.push(input[start..i].to_string());
+            if i < bytes.len() {
+                i += 1;
+            }
+            while i < bytes.len() && (bytes[i] == b',' || bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+        } else if bytes[i] == b',' {
+            values.push(String::new());
+            i += 1;
+        } else {
+            let start = i;
+            while i < bytes.len() && bytes[i] != b',' {
+                i += 1;
+            }
+            values.push(input[start..i].trim().to_string());
+            if i < bytes.len() {
+                i += 1;
+            }
+        }
+    }
+    values
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => {
+            let mut out = c.to_uppercase().collect::<String>();
+            out.push_str(chars.as_str());
+            out
+        }
+    }
 }
 
 /// Parse an Equipment.txt file and return just the equipment set names.

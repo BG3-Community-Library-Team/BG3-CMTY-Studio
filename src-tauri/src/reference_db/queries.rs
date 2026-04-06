@@ -1387,13 +1387,11 @@ pub fn query_db_schemas(db_path: &Path) -> Result<Vec<NodeSchema>, String> {
         .map_err(|e| format!("Query stats cols: {e}"))?;
 
     let stats_internal = ["_entry_name", "_file_id", "_type", "_using"];
-    for row in stats_col_rows {
-        if let Ok((tn, cn, bt)) = row {
-            if stats_internal.contains(&cn.as_str()) || cn.ends_with("_version") {
-                continue;
-            }
-            stats_columns_by_table.entry(tn).or_default().push((cn, bt));
+    for (tn, cn, bt) in stats_col_rows.flatten() {
+        if stats_internal.contains(&cn.as_str()) || cn.ends_with("_version") {
+            continue;
         }
+        stats_columns_by_table.entry(tn).or_default().push((cn, bt));
     }
 
     for (table_name, row_count) in &stats_rows {

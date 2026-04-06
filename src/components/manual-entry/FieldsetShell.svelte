@@ -78,7 +78,7 @@
 
 <style>
   .fieldset-row {
-    padding: 0.375rem 0.5rem;
+    padding: 0.375rem 0;
     border-radius: 0.25rem;
   }
   .fieldset-row:nth-child(even) {

@@ -138,7 +138,16 @@
 
   /** Find a core folder node by its name (for group tab rendering). */
   function findGroupNode(name: string): FolderNode | undefined {
-    return BG3_CORE_FOLDERS.find(f => f.name === name);
+    function search(nodes: FolderNode[]): FolderNode | undefined {
+      for (const node of nodes) {
+        if (node.name === name) return node;
+        if (node.children) {
+          const found = search(node.children);
+          if (found) return found;
+        }
+      }
+    }
+    return search(BG3_CORE_FOLDERS);
   }
 
   /** Get group children with resolved section results (uses entry filters from folder structure). */
@@ -316,7 +325,9 @@
           <h1 class="text-lg font-semibold text-[var(--th-text-100)] mb-1">{m.welcome_app_title()}</h1>
           <p class="text-xs text-[var(--th-text-500)] mb-6">{m.welcome_app_subtitle()}</p>
 
-          {#if modStore.scanResult}
+          {#if modStore.isScanning}
+            <!-- Scanning in progress — buttons hidden -->
+          {:else if modStore.scanResult}
             <div class="mb-6 p-3 rounded-md bg-[var(--th-bg-700)]/50 border border-[var(--th-border-700)]">
               <p class="text-sm text-[var(--th-text-200)] font-medium">{modStore.scanResult.mod_meta.name}</p>
               <p class="text-xs text-[var(--th-text-500)] mt-1">by {modStore.scanResult.mod_meta.author}</p>

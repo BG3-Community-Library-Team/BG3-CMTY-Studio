@@ -3,7 +3,7 @@ use crate::commands::rediff::cache_mod_entries;
 use crate::models::*;
 use crate::parsers::lsx::parse_lsx_file;
 use crate::parsers::meta::parse_meta_lsx;
-use crate::parsers::stats_txt::parse_stats_file;
+use crate::parsers::stats_txt::parse_stats_file_typed;
 use crate::reference_db::queries;
 use crate::validation::{check_file_size, MAX_LSX_FILE_SIZE};
 use std::collections::HashMap;
@@ -514,7 +514,11 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                     Err(_) => continue,
                 };
 
-                let mod_entries = parse_stats_file(&content);
+                let file_stem = entry.path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let mod_entries = parse_stats_file_typed(&content, Some(file_stem));
                 raw_stats_entries.extend(mod_entries.clone());
                 let diffs = diff_stats(&mod_entries, &vanilla_stats);
                 section_results

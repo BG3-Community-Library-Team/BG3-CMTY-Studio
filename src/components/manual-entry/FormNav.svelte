@@ -38,9 +38,19 @@
   function pickTopmost() {
     if (visibleSet.size === 0) return;
     const scope = containerEl ?? document;
+
+    // Skip parent sections when any of their children are also visible
+    const parentsWithVisibleChildren = new Set<string>();
+    for (const s of sections) {
+      if (s.children?.some(c => visibleSet.has(c.id))) {
+        parentsWithVisibleChildren.add(s.id);
+      }
+    }
+
     let best: string | undefined;
     let bestTop = Infinity;
     for (const id of visibleSet) {
+      if (parentsWithVisibleChildren.has(id)) continue;
       const el = scope.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
       if (el) {
         const top = el.getBoundingClientRect().top;
@@ -53,8 +63,13 @@
     if (best) activeSection = best;
   }
 
+  /** Show nav when enough sections or when any section has children (level groups) */
+  let showNav = $derived(
+    sections.length >= 4 || sections.some(s => (s.children?.length ?? 0) > 0)
+  );
+
   $effect(() => {
-    if (sections.length < 4) return;
+    if (!showNav) return;
     if (!containerEl) return;
 
     // Default to first section
@@ -102,10 +117,21 @@
     const el = containerEl.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
     if (!el) return;
 
-    // If the target is a collapsed <details>, open it and wait for layout
+    // Open any ancestor <details> that are collapsed (e.g. FormSectionCard)
+    let ancestor: HTMLElement | null = el.parentElement;
+    while (ancestor && ancestor !== containerEl) {
+      if (ancestor.tagName === "DETAILS" && !(ancestor as HTMLDetailsElement).open) {
+        (ancestor as HTMLDetailsElement).open = true;
+      }
+      ancestor = ancestor.parentElement;
+    }
+
+    // If the target itself is a collapsed <details>, open it
     if (el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open) {
       (el as HTMLDetailsElement).open = true;
-      // Let the browser lay out the expanded content before scrolling
+      requestAnimationFrame(() => doScroll(el));
+    } else if (el.closest("details:not([open])")) {
+      // An ancestor was just opened — wait for layout
       requestAnimationFrame(() => doScroll(el));
     } else {
       doScroll(el);
@@ -137,7 +163,7 @@
   }
 </script>
 
-{#if sections.length >= 4}
+{#if showNav}
   <nav class="form-nav" aria-label="Form sections">
     <ul class="form-nav-list">
       {#each sections as section (section.id)}

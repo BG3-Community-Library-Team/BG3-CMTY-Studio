@@ -207,6 +207,9 @@
                 <summary class="layout-subsection-summary text-xs font-semibold text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] select-none flex items-center gap-1.5">
                   <ChevronRight size={12} class="layout-chevron shrink-0 transition-transform" />
                   Goal
+                  <span class="goal-summary-details font-normal text-[var(--th-text-500)]">
+                    — XP {sub.experienceReward || '0'} · Insp {sub.inspirationPoints || '0'}
+                  </span>
                   {#if sub.existingIndex != null}
                     <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
                   {/if}
@@ -311,7 +314,7 @@
     font-size: 10px;
     font-weight: 700;
     color: white;
-    margin-left: -1.625rem;
+    margin-left: calc(-1.875rem - 1px);
   }
 
   .timeline-goal {
@@ -321,9 +324,19 @@
 
   .goal-subform {
     padding: 0.375rem 0.5rem 0.5rem;
-    border: 1px solid var(--th-border-700, #3f3f46);
+    border: 1px solid transparent;
     border-radius: 0.25rem;
+    background: none;
+  }
+
+  .goal-subform[open] {
+    border-color: var(--th-border-700, #3f3f46);
     background: var(--th-bg-800, rgba(0, 0, 0, 0.15));
+  }
+
+  /* Hide summary details when open (fields are shown inline) */
+  .goal-subform[open] .goal-summary-details {
+    display: none;
   }
 
   .goal-subform > :global(.layout-subsection-summary .layout-chevron) {
