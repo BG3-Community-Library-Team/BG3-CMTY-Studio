@@ -1038,7 +1038,7 @@ fn test_reset_staging_tracking_clears_flags() {
         INSERT INTO lsx__Races (UUID, Name, _is_new) VALUES ('r1', 'Human', 1);
         INSERT INTO lsx__Races (UUID, Name, _is_modified) VALUES ('r2', 'Elf', 1);
         INSERT INTO lsx__Races (UUID, Name, _is_deleted) VALUES ('r3', 'Dwarf', 1);
-        INSERT INTO lsx__Races (UUID, Name) VALUES ('r4', 'Halfling', 0);",
+        INSERT INTO lsx__Races (UUID, Name) VALUES ('r4', 'Halfling');",
     )
     .unwrap();
 
