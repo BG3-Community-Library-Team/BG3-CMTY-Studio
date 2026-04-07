@@ -75,7 +75,17 @@ pub async fn cmd_package_mod(
             return Err(format!("Mod directory not found: {}", mod_path.display()));
         }
 
-        let output_path = PathBuf::from(&options.output_path);
+        let mut output_path = PathBuf::from(&options.output_path);
+
+        // If output_path is a directory, derive a .pak filename from the mod folder name
+        if output_path.is_dir() {
+            let mod_name = mod_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("mod");
+            output_path = output_path.join(format!("{mod_name}.pak"));
+        } else if output_path.extension().is_none() {
+            output_path.set_extension("pak");
+        }
 
         // Create parent directory for output if needed
         if let Some(parent) = output_path.parent() {

@@ -26,6 +26,9 @@
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Pencil from "@lucide/svelte/icons/pencil";
   import Trash2 from "@lucide/svelte/icons/trash-2";
+  import BookOpen from "@lucide/svelte/icons/book-open";
+  import Languages from "@lucide/svelte/icons/languages";
+  import FileCode from "@lucide/svelte/icons/file-code";
   import type { SectionResult, DiffEntry } from "../lib/types/index.js";
   import type { ModFileEntry } from "../lib/utils/tauri.js";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -402,6 +405,81 @@
   let isPublicExpanded = $derived(uiStore.expandedNodes["Public"] !== false);
   let isAdditionalExpanded = $derived(uiStore.expandedNodes["_Additional"] ?? false);
   let isModsExpanded = $derived(uiStore.expandedNodes["Mods"] ?? false);
+  let isLocalizationExpanded = $derived(uiStore.expandedNodes["_Localization"] ?? false);
+  let isScriptsExpanded = $derived(uiStore.expandedNodes["_Scripts"] ?? false);
+
+  /** Filter a file tree to only include files with certain extensions (and parent folders). */
+  function filterTree(nodes: FileTreeNode[], extensions: Set<string>): FileTreeNode[] {
+    const result: FileTreeNode[] = [];
+    for (const n of nodes) {
+      if (n.isFile) {
+        if (n.extension && extensions.has(n.extension)) {
+          result.push(n);
+        }
+      } else if (n.children) {
+        const filtered = filterTree(n.children, extensions);
+        if (filtered.length > 0) {
+          result.push({ ...n, children: filtered });
+        }
+      }
+    }
+    return result;
+  }
+
+  const LOCA_EXTENSIONS = new Set(["loca", "xml"]);
+  const LUA_SE_EXTENSIONS = new Set(["lua", "yaml", "toml", "ini", "json"]);
+
+  /** Localization tree: recursively filtered to .loca and .xml files. */
+  let localizationTree = $derived.by((): FileTreeNode[] => {
+    const locaDir = modFileTree.find(n => !n.isFile && n.name === "Localization");
+    if (!locaDir?.children) return [];
+    return filterTree(locaDir.children, LOCA_EXTENSIONS);
+  });
+
+  /** Lua SE tree: folder structure of ScriptExtender/ with script/config files. */
+  let luaSeTree = $derived.by((): FileTreeNode[] => {
+    const seDir = modFileTree.find(n => !n.isFile && n.name === "ScriptExtender");
+    if (!seDir?.children) return [];
+    return filterTree(seDir.children, LUA_SE_EXTENSIONS);
+  });
+
+  /** Script sub-categories derived from the mod file tree. */
+  const SCRIPT_CATEGORIES = [
+    { key: "lua-se", label: "Lua (SE)", dir: "ScriptExtender", extensions: LUA_SE_EXTENSIONS },
+    { key: "osiris", label: "Osiris", dir: "Story/RawFiles/Goals", extensions: new Set(["txt"]) },
+    { key: "khonsu", label: "Khonsu", dir: "Scripts", extensions: new Set(["khn"]) },
+    { key: "anubis", label: "Anubis", dir: null, extensions: new Set(["anc", "ann", "anm"]) },
+    { key: "constellations", label: "Constellations", dir: null, extensions: new Set(["clc", "cln", "clm"]) },
+  ];
+
+  /** Collect script files per category, counting files for badge. */
+  let scriptCounts = $derived.by((): Map<string, number> => {
+    const counts = new Map<string, number>();
+    function countFiles(nodes: FileTreeNode[]): void {
+      for (const n of nodes) {
+        if (n.isFile && n.extension) {
+          for (const cat of SCRIPT_CATEGORIES) {
+            if (cat.dir) {
+              if (cat.extensions.has(n.extension) && n.relPath.startsWith(cat.dir)) {
+                counts.set(cat.key, (counts.get(cat.key) ?? 0) + 1);
+              }
+            } else if (cat.extensions.has(n.extension)) {
+              counts.set(cat.key, (counts.get(cat.key) ?? 0) + 1);
+            }
+          }
+        }
+        if (n.children) countFiles(n.children);
+      }
+    }
+    countFiles(modFileTree);
+    return counts;
+  });
+
+  let totalScriptCount = $derived.by(() => {
+    let sum = 0;
+    for (const v of scriptCounts.values()) sum += v;
+    return sum;
+  });
 
   /**
    * DB-discovered sections not in the static sidebar tree.
@@ -505,6 +583,8 @@
     if (tab.type === "section") return tab.category ?? "";
     if (tab.type === "lsx-file") return tab.category ?? "";
     if (tab.type === "meta-lsx") return "meta.lsx";
+    if (tab.type === "readme") return "readme";
+    if (tab.type === "localization") return "localization-root";
     if (tab.type === "file-preview") return `file:${tab.filePath ?? ""}`;
     if (tab.type === "script-editor") return `file:${tab.filePath ?? ""}`;
     return "";
@@ -910,6 +990,194 @@
               {:else}
                 <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">No text files found</span>
               {/if}
+            </div>
+          {/if}
+        </div>
+
+        <!-- ── Root-level: Readme ── -->
+        <button
+          class="tree-node"
+          class:active-node={activeNodeKey === 'readme'}
+          onclick={() => uiStore.openTab({ id: "readme", label: "README.md", type: "readme", icon: "📝" })}
+        >
+          <span class="w-3.5 shrink-0"></span>
+          <BookOpen size={14} class="text-[var(--th-text-sky-400)]" />
+          <span class="node-label">Readme</span>
+        </button>
+
+        <!-- ── Root-level: Localization ── -->
+        <div>
+          <div
+            class="tree-node"
+            class:active-node={activeNodeKey === 'localization-root'}
+            role="treeitem"
+            aria-expanded={isLocalizationExpanded}
+          >
+            <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Localization'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Localization'); } }} role="button" tabindex="0" aria-label="Toggle Localization">
+              <ChevronRight size={14} class="chevron {isLocalizationExpanded ? 'expanded' : ''}" />
+            </span>
+            <button class="tree-node-label" onclick={() => uiStore.openTab({ id: "section:Localization", label: "Localization", type: "localization", category: "Localization", icon: "🌐" })}>
+              <Languages size={14} class="text-[var(--th-text-amber-400)]" />
+              <span class="node-label">Localization</span>
+            </button>
+          </div>
+          {#if isLocalizationExpanded}
+            <div class="tree-children">
+              {#snippet locaNode(node: FileTreeNode)}
+                {#if node.isFile}
+                  <button
+                    class="tree-node has-files"
+                    class:active-node={isActiveFile(node.relPath)}
+                    onclick={() => openFilePreview(node)}
+                    ondblclick={() => openFilePreview(node, false)}
+                  >
+                    <span class="w-3.5 shrink-0"></span>
+                    <File size={14} class="text-[var(--th-text-amber-400)]" />
+                    <span class="node-label truncate">{node.name}</span>
+                    {#if node.extension}
+                      <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                    {/if}
+                  </button>
+                {:else}
+                  {@const expanded = uiStore.expandedNodes[`loca:${node.relPath}`] ?? false}
+                  <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`loca:${node.relPath}`)}>
+                    <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
+                    {#if expanded}
+                      <FolderOpen size={14} class="text-[var(--th-text-amber-400)]" />
+                    {:else}
+                      <Folder size={14} class="text-[var(--th-text-amber-400)]" />
+                    {/if}
+                    <span class="node-label truncate">{node.name}</span>
+                  </button>
+                  {#if expanded && node.children}
+                    <div class="tree-children">
+                      {#each node.children as child (child.relPath)}
+                        {@render locaNode(child)}
+                      {/each}
+                    </div>
+                  {/if}
+                {/if}
+              {/snippet}
+              {#if localizationTree.length > 0}
+                {#each localizationTree as treeNode (treeNode.relPath)}
+                  {@render locaNode(treeNode)}
+                {/each}
+              {:else}
+                <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">No localization files</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <!-- ── Root-level: Scripts ── -->
+        <div>
+          <div
+            class="tree-node"
+            role="treeitem"
+            aria-expanded={isScriptsExpanded}
+          >
+            <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Scripts'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Scripts'); } }} role="button" tabindex="0" aria-label="Toggle Scripts">
+              <ChevronRight size={14} class="chevron {isScriptsExpanded ? 'expanded' : ''}" />
+            </span>
+            <button class="tree-node-label" onclick={() => uiStore.toggleNode('_Scripts')}>
+              <FileCode size={14} class="text-[var(--th-text-emerald-400)]" />
+              <span class="node-label">Scripts</span>
+              {#if totalScriptCount > 0}
+                <span class="entry-count">{totalScriptCount}</span>
+              {/if}
+            </button>
+          </div>
+          {#if isScriptsExpanded}
+            <div class="tree-children">
+              {#snippet scriptNode(node: FileTreeNode)}
+                {#if node.isFile}
+                  <button
+                    class="tree-node has-files"
+                    class:active-node={isActiveFile(node.relPath)}
+                    onclick={() => openFilePreview(node)}
+                    ondblclick={() => openFilePreview(node, false)}
+                  >
+                    <span class="w-3.5 shrink-0"></span>
+                    <File size={14} class="text-[var(--th-text-emerald-400)]" />
+                    <span class="node-label truncate">{node.name}</span>
+                    {#if node.extension}
+                      <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                    {/if}
+                  </button>
+                {:else}
+                  {@const expanded = uiStore.expandedNodes[`script:${node.relPath}`] ?? false}
+                  <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`script:${node.relPath}`)}>
+                    <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
+                    {#if expanded}
+                      <FolderOpen size={14} class="text-[var(--th-text-emerald-400)]" />
+                    {:else}
+                      <Folder size={14} class="text-[var(--th-text-emerald-400)]" />
+                    {/if}
+                    <span class="node-label truncate">{node.name}</span>
+                  </button>
+                  {#if expanded && node.children}
+                    <div class="tree-children">
+                      {#each node.children as child (child.relPath)}
+                        {@render scriptNode(child)}
+                      {/each}
+                    </div>
+                  {/if}
+                {/if}
+              {/snippet}
+              {#each SCRIPT_CATEGORIES as cat (cat.key)}
+                {@const count = scriptCounts.get(cat.key) ?? 0}
+                {#if cat.key === 'lua-se'}
+                  <!-- Lua (SE) - expandable folder tree -->
+                  {@const luaExpanded = uiStore.expandedNodes['_Scripts_lua-se'] ?? false}
+                  <div>
+                    <div class="tree-node" class:has-files={count > 0} role="treeitem" aria-expanded={luaExpanded}>
+                      <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Scripts_lua-se'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Scripts_lua-se'); } }} role="button" tabindex="0" aria-label="Toggle Lua (SE)">
+                        <ChevronRight size={14} class="chevron {luaExpanded ? 'expanded' : ''}" />
+                      </span>
+                      <button class="tree-node-label" onclick={() => uiStore.toggleNode('_Scripts_lua-se')}>
+                        <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                        <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
+                        {#if count > 0}
+                          <span class="entry-count">{count}</span>
+                        {/if}
+                      </button>
+                    </div>
+                    {#if luaExpanded && luaSeTree.length > 0}
+                      <div class="tree-children">
+                        {#each luaSeTree as node (node.relPath)}
+                          {@render scriptNode(node)}
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <button
+                    class="tree-node"
+                    class:has-files={count > 0}
+                    onclick={() => {
+                      if (count > 0) {
+                        uiStore.expandNode('root');
+                        uiStore.expandNode('Mods');
+                        if (cat.dir) {
+                          const dirParts = cat.dir.split('/');
+                          let path = '';
+                          for (const part of dirParts) {
+                            path = path ? `${path}/${part}` : part;
+                            uiStore.expandNode(`modfile:${path}`);
+                          }
+                        }
+                      }
+                    }}
+                  >
+                    <span class="w-3.5 shrink-0"></span>
+                    <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                    <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
+                    {#if count > 0}
+                      <span class="entry-count">{count}</span>
+                    {/if}
+                  </button>
+                {/if}
+              {/each}
             </div>
           {/if}
         </div>

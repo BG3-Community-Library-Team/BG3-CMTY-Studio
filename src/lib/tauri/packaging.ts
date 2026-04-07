@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface PackageModOptions {
-  modPath: string;
-  outputPath: string;
+  mod_path: string;
+  output_path: string;
   priority?: number;
   compression?: "none" | "zlib" | "lz4";
-  compressionLevel?: "fast" | "default" | "max";
+  compression_level?: "fast" | "default" | "max";
 }
 
 export interface PakWriteResult {

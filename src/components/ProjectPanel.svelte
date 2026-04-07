@@ -3,16 +3,20 @@
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { dirSize, fileExists } from "../lib/tauri/mod-management.js";
+  import { openPath } from "../lib/tauri/detection.js";
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
-  import { open as shellOpen } from "@tauri-apps/plugin-shell";
+  import { scanAndImport } from "../lib/services/scanService.js";
+  import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
+  import { m } from "../paraglide/messages.js";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import ChevronUp from "@lucide/svelte/icons/chevron-up";
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
   import PackageIcon from "@lucide/svelte/icons/package";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
   import FlaskConical from "@lucide/svelte/icons/flask-conical";
-  import FolderPlus from "@lucide/svelte/icons/folder-plus";
+  import Upload from "@lucide/svelte/icons/upload";
   import { packageMod } from "../lib/tauri/packaging.js";
 
   let showPackagingDrawer = $state(false);
@@ -20,6 +24,7 @@
   let compression = $state("LZ4");
   let compressionLevel = $state<"fast" | "default" | "max">("default");
   let priority = $state(40);
+  let descExpanded = $state(false);
 
   const compressionOptions = ["None", "LZ4", "Zlib"];
 
@@ -80,7 +85,7 @@
   });
 
   function handleValidate() {
-    toastStore.info("Coming Soon", "Mod validation will be available in Sprint 55/56");
+    toastStore.info("Coming Soon", "Mod validation will be available in a future update");
   }
 
   async function handlePackageMod() {
@@ -89,15 +94,16 @@
     try {
       toastStore.info("Packaging...", `Building ${modName}.pak`);
       const result = await packageMod({
-        modPath: modStore.selectedModPath,
-        outputPath: outputPath || modStore.selectedModPath.replace(/[\/\\][^\/\\]*$/, ""),
+        mod_path: modStore.selectedModPath,
+        output_path: outputPath || modStore.selectedModPath.replace(/[\/\\][^\/\\]*$/, ""),
         priority: priority,
         compression: compression.toLowerCase() as "none" | "zlib" | "lz4",
-        compressionLevel: compressionLevel,
+        compression_level: compressionLevel,
       });
       toastStore.success("Package Complete", `Created ${result.output_path} (${result.file_count} files, ${formatBytes(result.total_bytes)})`);
-    } catch (err) {
-      toastStore.error("Packaging Failed", String(err));
+    } catch (err: any) {
+      const msg = typeof err === "object" && err?.message ? err.message : String(err);
+      toastStore.error("Packaging Failed", msg);
     }
   }
 
@@ -108,14 +114,29 @@
   async function handleOpenProjectFolder() {
     if (!modStore.selectedModPath) return;
     try {
-      await shellOpen(modStore.selectedModPath);
+      await openPath(modStore.selectedModPath);
     } catch (err) {
       toastStore.error("Failed to open folder", String(err));
     }
   }
 
   function handleTestMod() {
-    toastStore.info("Coming Soon", "Mod testing will be available in Sprint 55/56");
+    toastStore.info("Coming Soon", "Mod testing will be available in a future update");
+  }
+
+  function handleExportToToolkit() {
+    toastStore.info("Coming Soon", "Export to Toolkit will be available in a future update");
+  }
+
+  async function handleOpenDifferentProject() {
+    try {
+      const selected = await dialogOpen({ directory: true, title: m.header_select_mod_folder() });
+      if (selected == null) return;
+      const p = Array.isArray(selected) ? selected[0] : String(selected);
+      await scanAndImport(p);
+    } catch (e) {
+      console.error("Dialog error:", e);
+    }
   }
 
   async function handleBrowseOutputPath() {
@@ -136,11 +157,29 @@
 <div class="project-panel" role="region" aria-label="Project panel">
   <div class="panel-header">
     <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--th-text-500)]">Project</span>
+    {#if modStore.scanResult && meta}
+      <button
+        class="header-btn ml-auto"
+        title="Package project"
+        aria-label="Package project"
+        onclick={() => commandRegistry.execute('action.packageProject')}
+      >
+        <PackageIcon size={14} />
+      </button>
+      <button
+        class="header-btn"
+        title="Open a different project"
+        aria-label="Open a different project"
+        onclick={handleOpenDifferentProject}
+      >
+        <FolderOpen size={14} />
+      </button>
+    {/if}
   </div>
 
   {#if modStore.scanResult && meta}
     <!-- Mod Info -->
-    <div class="mod-info">
+    <div class="mod-info" class:scanning={modStore.isScanning} inert={modStore.isScanning ? true : undefined}>
       <div class="thumbnail-box" aria-label="Mod thumbnail">
         {#if thumbnailUrl}
           <img src={thumbnailUrl} alt="Mod thumbnail" class="thumbnail-img" />
@@ -161,11 +200,16 @@
             <span class="text-xs text-[var(--th-text-400)]">{versionString}</span>
           {/if}
           {#if folderSize !== null}
-            <span class="text-[11px] text-[var(--th-text-500)]">{formatBytes(folderSize)}</span>
+            <span class="text-[11px] text-[var(--th-text-500)] ml-auto font-bold shrink-0">{formatBytes(folderSize)}</span>
           {/if}
         </div>
         {#if meta.description}
-          <div class="text-xs text-[var(--th-text-400)] mt-1 line-clamp-2">{meta.description}</div>
+          <button
+            class="text-xs text-[var(--th-text-400)] mt-1 text-left w-full cursor-pointer hover:text-[var(--th-text-300)] transition-colors"
+            class:line-clamp-2={!descExpanded}
+            onclick={() => descExpanded = !descExpanded}
+            title={descExpanded ? 'Click to collapse' : 'Click to expand'}
+          >{meta.description}</button>
         {/if}
         {#if meta.tags}
           <div class="text-[11px] text-[var(--th-text-500)] mt-0.5">{meta.tags}</div>
@@ -174,7 +218,7 @@
     </div>
 
     <!-- Action Buttons -->
-    <div class="action-list" role="list">
+    <div class="action-list" class:scanning={modStore.isScanning} role="list" inert={modStore.isScanning ? true : undefined}>
       <button class="action-item" onclick={handleValidate} aria-label="Validate mod files">
         <ShieldCheck size={16} />
         <span>Validate Mod Files</span>
@@ -222,16 +266,16 @@
             </div>
           </label>
 
-          <label class="drawer-field">
-            <span class="drawer-label">Compression</span>
-            <select class="drawer-select" bind:value={compression} aria-label="Compression method">
-              {#each compressionOptions as opt}
-                <option value={opt}>{opt}</option>
-              {/each}
-            </select>
-          </label>
-
           <div class="drawer-row">
+            <label class="drawer-field" style="flex:1">
+              <span class="drawer-label">Compression</span>
+              <select class="drawer-select" bind:value={compression} aria-label="Compression method">
+                {#each compressionOptions as opt}
+                  <option value={opt}>{opt}</option>
+                {/each}
+              </select>
+            </label>
+
             <label class="drawer-field" style="flex:1">
               <span class="drawer-label">Speed</span>
               <select class="drawer-select" bind:value={compressionLevel} aria-label="Compression speed">
@@ -254,9 +298,14 @@
         </div>
       {/if}
 
-      <button class="action-item" onclick={handleOpenProjectFolder} aria-label="Open project folder">
-        <FolderOpen size={16} />
-        <span>Open Project Folder</span>
+      <button class="action-item" onclick={handleOpenProjectFolder} aria-label="Open folder in file manager">
+        <ExternalLink size={16} />
+        <span>Open Folder in File Manager</span>
+      </button>
+
+      <button class="action-item" onclick={handleExportToToolkit} aria-label="Export to toolkit">
+        <Upload size={16} />
+        <span>Export to Toolkit</span>
       </button>
 
       <button class="action-item" onclick={handleTestMod} aria-label="Test mod">
@@ -269,7 +318,7 @@
     <div class="empty-state">
       <p class="text-sm text-[var(--th-text-400)]">No project loaded</p>
       <button class="open-project-btn" onclick={handleOpenProject} aria-label="Open project">
-        <FolderPlus size={16} />
+        <FolderOpen size={16} />
         <span>Open Project</span>
       </button>
     </div>
@@ -291,6 +340,24 @@
     user-select: none;
   }
 
+  .header-btn {
+    padding: 4px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-500);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .header-btn:hover {
+    background: var(--th-bg-700);
+    color: var(--th-text-200);
+  }
+
   .mod-info {
     display: flex;
     flex-direction: row;
@@ -298,6 +365,12 @@
     padding: 12px;
     gap: 10px;
     border-bottom: 1px solid var(--th-bg-700);
+  }
+
+  .mod-info.scanning,
+  .action-list.scanning {
+    opacity: 0.4;
+    cursor: progress;
   }
 
   .thumbnail-box {
@@ -415,6 +488,7 @@
   .drawer-row {
     display: flex;
     gap: 4px;
+    flex-wrap: wrap;
   }
 
   .drawer-input {

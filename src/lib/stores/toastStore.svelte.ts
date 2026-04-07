@@ -92,6 +92,11 @@ function addToast(level: ToastLevel, title: string, message?: string, action?: T
   const toast: Toast = { id, level, title, message, action, count: 1, createdAt: Date.now() };
   toasts = [toast, ...toasts];
 
+  // Log errors to console for debugging
+  if (level === "error") {
+    console.error(`[Toast Error] ${title}${message ? ": " + message : ""}`);
+  }
+
   // Add to history
   addToHistory(toast);
 

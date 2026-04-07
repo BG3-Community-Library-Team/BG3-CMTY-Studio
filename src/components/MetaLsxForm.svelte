@@ -22,6 +22,7 @@
   import Save from "@lucide/svelte/icons/save";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import Upload from "@lucide/svelte/icons/upload";
+  import FolderOpen from "@lucide/svelte/icons/folder-open";
   import MultiSelectCombobox from "./MultiSelectCombobox.svelte";
   import SingleSelectCombobox from "./SingleSelectCombobox.svelte";
   import { m } from "../paraglide/messages.js";
@@ -155,8 +156,8 @@
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["png", "jpg", "jpeg"].includes(ext)) {
-      toastStore.error("Invalid file", "Only .png, .jpg, and .jpeg files are accepted.");
+    if (ext !== "png") {
+      toastStore.error("Invalid file", "Only .png files are accepted for mod thumbnails.");
       return;
     }
     // Tauri DnD provides the file path via webkitRelativePath or we use the path property
@@ -171,7 +172,7 @@
   async function browseThumbnail() {
     const selected = await dialogOpen({
       multiple: false,
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }],
+      filters: [{ name: "PNG Images", extensions: ["png"] }],
     });
     if (selected && typeof selected === "string") {
       await setThumbnail(selected);
@@ -224,7 +225,15 @@
   }
 
   // ── Dependencies manual toggle ──
+  // Defaults to true when no additional mods are loaded (combobox would be empty)
   let depManualMode = $state(false);
+  let depManualUserSet = $state(false);
+
+  $effect(() => {
+    if (!depManualUserSet && depModOptions.length === 0) {
+      depManualMode = true;
+    }
+  });
 
   // ── Tags multiselect ──
   let editTagsList = $derived(editTags ? editTags.split(";").map(t => t.trim()).filter(Boolean) : []);
@@ -582,26 +591,27 @@
             <textarea class="{inputClass} min-h-[60px] resize-y" bind:value={editDescription} rows="2" placeholder="Mod description"></textarea>
           </label>
 
-          <!-- Version64 with translation -->
-          <div class="flex flex-col gap-1 text-xs">
-            <span class={labelClass}>{m.meta_lsx_version()}</span>
-            <div class="flex items-center gap-2">
-              <input type="text" class="{versionInputClass} max-w-[140px]" value={versionDisplay}
-                     oninput={(e) => { filterVersionInput(e); updateVersion((e.target as HTMLInputElement).value); }}
-                     placeholder="1.0.0.0" title="major.minor.revision.build" pattern="\\d+\\.\\d+\\.\\d+\\.\\d+" />
-              <span class="text-[10px] text-[var(--th-text-600)] font-mono select-all cursor-text" title="Version64 raw value">{editVersion64}</span>
+          <!-- Version64 + Tags (same row) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1 text-xs">
+              <span class={labelClass}>{m.meta_lsx_version()}</span>
+              <div class="flex items-center gap-2">
+                <input type="text" class="{versionInputClass} max-w-[140px]" value={versionDisplay}
+                       oninput={(e) => { filterVersionInput(e); updateVersion((e.target as HTMLInputElement).value); }}
+                       placeholder="1.0.0.0" title="major.minor.revision.build" pattern="\\d+\\.\\d+\\.\\d+\\.\\d+" />
+                <span class="text-[10px] text-[var(--th-text-600)] font-mono select-all cursor-text" title="Version64 raw value">{editVersion64}</span>
+              </div>
             </div>
-          </div>
 
-          <!-- Tags -->
-          <div class="flex flex-col gap-1 text-xs">
-            <MultiSelectCombobox
-              label={m.meta_lsx_tags()}
-              options={tagOptions}
-              selected={editTagsList}
-              placeholder={m.meta_lsx_search_tags()}
-              onchange={(vals) => editTags = vals.join(";")}
-            />
+            <div class="flex flex-col gap-1 text-xs">
+              <MultiSelectCombobox
+                label={m.meta_lsx_tags()}
+                options={tagOptions}
+                selected={editTagsList}
+                placeholder={m.meta_lsx_search_tags()}
+                onchange={(vals) => editTags = vals.join(";")}
+              />
+            </div>
           </div>
 
           <!-- Advanced fields (collapsible) — includes MD5, NumPlayers, GM fields, Publishing -->
@@ -693,7 +703,18 @@
 
       <!-- ── Thumbnail ── -->
       <div class="border border-[var(--th-border-800,var(--th-bg-700))] rounded-lg overflow-hidden w-full sm:w-[200px] sm:shrink-0 xl:w-full">
-        <div class="px-4 py-2.5 bg-[var(--th-bg-900)] text-xs font-semibold text-[var(--th-text-200)]">Thumbnail</div>
+        <div class="px-4 py-2.5 bg-[var(--th-bg-900)] text-xs font-semibold text-[var(--th-text-200)] flex items-center justify-between">
+          <span>Thumbnail</span>
+          <button
+            type="button"
+            class="p-0.5 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
+            onclick={browseThumbnail}
+            title="Browse for thumbnail (.png)"
+            aria-label="Browse for thumbnail image"
+          >
+            <FolderOpen size={14} />
+          </button>
+        </div>
         <div class="p-3 bg-[var(--th-bg-900)]/50 flex justify-center">
           <button
             type="button"
@@ -711,11 +732,15 @@
           >
             {#if thumbnailUrl}
               <img src={thumbnailUrl} alt="Mod thumbnail" class="w-full h-full object-cover" />
+              <div class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 hover:opacity-100 transition-opacity text-white">
+                <Upload size={20} />
+                <span class="text-[10px]">Drop .png to replace</span>
+              </div>
             {:else}
               <div class="flex flex-col items-center justify-center h-full gap-2 text-[var(--th-text-500)]">
                 <Upload size={24} />
-                <span class="text-xs">Drop image here</span>
-                <span class="text-[10px] text-[var(--th-text-600)]">.png, .jpg, .jpeg</span>
+                <span class="text-xs">Drop .png here</span>
+                <span class="text-[10px] text-[var(--th-text-600)]">.png only</span>
               </div>
             {/if}
           </button>
@@ -738,7 +763,7 @@
               role="switch"
               aria-checked={depManualMode}
               aria-label={m.meta_lsx_manual_entry_toggle()}
-              onclick={() => depManualMode = !depManualMode}
+              onclick={() => { depManualMode = !depManualMode; depManualUserSet = true; }}
             >
               <span
                 class="pointer-events-none inline-block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform duration-200 {depManualMode ? 'translate-x-3.5' : 'translate-x-0.5'}"
@@ -818,7 +843,7 @@
                   />
                 </label>
                 <button
-                  class="px-2.5 py-1.5 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
+                  class="h-8 px-2 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
                   onclick={addDependency}
                   disabled={!newDepUuid.trim()}
                 >
@@ -839,7 +864,7 @@
                   />
                 </div>
                 <button
-                  class="px-2.5 py-1.5 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
+                  class="h-8 px-2 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
                   onclick={addDependency}
                   disabled={!newDepUuid.trim()}
                 >

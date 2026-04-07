@@ -78,7 +78,7 @@ Add installation instructions here. Example:
   }
 
   function handleConvertTxt() {
-    toastStore.info("Coming soon", "Text conversion will be available in Sprint 32/33");
+    toastStore.info("Coming soon", "Text conversion will be available in a future update");
   }
 
   /** Basic markdown → HTML renderer. Strips <script> tags for safety. */

@@ -32,7 +32,7 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost; connect-src ipc: http://ipc.localhost; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": ["**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg"]
       }
     }
   }
