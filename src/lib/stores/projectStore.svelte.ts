@@ -17,11 +17,20 @@ import {
   stagingUndo,
   stagingRedo,
   stagingGetRow,
+  stagingCompactUndo,
 } from "../tauri/staging.js";
-import { getDbPaths } from "../tauri/db-management.js";
+import { getDbPaths, checkStagingIntegrity, recreateStaging } from "../tauri/db-management.js";
 import { toastStore } from "./toastStore.svelte.js";
 import { getErrorMessage, type OutputFormat } from "../types/index.js";
 import { CF_SECTION_TO_FOLDER } from "../data/bg3FolderStructure.js";
+import { createDebouncedWriter } from "../utils/debounce.js";
+
+interface PendingWrite {
+  id: string;
+  operation: () => Promise<void>;
+  retries: number;
+  lastError: string;
+}
 
 /**
  * Derive the primary-key column name from a raw staging DB row.
@@ -150,6 +159,9 @@ class ProjectStore {
   sections: StagingSectionSummary[] = $state([]);
   format: OutputFormat = $state("Yaml");
   dirty: boolean = $state(false);
+  pendingWriteCount: number = $state(0);
+  syncError: string | null = $state(null);
+  dbCorrupted: boolean = $state(false);
 
   /** Auto-generated localization entries (handle → {text, version}). */
   autoLocaEntries: Map<string, { text: string; version: number }> = $state(new Map());
@@ -159,7 +171,37 @@ class ProjectStore {
   #stagingDbPath: string = "";
   #writeGeneration: number = 0;
   #savedGeneration: number = 0;
+  #snapshotCount: number = 0;
   #hydrated: boolean = false;
+  #retryQueue: PendingWrite[] = [];
+  #nextRetryId: number = 0;
+
+  #debouncedWriter = createDebouncedWriter<{ table: string; columns: Record<string, string> }>(
+    async (key, { table, columns }) => {
+      try {
+        await stagingUpsertRow(this.#stagingDbPath, table, columns, false);
+        this.#markDirty();
+      } catch (err) {
+        // Roll back cache by fetching actual DB state
+        const pk = key.slice(key.indexOf("::") + 2);
+        try {
+          const dbRow = await stagingGetRow(this.#stagingDbPath, table, pk);
+          const entries = this.#entryCache.get(table);
+          const entry = entries?.find(e => e._pk === pk);
+          if (entry && dbRow) {
+            for (const [k, v] of Object.entries(dbRow)) {
+              if (!k.startsWith("_")) entry[k] = v;
+            }
+          }
+        } catch {
+          // Best-effort rollback — invalidate cache so next load re-fetches
+          this.#entryCache.delete(table);
+        }
+        toastStore.warning("Failed to update entry", getErrorMessage(err));
+      }
+    },
+    100,
+  );
 
   // ────────────────────────────────────────────────────────────────────
   //  Hydration
@@ -202,8 +244,14 @@ class ProjectStore {
   //  Mutations (write-through, optimistic cache)
   // ────────────────────────────────────────────────────────────────────
 
+  /** Flush all pending debounced writes.  Call before discrete mutations or project close. */
+  async flushPendingWrites(): Promise<void> {
+    await this.#debouncedWriter.flush();
+  }
+
   /** Toggle the soft-delete flag on an entry. */
   async toggleEntry(table: string, pk: string): Promise<void> {
+    await this.#debouncedWriter.flush();
     const entries = this.#entryCache.get(table);
     const entry = entries?.find(e => e._pk === pk);
     if (!entry) return;
@@ -220,12 +268,18 @@ class ProjectStore {
       this.#markDirty();
     } catch (err) {
       entry._is_deleted = wasDeleted;
-      toastStore.warning("Failed to toggle entry", getErrorMessage(err));
+      const ipcOp = wasDeleted
+        ? () => stagingUnmarkDeleted(this.#stagingDbPath, table, pk)
+        : () => stagingMarkDeleted(this.#stagingDbPath, table, pk);
+      this.#enqueueRetry(
+        async () => { await ipcOp(); this.#markDirty(); },
+        getErrorMessage(err),
+      );
     }
   }
 
   /** Update one or more columns on an existing entry.  Returns true on success. */
-  async updateEntry(table: string, pk: string, columns: Record<string, string>): Promise<boolean> {
+  updateEntry(table: string, pk: string, columns: Record<string, string>): boolean {
     if (!this.#stagingDbPath) {
       toastStore.warning("Cannot update entry", "No project loaded");
       return false;
@@ -233,31 +287,17 @@ class ProjectStore {
     const entries = this.#entryCache.get(table);
     const entry = entries?.find(e => e._pk === pk);
 
-    // Capture old values for rollback
-    const oldValues: Record<string, unknown> = {};
+    // Optimistic cache update
     if (entry) {
-      for (const key of Object.keys(columns)) {
-        oldValues[key] = entry[key];
-      }
       for (const [key, value] of Object.entries(columns)) {
         entry[key] = value;
       }
       entry._is_modified = true;
     }
 
-    try {
-      await stagingUpsertRow(this.#stagingDbPath, table, columns, false);
-      this.#markDirty();
-      return true;
-    } catch (err) {
-      if (entry) {
-        for (const [key, value] of Object.entries(oldValues)) {
-          entry[key] = value;
-        }
-      }
-      toastStore.warning("Failed to update entry", getErrorMessage(err));
-      return false;
-    }
+    const key = `${table}::${pk}`;
+    this.#debouncedWriter.enqueue(key, { table, columns });
+    return true;
   }
 
   /** Insert a brand-new entry into a section.  Returns true on success. */
@@ -266,6 +306,7 @@ class ProjectStore {
       toastStore.warning("Cannot add entry", "No project loaded");
       return false;
     }
+    await this.#debouncedWriter.flush();
     try {
       await stagingUpsertRow(this.#stagingDbPath, table, columns, true);
       this.invalidateSection(table);
@@ -274,13 +315,22 @@ class ProjectStore {
       this.sections = await stagingListSections(this.#stagingDbPath);
       return true;
     } catch (err) {
-      toastStore.warning("Failed to add entry", getErrorMessage(err));
+      this.#enqueueRetry(
+        async () => {
+          await stagingUpsertRow(this.#stagingDbPath, table, columns, true);
+          this.invalidateSection(table);
+          this.#markDirty();
+          this.sections = await stagingListSections(this.#stagingDbPath);
+        },
+        getErrorMessage(err),
+      );
       return false;
     }
   }
 
   /** Remove an entry — hard-delete for new entries, soft-delete for existing. */
   async removeEntry(table: string, pk: string): Promise<void> {
+    await this.#debouncedWriter.flush();
     const entries = this.#entryCache.get(table);
     const entryIndex = entries?.findIndex(e => e._pk === pk) ?? -1;
     const entry = entryIndex >= 0 ? entries![entryIndex] : undefined;
@@ -300,12 +350,19 @@ class ProjectStore {
       if (entry && !wasNew) {
         entry._is_deleted = false;
       }
-      toastStore.warning("Failed to remove entry", getErrorMessage(err));
+      this.#enqueueRetry(
+        async () => {
+          await stagingMarkDeleted(this.#stagingDbPath, table, pk);
+          this.#markDirty();
+        },
+        getErrorMessage(err),
+      );
     }
   }
 
   /** Toggle the deleted flag for a batch of entries in one IPC call. */
   async batchToggle(table: string, pks: string[], deleted: boolean): Promise<void> {
+    await this.#debouncedWriter.flush();
     const ops: StagingOperation[] = pks.map(pk => ({
       op: deleted ? "MarkDeleted" : "UnmarkDeleted",
       table,
@@ -336,7 +393,13 @@ class ProjectStore {
           }
         }
       }
-      toastStore.warning("Failed to batch toggle", getErrorMessage(err));
+      this.#enqueueRetry(
+        async () => {
+          await stagingBatchWrite(this.#stagingDbPath, ops);
+          this.#markDirty();
+        },
+        getErrorMessage(err),
+      );
     }
   }
 
@@ -359,9 +422,21 @@ class ProjectStore {
     if (!this.#stagingDbPath) return;
     try {
       await stagingSnapshot(this.#stagingDbPath, label);
+      this.#snapshotCount++;
+      if (this.#snapshotCount % 50 === 0) {
+        this.compactUndoJournal();
+      }
     } catch (err) {
       console.warn("Failed to create undo snapshot:", err);
     }
+  }
+
+  /** Fire-and-forget: trim the undo journal to the most recent entries. */
+  compactUndoJournal(): void {
+    if (!this.#stagingDbPath) return;
+    stagingCompactUndo(this.#stagingDbPath).catch((err) => {
+      console.warn("Failed to compact undo journal:", err);
+    });
   }
 
   /** Undo the last staging operation and refresh affected sections. */
@@ -424,9 +499,14 @@ class ProjectStore {
 
   /** Reset all state to initial values. */
   reset(): void {
+    this.#debouncedWriter.cancel();
     this.sections = [];
     this.format = "Yaml";
     this.dirty = false;
+    this.pendingWriteCount = 0;
+    this.syncError = null;
+    this.dbCorrupted = false;
+    this.#retryQueue = [];
     this.#entryCache.clear();
     this.#stagingDbPath = "";
     this.#writeGeneration = 0;
@@ -454,8 +534,90 @@ class ProjectStore {
   }
 
   // ────────────────────────────────────────────────────────────────────
+  //  Error Recovery
+  // ────────────────────────────────────────────────────────────────────
+
+  /** Clear the entry cache, reload all loaded sections, and refresh section list. */
+  async forceSync(): Promise<void> {
+    if (!this.#stagingDbPath) return;
+    const loadedTables = [...this.#entryCache.keys()];
+    this.#entryCache.clear();
+    this.#retryQueue = [];
+    this.pendingWriteCount = 0;
+    this.syncError = null;
+
+    try {
+      this.sections = await stagingListSections(this.#stagingDbPath);
+      for (const table of loadedTables) {
+        await this.loadSection(table);
+      }
+      toastStore.success("Project re-synced from database");
+    } catch (err) {
+      toastStore.error("Force sync failed", getErrorMessage(err));
+    }
+  }
+
+  /** Run integrity check on staging DB and flag corruption if found. */
+  async checkAndResetIfCorrupted(): Promise<void> {
+    try {
+      const result = await checkStagingIntegrity();
+      if (result) {
+        toastStore.error("Database integrity error", result);
+        this.dbCorrupted = true;
+      }
+    } catch (err) {
+      toastStore.error("Integrity check failed", getErrorMessage(err));
+    }
+  }
+
+  /** Recreate staging DB from scratch and re-hydrate the project. */
+  async resetCorruptedDb(): Promise<void> {
+    try {
+      await recreateStaging();
+      this.dbCorrupted = false;
+      await this.hydrate();
+      toastStore.success("Database reset successfully");
+    } catch (err) {
+      toastStore.error("Database reset failed", getErrorMessage(err));
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────
   //  Private Helpers
   // ────────────────────────────────────────────────────────────────────
+
+  #enqueueRetry(operation: () => Promise<void>, errorMsg: string): void {
+    const id = String(++this.#nextRetryId);
+    const pending: PendingWrite = { id, operation, retries: 0, lastError: errorMsg };
+    this.#retryQueue.push(pending);
+    this.pendingWriteCount = this.#retryQueue.length;
+    this.#scheduleRetry(pending);
+  }
+
+  #scheduleRetry(pending: PendingWrite): void {
+    const delay = 200 * Math.pow(2, pending.retries); // 200ms, 400ms, 800ms
+    setTimeout(async () => {
+      try {
+        await pending.operation();
+        // Success — remove from queue
+        const idx = this.#retryQueue.indexOf(pending);
+        if (idx >= 0) this.#retryQueue.splice(idx, 1);
+        this.pendingWriteCount = this.#retryQueue.length;
+        if (this.#retryQueue.length === 0) this.syncError = null;
+        toastStore.success("Write recovered");
+      } catch (err) {
+        pending.retries++;
+        pending.lastError = getErrorMessage(err);
+        if (pending.retries < 3) {
+          this.#scheduleRetry(pending);
+        } else {
+          // Max retries exhausted
+          this.syncError = pending.lastError;
+          toastStore.error("Write failed after retries", pending.lastError);
+        }
+      }
+    }, delay);
+  }
 
   #markDirty(): void {
     this.#writeGeneration++;

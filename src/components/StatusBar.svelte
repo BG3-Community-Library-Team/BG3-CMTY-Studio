@@ -16,6 +16,9 @@
   import ChevronUp from "@lucide/svelte/icons/chevron-up";
   import Bell from "@lucide/svelte/icons/bell";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import AlertCircle from "@lucide/svelte/icons/alert-circle";
+  import Loader2 from "@lucide/svelte/icons/loader-2";
   import { APP_VERSION } from "../lib/version.js";
   import NotificationHistory from "./NotificationHistory.svelte";
   import ValidationSummaryModal from "./ValidationSummaryModal.svelte";
@@ -212,6 +215,49 @@
             <span class="text-amber-400">{validationSummary.warningCount === 1 ? m.status_bar_warnings_one() : m.status_bar_warnings({ count: validationSummary.warningCount })}</span>
           {/if}
         </button>
+      {/if}
+      <!-- Sync status indicator -->
+      {#if projectStore.pendingWriteCount > 0 || projectStore.syncError}
+        <span class="text-[var(--th-border-600)]">│</span>
+        {#if projectStore.syncError}
+          <span class="inline-flex items-center gap-1 text-[var(--th-text-red-400)]"
+                title={projectStore.syncError}>
+            <AlertCircle class="w-3 h-3" />
+            <span class="truncate max-w-[120px]">Sync error</span>
+          </span>
+          <button
+            class="inline-flex items-center gap-1 text-[var(--th-text-red-400)] hover:text-[var(--th-text-red-300)]
+                   cursor-pointer transition-colors"
+            onclick={() => projectStore.forceSync()}
+            title="Force re-sync from database"
+            type="button"
+          >
+            <RefreshCw class="w-3 h-3" />
+            <span>Sync</span>
+          </button>
+        {:else}
+          <span class="inline-flex items-center gap-1 text-[var(--th-text-amber-400)]"
+                title="{projectStore.pendingWriteCount} write{projectStore.pendingWriteCount === 1 ? '' : 's'} pending">
+            <Loader2 class="w-3 h-3 animate-spin" />
+            <span>{projectStore.pendingWriteCount}</span>
+          </span>
+        {/if}
+      {/if}
+      <!-- DB corruption banner -->
+      {#if projectStore.dbCorrupted}
+        <span class="text-[var(--th-border-600)]">│</span>
+        <span class="inline-flex items-center gap-1.5 text-[var(--th-text-red-400)] font-medium">
+          <AlertCircle class="w-3.5 h-3.5" />
+          <span>Database corrupted</span>
+          <button
+            class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium
+                   bg-[var(--th-text-red-400)] text-white hover:opacity-80
+                   cursor-pointer transition-opacity"
+            onclick={() => projectStore.resetCorruptedDb()}
+            title="Recreate staging database from scratch"
+            type="button"
+          >Reset Project</button>
+        </span>
       {/if}
     {:else}
       <span class="text-[var(--th-text-600)]">{m.status_bar_no_mod()}</span>

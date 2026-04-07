@@ -1930,6 +1930,9 @@ pub fn run() {
             commands::db::cmd_staging_snapshot,
             commands::db::cmd_staging_undo,
             commands::db::cmd_staging_redo,
+            commands::db::cmd_staging_wal_checkpoint,
+            commands::db::cmd_staging_compact_undo,
+            commands::db::cmd_validate_handlers,
             commands::export::cmd_save_project,
         ])
         .run(tauri::generate_context!())

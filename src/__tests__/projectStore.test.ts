@@ -20,11 +20,15 @@ vi.mock("../lib/tauri/staging.js", () => ({
   stagingUndo: vi.fn(),
   stagingRedo: vi.fn(),
   stagingGetRow: vi.fn(),
+  stagingCompactUndo: vi.fn(),
+  stagingWalCheckpoint: vi.fn(),
 }));
 
 // Mock the DB management module
 vi.mock("../lib/tauri/db-management.js", () => ({
   getDbPaths: vi.fn(),
+  checkStagingIntegrity: vi.fn(),
+  recreateStaging: vi.fn(),
 }));
 
 // Mock the toast store
@@ -48,6 +52,7 @@ import {
   stagingSnapshot,
   stagingUndo,
   stagingRedo,
+  stagingGetRow,
 } from "../lib/tauri/staging.js";
 import { getDbPaths } from "../lib/tauri/db-management.js";
 import { toastStore } from "../lib/stores/toastStore.svelte.js";
@@ -245,12 +250,20 @@ describe("toggleEntry", () => {
     expect(entries[0]._is_deleted).toBe(false);
   });
 
-  it("shows toast on failure", async () => {
+  it("enqueues retry on failure", async () => {
+    vi.useFakeTimers();
     await hydrateAndLoadRaces();
     vi.mocked(stagingMarkDeleted).mockRejectedValue(new Error("DB locked"));
 
     await projectStore.toggleEntry("Races", "race-001");
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to toggle entry", "DB locked");
+    expect(projectStore.pendingWriteCount).toBe(1);
+
+    // Exhaust all 3 retries (200ms, 400ms, 800ms)
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(toastStore.error).toHaveBeenCalledWith("Write failed after retries", "DB locked");
+    vi.useRealTimers();
   });
 
   it("no-ops for unknown pk", async () => {
@@ -291,12 +304,20 @@ describe("addEntry", () => {
     expect(projectStore.dirty).toBe(true);
   });
 
-  it("shows toast on failure", async () => {
+  it("enqueues retry on failure", async () => {
+    vi.useFakeTimers();
     await hydrateWithDefaults();
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("constraint violation"));
 
     await projectStore.addEntry("Races", { UUID: "dup-uuid", Name: "Dup" });
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to add entry", "constraint violation");
+    expect(projectStore.pendingWriteCount).toBe(1);
+
+    // Exhaust all 3 retries (200ms, 400ms, 800ms)
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(toastStore.error).toHaveBeenCalledWith("Write failed after retries", "constraint violation");
+    vi.useRealTimers();
   });
 });
 
@@ -307,10 +328,12 @@ describe("updateEntry", () => {
     await hydrateAndLoadRaces();
     vi.mocked(stagingUpsertRow).mockResolvedValue({ pk_value: "race-001", was_insert: false });
 
-    await projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
+    projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
     const entries = projectStore.getEntries("Races");
+    // Optimistic update is immediate (before flush)
     expect(entries[0].Name).toBe("HumanV2");
     expect(entries[0]._is_modified).toBe(true);
+    await projectStore.flushPendingWrites();
   });
 
   it("calls stagingUpsertRow with is_new=false", async () => {
@@ -318,15 +341,18 @@ describe("updateEntry", () => {
     vi.mocked(stagingUpsertRow).mockResolvedValue({ pk_value: "race-001", was_insert: false });
 
     const columns = { Name: "HumanV2" };
-    await projectStore.updateEntry("Races", "race-001", columns);
+    projectStore.updateEntry("Races", "race-001", columns);
+    await projectStore.flushPendingWrites();
     expect(stagingUpsertRow).toHaveBeenCalledWith(MOCK_DB_PATHS.staging, "Races", columns, false);
   });
 
   it("rolls back on IPC failure", async () => {
     await hydrateAndLoadRaces();
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("DB error"));
+    vi.mocked(stagingGetRow).mockResolvedValue({ UUID: "race-001", Name: "Human", _is_new: 0, _is_modified: 0, _is_deleted: 0 });
 
-    await projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
+    projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
+    await projectStore.flushPendingWrites();
     const entries = projectStore.getEntries("Races");
     expect(entries[0].Name).toBe("Human");
   });
@@ -334,8 +360,10 @@ describe("updateEntry", () => {
   it("shows toast on failure", async () => {
     await hydrateAndLoadRaces();
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("DB error"));
+    vi.mocked(stagingGetRow).mockResolvedValue({ UUID: "race-001", Name: "Human", _is_new: 0, _is_modified: 0, _is_deleted: 0 });
 
-    await projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
+    projectStore.updateEntry("Races", "race-001", { Name: "HumanV2" });
+    await projectStore.flushPendingWrites();
     expect(toastStore.warning).toHaveBeenCalledWith("Failed to update entry", "DB error");
   });
 });
@@ -384,12 +412,20 @@ describe("removeEntry", () => {
     expect(projectStore.dirty).toBe(true);
   });
 
-  it("shows toast on failure", async () => {
+  it("enqueues retry on failure", async () => {
+    vi.useFakeTimers();
     await hydrateAndLoadRaces();
     vi.mocked(stagingMarkDeleted).mockRejectedValue(new Error("DB locked"));
 
     await projectStore.removeEntry("Races", "race-001");
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to remove entry", "DB locked");
+    expect(projectStore.pendingWriteCount).toBe(1);
+
+    // Exhaust all 3 retries (200ms, 400ms, 800ms)
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(toastStore.error).toHaveBeenCalledWith("Write failed after retries", "DB locked");
+    vi.useRealTimers();
   });
 });
 
@@ -484,12 +520,20 @@ describe("batchToggle", () => {
     expect(afterStates).toEqual(beforeStates);
   });
 
-  it("shows toast on failure", async () => {
+  it("enqueues retry on failure", async () => {
+    vi.useFakeTimers();
     await hydrateAndLoadRaces();
     vi.mocked(stagingBatchWrite).mockRejectedValue(new Error("batch fail"));
 
     await projectStore.batchToggle("Races", ["race-001"], true);
-    expect(toastStore.warning).toHaveBeenCalledWith("Failed to batch toggle", "batch fail");
+    expect(projectStore.pendingWriteCount).toBe(1);
+
+    // Exhaust all 3 retries (200ms, 400ms, 800ms)
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(toastStore.error).toHaveBeenCalledWith("Write failed after retries", "batch fail");
+    vi.useRealTimers();
   });
 });
 
@@ -593,21 +637,22 @@ describe("IPC failure rollback", () => {
   it("restores updateEntry values on failure", async () => {
     await hydrateAndLoadRaces();
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("DB locked"));
+    vi.mocked(stagingGetRow).mockResolvedValue({ UUID: "race-001", Name: "Human", _is_new: 0, _is_modified: 0, _is_deleted: 0 });
 
     const entries = projectStore.getEntries("Races");
-    const originalName = entries[0].Name;
-    await projectStore.updateEntry("Races", "race-001", { Name: "ChangedName" });
-    expect(entries[0].Name).toBe(originalName);
+    projectStore.updateEntry("Races", "race-001", { Name: "ChangedName" });
+    await projectStore.flushPendingWrites();
+    expect(entries[0].Name).toBe("Human");
   });
 
-  it("shows warning toast on any failure", async () => {
+  it("shows warning toast on updateEntry failure", async () => {
     await hydrateAndLoadRaces();
-    vi.mocked(stagingMarkDeleted).mockRejectedValue(new Error("fail"));
     vi.mocked(stagingUpsertRow).mockRejectedValue(new Error("fail2"));
+    vi.mocked(stagingGetRow).mockResolvedValue({ UUID: "race-002", Name: "Elf", _is_new: 0, _is_modified: 1, _is_deleted: 0 });
 
-    await projectStore.toggleEntry("Races", "race-001");
-    await projectStore.updateEntry("Races", "race-002", { Name: "X" });
-    expect(toastStore.warning).toHaveBeenCalledTimes(2);
+    projectStore.updateEntry("Races", "race-002", { Name: "X" });
+    await projectStore.flushPendingWrites();
+    expect(toastStore.warning).toHaveBeenCalledWith("Failed to update entry", "fail2");
   });
 
   it("restores batchToggle states on failure", async () => {
@@ -692,5 +737,208 @@ describe("snapshot", () => {
   it("no-ops when not hydrated", async () => {
     await projectStore.snapshot("test");
     expect(stagingSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+// ── 14. EntryRow type validation (via loadSection) ──────────────────
+
+describe("EntryRow derivation", () => {
+  it("falls back to UUID when _pk_column is absent", async () => {
+    await hydrateWithDefaults();
+    vi.mocked(stagingQuerySection).mockResolvedValue([
+      { UUID: "u1", Name: "A", _is_new: 0, _is_modified: 0, _is_deleted: 0 },
+    ]);
+
+    const entries = await projectStore.loadSection("Races");
+    expect(entries[0]._pk_column).toBe("UUID");
+    expect(entries[0]._pk).toBe("u1");
+  });
+
+  it("falls back to Name when no UUID present", async () => {
+    await hydrateWithDefaults();
+    vi.mocked(stagingQuerySection).mockResolvedValue([
+      { Name: "Fireball", _is_new: 0, _is_modified: 0, _is_deleted: 0 },
+    ]);
+
+    const entries = await projectStore.loadSection("Races");
+    expect(entries[0]._pk_column).toBe("Name");
+    expect(entries[0]._pk).toBe("Fireball");
+  });
+
+  it("falls back to rowid when neither UUID nor Name present", async () => {
+    await hydrateWithDefaults();
+    vi.mocked(stagingQuerySection).mockResolvedValue([
+      { rowid: 42, _is_new: 0, _is_modified: 0, _is_deleted: 0 },
+    ]);
+
+    const entries = await projectStore.loadSection("Races");
+    expect(entries[0]._pk_column).toBe("rowid");
+    expect(entries[0]._pk).toBe("42");
+  });
+
+  it("uses explicit _pk_column when present", async () => {
+    await hydrateWithDefaults();
+    vi.mocked(stagingQuerySection).mockResolvedValue([
+      { _pk_column: "contentuid", contentuid: "h00001", UUID: "ignored", _is_new: 0, _is_modified: 0, _is_deleted: 0 },
+    ]);
+
+    const entries = await projectStore.loadSection("Races");
+    expect(entries[0]._pk_column).toBe("contentuid");
+    expect(entries[0]._pk).toBe("h00001");
+  });
+
+  it("converts truthy/falsy _is_* fields to booleans", async () => {
+    await hydrateWithDefaults();
+    vi.mocked(stagingQuerySection).mockResolvedValue([
+      { UUID: "a", _is_new: 1, _is_modified: 0, _is_deleted: 0 },
+      { UUID: "b", _is_new: 0, _is_modified: "1", _is_deleted: 0 },
+      { UUID: "c", _is_new: null, _is_modified: undefined, _is_deleted: "" },
+    ]);
+
+    const entries = await projectStore.loadSection("Races");
+    expect(entries[0]._is_new).toBe(true);
+    expect(entries[0]._is_modified).toBe(false);
+    expect(entries[1]._is_modified).toBe(true);
+    expect(entries[2]._is_new).toBe(false);
+    expect(entries[2]._is_modified).toBe(false);
+    expect(entries[2]._is_deleted).toBe(false);
+  });
+});
+
+// ── 15. Mutation edge cases ─────────────────────────────────────────
+
+describe("mutation edge cases", () => {
+  it("updateEntry with empty columns object succeeds", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingUpsertRow).mockResolvedValue({ pk_value: "race-001", was_insert: false });
+
+    const result = projectStore.updateEntry("Races", "race-001", {});
+    expect(result).toBe(true);
+    await projectStore.flushPendingWrites();
+    expect(stagingUpsertRow).toHaveBeenCalledWith(MOCK_DB_PATHS.staging, "Races", {}, false);
+  });
+
+  it("addEntry when not hydrated shows warning and returns false", async () => {
+    // Store is reset — never hydrated, so #stagingDbPath is ""
+    const result = await projectStore.addEntry("Races", { UUID: "x", Name: "Y" });
+    expect(result).toBe(false);
+    expect(toastStore.warning).toHaveBeenCalledWith("Cannot add entry", "No project loaded");
+    expect(stagingUpsertRow).not.toHaveBeenCalled();
+  });
+
+  it("removeEntry on entry not in cache still calls IPC", async () => {
+    await hydrateWithDefaults();
+    // Section not loaded, so entry not in cache
+    vi.mocked(stagingMarkDeleted).mockResolvedValue(true);
+
+    await projectStore.removeEntry("Races", "nonexistent-pk");
+    expect(stagingMarkDeleted).toHaveBeenCalledWith(MOCK_DB_PATHS.staging, "Races", "nonexistent-pk");
+  });
+
+  it("toggleEntry on deleted entry un-deletes it", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingUnmarkDeleted).mockResolvedValue(true);
+
+    // race-004 is _is_deleted: true
+    const entries = projectStore.getEntries("Races");
+    const deleted = entries.find(e => e._pk === "race-004")!;
+    expect(deleted._is_deleted).toBe(true);
+
+    await projectStore.toggleEntry("Races", "race-004");
+    expect(deleted._is_deleted).toBe(false);
+    expect(stagingUnmarkDeleted).toHaveBeenCalledWith(MOCK_DB_PATHS.staging, "Races", "race-004");
+  });
+
+  it("batchToggle with empty pks array is a no-op", async () => {
+    await hydrateAndLoadRaces();
+
+    await projectStore.batchToggle("Races", [], true);
+    // stagingBatchWrite may be called with empty ops — that's fine,
+    // but the key assertion is the cache/dirty state are unchanged
+    expect(projectStore.dirty).toBe(false);
+  });
+});
+
+// ── 16. Undo/Redo journal replay invalidation ──────────────────────
+
+describe("undo/redo replay invalidation detail", () => {
+  it("undo invalidates only tables in the replay entries", async () => {
+    await hydrateAndLoadRaces();
+    // Also load Progressions
+    vi.mocked(stagingQuerySection).mockResolvedValue([]);
+    await projectStore.loadSection("Progressions");
+
+    const replay: UndoReplayEntry[] = [
+      { table_name: "Races", pk_value: "race-001", action: "restore" },
+    ];
+    vi.mocked(stagingUndo).mockResolvedValue(replay);
+    vi.mocked(stagingListSections).mockResolvedValue(MOCK_SECTIONS);
+
+    await projectStore.undo();
+
+    // Races was in replay → invalidated
+    expect(projectStore.isSectionLoaded("Races")).toBe(false);
+    // Progressions was NOT in replay → still cached
+    expect(projectStore.isSectionLoaded("Progressions")).toBe(true);
+  });
+
+  it("redo invalidates only tables in the replay entries", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingQuerySection).mockResolvedValue([]);
+    await projectStore.loadSection("Progressions");
+
+    const replay: UndoReplayEntry[] = [
+      { table_name: "Progressions", pk_value: "p-001", action: "restore" },
+    ];
+    vi.mocked(stagingRedo).mockResolvedValue(replay);
+    vi.mocked(stagingListSections).mockResolvedValue(MOCK_SECTIONS);
+
+    await projectStore.redo();
+
+    // Progressions was in replay → invalidated
+    expect(projectStore.isSectionLoaded("Progressions")).toBe(false);
+    // Races was NOT in replay → still cached
+    expect(projectStore.isSectionLoaded("Races")).toBe(true);
+  });
+
+  it("undo with multi-table replay invalidates all affected tables", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingQuerySection).mockResolvedValue([]);
+    await projectStore.loadSection("Progressions");
+
+    const replay: UndoReplayEntry[] = [
+      { table_name: "Races", pk_value: "race-001", action: "restore" },
+      { table_name: "Progressions", pk_value: "p-001", action: "delete" },
+    ];
+    vi.mocked(stagingUndo).mockResolvedValue(replay);
+    vi.mocked(stagingListSections).mockResolvedValue(MOCK_SECTIONS);
+
+    await projectStore.undo();
+
+    expect(projectStore.isSectionLoaded("Races")).toBe(false);
+    expect(projectStore.isSectionLoaded("Progressions")).toBe(false);
+  });
+
+  it("undo when nothing to undo returns empty and makes no cache changes", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingUndo).mockResolvedValue([]);
+
+    const racesLoaded = projectStore.isSectionLoaded("Races");
+    await projectStore.undo();
+
+    // No cache invalidation
+    expect(projectStore.isSectionLoaded("Races")).toBe(racesLoaded);
+    // stagingListSections not called again (only from hydrate)
+    expect(stagingListSections).toHaveBeenCalledTimes(1);
+  });
+
+  it("redo when nothing to redo returns empty and makes no cache changes", async () => {
+    await hydrateAndLoadRaces();
+    vi.mocked(stagingRedo).mockResolvedValue([]);
+
+    await projectStore.redo();
+
+    expect(projectStore.isSectionLoaded("Races")).toBe(true);
+    expect(stagingListSections).toHaveBeenCalledTimes(1);
   });
 });

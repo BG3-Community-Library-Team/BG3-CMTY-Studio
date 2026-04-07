@@ -753,6 +753,105 @@ pub async fn cmd_staging_redo(
     .await
 }
 
+/// Truncate the WAL file for the staging DB.
+#[tauri::command]
+pub async fn cmd_staging_wal_checkpoint(
+    staging_db_path: String,
+) -> Result<(), AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+            .map_err(|e| format!("WAL checkpoint: {}", e))?;
+        Ok(())
+    })
+    .await
+}
+
+/// Compact the undo journal by removing the oldest entries beyond `max_entries`.
+///
+/// Returns the number of entries deleted.
+#[tauri::command]
+pub async fn cmd_staging_compact_undo(
+    staging_db_path: String,
+    max_entries: Option<i64>,
+) -> Result<i64, AppError> {
+    blocking(move || {
+        let limit = max_entries.unwrap_or(500);
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+
+        // Check if the undo journal table exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_staging_undo_journal'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if !exists {
+            return Ok(0);
+        }
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM _staging_undo_journal", [], |r| r.get(0))
+            .map_err(|e| format!("Count undo journal: {}", e))?;
+
+        if count <= limit {
+            return Ok(0);
+        }
+
+        let to_delete = count - limit;
+        conn.execute(
+            "DELETE FROM _staging_undo_journal WHERE rowid IN \
+             (SELECT rowid FROM _staging_undo_journal ORDER BY rowid ASC LIMIT ?1)",
+            [to_delete],
+        )
+        .map_err(|e| format!("Compact undo journal: {}", e))?;
+
+        Ok(to_delete)
+    })
+    .await
+}
+
+/// J1: Validate all export handlers against the current staging state.
+#[tauri::command]
+pub async fn cmd_validate_handlers(
+    staging_db_path: String,
+    ref_base_path: String,
+    mod_path: String,
+    mod_name: String,
+    mod_folder: String,
+) -> Result<Vec<crate::export::HandlerWarning>, AppError> {
+    blocking(move || {
+        let staging_db = std::path::PathBuf::from(&staging_db_path);
+        if !staging_db.is_file() {
+            return Err(format!("Staging database not found: {}", staging_db_path));
+        }
+        let conn = rusqlite::Connection::open(&staging_db)
+            .map_err(|e| format!("Open staging DB: {}", e))?;
+
+        let ctx = crate::export::ExportContext {
+            staging_conn: conn,
+            ref_base_path: std::path::PathBuf::from(&ref_base_path),
+            mod_path: std::path::PathBuf::from(&mod_path),
+            mod_name,
+            mod_folder,
+        };
+
+        crate::export::validate_all_handlers(&ctx).map_err(|e| e.message)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

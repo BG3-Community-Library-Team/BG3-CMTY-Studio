@@ -149,3 +149,18 @@ export async function stagingRedo(
 ): Promise<UndoReplayEntry[]> {
   return invoke("cmd_staging_redo", { stagingDbPath });
 }
+
+// === Maintenance API ===
+
+export async function stagingWalCheckpoint(
+  stagingDbPath: string,
+): Promise<void> {
+  return invoke("cmd_staging_wal_checkpoint", { stagingDbPath });
+}
+
+export async function stagingCompactUndo(
+  stagingDbPath: string,
+  maxEntries?: number,
+): Promise<number> {
+  return invoke("cmd_staging_compact_undo", { stagingDbPath, maxEntries: maxEntries ?? null });
+}

@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export type WarningSeverity = "Info" | "Warning" | "Error";
+
+export interface HandlerWarning {
+  handler_name: string;
+  message: string;
+  severity: WarningSeverity;
+}
+
 export interface FileReport {
   path: string;
   handler: string;
@@ -35,5 +43,21 @@ export async function saveProject(
     modFolder,
     backup,
     dryRun,
+  });
+}
+
+export async function validateHandlers(
+  stagingDbPath: string,
+  refBasePath: string,
+  modPath: string,
+  modName: string,
+  modFolder: string,
+): Promise<HandlerWarning[]> {
+  return invoke("cmd_validate_handlers", {
+    stagingDbPath,
+    refBasePath,
+    modPath,
+    modName,
+    modFolder,
   });
 }

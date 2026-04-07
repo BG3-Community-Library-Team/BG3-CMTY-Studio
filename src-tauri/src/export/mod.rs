@@ -9,7 +9,28 @@ pub mod writer;
 use crate::error::AppError;
 use rusqlite::Connection;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use walkdir::WalkDir;
+
+// ---------------------------------------------------------------------------
+// Validation types
+// ---------------------------------------------------------------------------
+
+/// Severity level for handler validation warnings.
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum WarningSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+/// A warning produced by a handler's validation pass.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HandlerWarning {
+    pub handler_name: String,
+    pub message: String,
+    pub severity: WarningSeverity,
+}
 
 // ---------------------------------------------------------------------------
 // Core trait
@@ -33,6 +54,13 @@ pub trait FileTypeHandler: Send + Sync {
 
     /// Serialize an export unit to file content bytes.
     fn render(&self, unit: &ExportUnit, ctx: &ExportContext) -> Result<Vec<u8>, AppError>;
+
+    /// Validate handler readiness against the current export context.
+    /// Returns warnings/errors without modifying state.
+    /// Default implementation returns no warnings.
+    fn validate(&self, _ctx: &ExportContext) -> Result<Vec<HandlerWarning>, AppError> {
+        Ok(vec![])
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,11 +122,21 @@ pub struct ExportPlan {
 // Registry
 // ---------------------------------------------------------------------------
 
+/// Singleton handler registry. Adding a handler = one `Box::new(...)` line.
+pub static HANDLER_REGISTRY: LazyLock<Vec<Box<dyn FileTypeHandler>>> = LazyLock::new(|| {
+    vec![
+        Box::new(lsx_handler::LsxHandler),
+        Box::new(stats_handler::StatsHandler),
+        Box::new(loca_handler::LocaHandler),
+        Box::new(osiris_handler::OsirisHandler),
+        Box::new(meta_handler::MetaLsxHandler),
+    ]
+});
+
 /// Returns all built-in file-type handlers.
 ///
-/// Handlers are checked in order. The first handler to claim a table prefix
-/// owns that table. Order matters only for conflict resolution (no conflicts
-/// expected with current handlers).
+/// Deprecated: prefer `&*HANDLER_REGISTRY` for read-only access.
+/// Kept for backward-compatibility with tests.
 pub fn default_handlers() -> Vec<Box<dyn FileTypeHandler>> {
     vec![
         Box::new(lsx_handler::LsxHandler),
@@ -108,6 +146,66 @@ pub fn default_handlers() -> Vec<Box<dyn FileTypeHandler>> {
         Box::new(meta_handler::MetaLsxHandler),
     ]
 }
+
+/// Run `validate()` on every registered handler, collecting all warnings.
+pub fn validate_all_handlers(ctx: &ExportContext) -> Result<Vec<HandlerWarning>, AppError> {
+    let mut all_warnings = Vec::new();
+    for handler in HANDLER_REGISTRY.iter() {
+        let warnings = handler.validate(ctx)?;
+        all_warnings.extend(warnings);
+    }
+    Ok(all_warnings)
+}
+
+// ---------------------------------------------------------------------------
+// Future: ScriptHandler (design stub — not yet implemented)
+// ---------------------------------------------------------------------------
+//
+// A `ScriptHandler` would export Script Extender Lua scripts and config files
+// stored as blobs in `_staging_authoring`.
+//
+// ## Design
+//
+// - **claimed_table_prefixes():** Empty — ScriptHandler uses meta keys only,
+//   not staging data tables.
+//
+// - **claimed_meta_keys():** Keys matching the pattern `script_file_*`.
+//   Each key encodes the relative output path in its suffix, e.g.
+//   `script_file_Mods/MyMod/ScriptExtender/Lua/BootstrapServer.lua`.
+//   The corresponding value is the file content stored as a text blob.
+//
+// - **plan():** Query `_staging_authoring` for all keys matching
+//   `script_file_%`. For each key:
+//   - Extract the relative path from the key suffix (after `script_file_`).
+//   - Check if `_is_deleted = 1` → `FileAction::Delete`.
+//   - Check if the file exists on disk → `FileAction::Update` or `Create`.
+//   - Return one `ExportUnit` per matched key.
+//
+// - **render():** Return the blob value bytes directly (UTF-8 text or raw
+//   binary depending on encoding metadata).
+//
+// ## Open questions
+//
+// 1. **Binary file handling:** Lua scripts are UTF-8 text, but some SE configs
+//    may be binary. Should we store a per-key encoding flag in authoring meta?
+//
+// 2. **Merge strategy:** When a script file already exists on disk (e.g. from
+//    a previous manual export or external editor), should the handler overwrite
+//    unconditionally, or attempt a merge/conflict detection?
+//
+// 3. **Encoding declaration:** Should each blob key have a companion
+//    `script_encoding_*` key, or use a structured JSON value with both content
+//    and encoding fields?
+//
+// 4. **Large file handling:** Blobs stored in `_staging_authoring` as TEXT
+//    have practical size limits. Consider a threshold beyond which content is
+//    stored as a file reference instead of inline.
+//
+// ## Implementation plan
+//
+// See `.documentation/PLANS/EPIC-script-config-authoring.md` for the concrete
+// implementation plan spanning Sprints 19–23. The handler template at
+// `.documentation/HANDLER_TEMPLATE.md` describes the general pattern.
 
 // ---------------------------------------------------------------------------
 // Plan builder

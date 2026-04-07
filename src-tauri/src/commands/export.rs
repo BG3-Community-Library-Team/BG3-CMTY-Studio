@@ -111,8 +111,8 @@ fn save_project_sync(
         mod_folder,
     };
 
-    // 3. Get default handlers
-    let handlers = export::default_handlers();
+    // 3. Get handlers from registry
+    let handlers = &*export::HANDLER_REGISTRY;
 
     // 4. Build export plan
     let mut plan = export::build_export_plan(&ctx, &handlers)?;
@@ -196,7 +196,12 @@ fn save_project_sync(
     // 9. Reset staging tracking flags
     reset_staging_tracking(&ctx.staging_conn)?;
 
-    // 10. Return result
+    // 10. Reclaim space from hard-deleted rows and compacted undo journal
+    ctx.staging_conn
+        .execute_batch("VACUUM")
+        .map_err(|e| AppError::internal(format!("VACUUM staging DB: {}", e)))?;
+
+    // 11. Return result
     Ok(SaveProjectResult {
         files_created: report.files_created,
         files_updated: report.files_updated,
