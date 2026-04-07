@@ -32,6 +32,23 @@ pub enum PakCompression {
     Unknown(u32),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionLevel {
+    Fast,
+    Default,
+    Max,
+}
+
+impl CompressionLevel {
+    pub fn to_flag_bits(self) -> u8 {
+        match self {
+            Self::Fast    => 0x10,
+            Self::Default => 0x20,
+            Self::Max     => 0x40,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PakEntryFlags(u32);
 
@@ -118,6 +135,16 @@ impl PakCompression {
             2 => Self::Lz4,
             3 => Self::Zstd,
             value => Self::Unknown(value as u32),
+        }
+    }
+
+    pub fn method_bits(&self) -> u8 {
+        match self {
+            Self::None => 0x00,
+            Self::Zlib => 0x01,
+            Self::Lz4 => 0x02,
+            Self::Zstd => 0x03,
+            Self::Unknown(v) => *v as u8 & 0x0F,
         }
     }
 }

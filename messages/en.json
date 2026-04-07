@@ -816,5 +816,14 @@
   "save_summary_bytes_label": "{bytes} bytes",
   "save_summary_backed_up": "backed up",
   "export_bar_preview_save": "Preview Save",
-  "export_bar_preview_failed": "Preview failed"
+  "export_bar_preview_failed": "Preview failed",
+
+  "export_pak_toggle": "Also package as .pak",
+  "export_pak_output_path": "Output .pak path",
+  "export_pak_compression": "Compression",
+  "export_pak_level": "Compression level",
+  "export_pak_priority": "Priority",
+  "export_pak_priority_tooltip": "Load priority (0 = lowest, higher overrides lower). User mods typically use 0.",
+  "export_pak_success": "Packaged {modName} ({fileCount} files, {size})",
+  "export_pak_error": "Packaging failed: {error}"
 }

@@ -1,4 +1,5 @@
 pub mod compression;
+pub mod convert;
 pub mod entry;
 pub mod error;
 pub mod filter;
@@ -7,13 +8,14 @@ pub mod manifest;
 pub mod path;
 pub mod reader;
 pub mod stream;
+pub mod writer;
 
 pub use entry::PakEntry;
 pub use error::{PakError, PakResult};
 pub use filter::{EntrySelector, PakEntryFilter};
 pub use format::{
-	parse_package, PakCompression, PakEntryFlags, PakPackageFlags, PakVersion, RawFileEntry,
-	RawPackageHeader, RawPackageMetadata,
+	parse_package, CompressionLevel, PakCompression, PakEntryFlags, PakPackageFlags, PakVersion,
+	RawFileEntry, RawPackageHeader, RawPackageMetadata,
 };
 pub use manifest::PakManifest;
 pub use path::PakPath;

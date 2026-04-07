@@ -115,7 +115,7 @@ fn save_project_sync(
     let handlers = &*export::HANDLER_REGISTRY;
 
     // 4. Build export plan
-    let mut plan = export::build_export_plan(&ctx, &handlers)?;
+    let mut plan = export::build_export_plan(&ctx, handlers)?;
 
     // 5. Render content for each unit that needs writing
     for unit in plan.units.iter_mut() {

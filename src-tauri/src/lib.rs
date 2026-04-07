@@ -1934,6 +1934,7 @@ pub fn run() {
             commands::db::cmd_staging_compact_undo,
             commands::db::cmd_validate_handlers,
             commands::export::cmd_save_project,
+            commands::package::cmd_package_mod,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,7 +9,8 @@
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { type Section, getErrorMessage } from "../lib/types/index.js";
   import { diffEntryToLsx, getRegionId } from "../lib/utils/entryToLsx.js";
-  import { exportMod, openPath, saveConfig, type ExportFileSpec } from "../lib/utils/tauri.js";
+  import { exportMod, openPath, saveConfig, type ExportFileSpec, packageMod } from "../lib/utils/tauri.js";
+  import type { PackageModOptions } from "../lib/tauri/packaging.js";
   import { m } from "../paraglide/messages.js";
   import Check from "@lucide/svelte/icons/check";
   import X from "@lucide/svelte/icons/x";
@@ -18,6 +19,7 @@
   import FileText from "@lucide/svelte/icons/file-text";
   import Languages from "@lucide/svelte/icons/languages";
   import ScrollText from "@lucide/svelte/icons/scroll-text";
+  import Package from "@lucide/svelte/icons/package";
   import { focusTrap } from "../lib/utils/focusTrap.js";
   import { generateRaceTagGoalFile } from "../lib/utils/osirisGoalWriter.js";
   import type { LocaFileEntry } from "../lib/types/index.js";
@@ -30,6 +32,13 @@
   let exportErrors: string[] = $state([]);
   let exportFileErrors: Record<string, string[]> = $state({});
   let exportedCount = $state(0);
+
+  // Pak packaging options
+  let pakEnabled = $state(false);
+  let pakCompression = $state<"lz4" | "zlib" | "none">("lz4");
+  let pakLevel = $state<"fast" | "default" | "max">("default");
+  let pakPriority = $state(0);
+  let pakOutputPath = $state("");
 
   // Staging meta-loaded data (async on mount)
   let locaEntries: LocaFileEntry[] = $state([]);
@@ -80,6 +89,13 @@
   let scanResult = $derived(modStore.scanResult);
   let modPath = $derived(modStore.selectedModPath);
   let modFolder = $derived(scanResult?.mod_meta.folder ?? "");
+
+  // Initialize default pak output path
+  $effect(() => {
+    if (modFolder && !pakOutputPath) {
+      pakOutputPath = `${modFolder}.pak`;
+    }
+  });
 
   /** Gather all LSX file specs from scan results. */
   let lsxFileSpecs = $derived.by((): { specs: ExportFileSpec[]; totalEntries: number } => {
@@ -178,6 +194,12 @@
     return fullPath;
   }
 
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   async function handleExport(): Promise<void> {
     if (!scanResult || !modPath) return;
     exporting = true;
@@ -224,6 +246,26 @@
       exportedCount = result.files.length;
       exportErrors = result.errors;
       exportFileErrors = result.file_errors;
+
+      // Package as .pak if enabled
+      if (pakEnabled && modPath) {
+        try {
+          const pakResult = await packageMod({
+            modPath,
+            outputPath: pakOutputPath || `${modFolder}.pak`,
+            priority: pakPriority,
+            compression: pakCompression,
+            compressionLevel: pakLevel,
+          });
+          toastStore.success(
+            m.export_pak_success({ modName: modFolder, fileCount: String(pakResult.file_count), size: formatBytes(pakResult.total_bytes) }),
+            "",
+          );
+        } catch (e) {
+          exportErrors = [...exportErrors, m.export_pak_error({ error: getErrorMessage(e) })];
+        }
+      }
+
       exportDone = true;
 
       const totalErrorCount = result.errors.length + Object.values(result.file_errors).reduce((n, arr) => n + arr.length, 0);
@@ -326,6 +368,75 @@
             </span>
           </div>
         {/if}
+
+        <!-- Packaging section -->
+        <div class="border-t border-[var(--th-border-700)] mt-3 pt-3">
+          <label class="flex items-center gap-2 text-xs text-[var(--th-text-200)] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              bind:checked={pakEnabled}
+              class="rounded border-[var(--th-border-600)] bg-[var(--th-input-bg,#27272a)] accent-sky-500"
+            />
+            <Package size={14} class="text-amber-400" />
+            {m.export_pak_toggle()}
+          </label>
+
+          {#if pakEnabled}
+            <div class="mt-2 space-y-2 pl-6">
+              <div>
+                <label for="pak-output-path" class="block text-[10px] text-[var(--th-text-500)] mb-0.5">{m.export_pak_output_path()}</label>
+                <input
+                  id="pak-output-path"
+                  type="text"
+                  bind:value={pakOutputPath}
+                  class="w-full text-xs px-2 py-1 rounded bg-[var(--th-input-bg,#27272a)] border border-[var(--th-border-600)] text-[var(--th-text-200)] focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  placeholder="{modFolder}.pak"
+                />
+              </div>
+
+              <div class="flex gap-3">
+                <div class="flex-1">
+                  <label for="pak-compression" class="block text-[10px] text-[var(--th-text-500)] mb-0.5">{m.export_pak_compression()}</label>
+                  <select
+                    id="pak-compression"
+                    bind:value={pakCompression}
+                    class="w-full text-xs px-2 py-1 rounded bg-[var(--th-input-bg,#27272a)] border border-[var(--th-border-600)] text-[var(--th-text-200)] focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  >
+                    <option value="lz4">LZ4</option>
+                    <option value="zlib">Zlib</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+
+                <div class="flex-1">
+                  <label for="pak-level" class="block text-[10px] text-[var(--th-text-500)] mb-0.5">{m.export_pak_level()}</label>
+                  <select
+                    id="pak-level"
+                    bind:value={pakLevel}
+                    disabled={pakCompression === "none"}
+                    class="w-full text-xs px-2 py-1 rounded bg-[var(--th-input-bg,#27272a)] border border-[var(--th-border-600)] text-[var(--th-text-200)] disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  >
+                    <option value="default">Default</option>
+                    <option value="fast">Fast</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+
+                <div class="w-16">
+                  <label for="pak-priority" class="block text-[10px] text-[var(--th-text-500)] mb-0.5" title={m.export_pak_priority_tooltip()}>{m.export_pak_priority()}</label>
+                  <input
+                    id="pak-priority"
+                    type="number"
+                    bind:value={pakPriority}
+                    min="0"
+                    max="255"
+                    class="w-full text-xs px-2 py-1 rounded bg-[var(--th-input-bg,#27272a)] border border-[var(--th-border-600)] text-[var(--th-text-200)] focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  />
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
 
         {#if totalFiles === 0}
           <p class="text-xs text-[var(--th-text-500)] text-center py-4">

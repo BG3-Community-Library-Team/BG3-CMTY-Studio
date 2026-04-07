@@ -3,6 +3,7 @@ pub mod diff;
 pub mod export;
 pub mod generate;
 pub mod mod_import;
+pub mod package;
 pub mod paths;
 pub mod rediff;
 pub mod scan;
