@@ -8,7 +8,7 @@ use bg3_cmty_studio_lib::pak::writer::{PakWriter, PakWriterOptions};
 fn read_entry_bytes(reader: &PakReader, path: &str) -> Vec<u8> {
     let pak_path = PakPath::parse(path).unwrap();
     let entry = reader.find(&pak_path).unwrap_or_else(|| {
-        panic!("entry not found: {}", path);
+        panic!("entry not found: {path}");
     });
     let mut data = Vec::new();
     reader
@@ -65,7 +65,7 @@ fn roundtrip_multi_file() {
 
     for (path, expected) in &files {
         let data = read_entry_bytes(&reader, path);
-        assert_eq!(data, *expected, "content mismatch for {}", path);
+        assert_eq!(data, *expected, "content mismatch for {path}");
     }
 }
 

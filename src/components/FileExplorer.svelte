@@ -31,6 +31,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
+  import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
 
   // ── File type badge colors ──
   const EXT_BADGE_COLORS: Record<string, string> = {
@@ -120,6 +121,7 @@
   });
 
   let scanResult = $derived(modStore.scanResult);
+  let refreshingAll = $state(false);
   let modName = $derived(scanResult?.mod_meta?.name ?? m.file_explorer_no_mod());
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
   let sections = $derived(scanResult?.sections ?? []);
@@ -558,6 +560,26 @@
     {#if scanResult}
       <button
         class="ml-auto p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
+        title="Refresh all sections"
+        aria-label="Refresh all sections"
+        onclick={async () => {
+          refreshingAll = true;
+          try { await projectStore.refreshAllSections(); }
+          finally { refreshingAll = false; }
+        }}
+      >
+        <RefreshCw size={14} class={refreshingAll ? 'animate-spin' : ''} />
+      </button>
+      <button
+        class="p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
+        title="Package project"
+        aria-label="Package project"
+        onclick={() => commandRegistry.execute('action.packageProject')}
+      >
+        <Package size={14} />
+      </button>
+      <button
+        class="p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
         title="Open a different project"
         aria-label="Open project folder"
         onclick={async () => {

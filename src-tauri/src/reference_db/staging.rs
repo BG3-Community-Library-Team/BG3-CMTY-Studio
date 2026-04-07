@@ -62,22 +62,22 @@ pub fn create_staging_db(
     let _ = std::fs::remove_file(staging_db_path);
     let db_str = staging_db_path.to_string_lossy();
     for suffix in &["-wal", "-shm"] {
-        let _ = std::fs::remove_file(format!("{}{}", db_str, suffix));
+        let _ = std::fs::remove_file(format!("{db_str}{suffix}"));
     }
 
     let conn = Connection::open(staging_db_path)
-        .map_err(|e| format!("Create staging DB: {}", e))?;
+        .map_err(|e| format!("Create staging DB: {e}"))?;
 
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA page_size = 8192;
          PRAGMA foreign_keys = OFF;",
     )
-    .map_err(|e| format!("Pragma error: {}", e))?;
+    .map_err(|e| format!("Pragma error: {e}"))?;
 
     // Wrap all DDL + metadata in a single transaction to avoid per-statement fsyncs.
     let tx = conn.unchecked_transaction()
-        .map_err(|e| format!("Begin transaction: {}", e))?;
+        .map_err(|e| format!("Begin transaction: {e}"))?;
 
     // Meta tables (same as reference DB)
     create_staging_meta_tables(&tx)?;
@@ -89,7 +89,7 @@ pub fn create_staging_db(
             value BLOB NOT NULL
          ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Create _embedded_schema: {}", e))?;
+    .map_err(|e| format!("Create _embedded_schema: {e}"))?;
 
     // Data tables with staging tracking columns, no FK constraints
     for ts in schema.tables.values() {
@@ -133,31 +133,30 @@ pub fn create_staging_db(
 
     // Store schema blob (matches ref_base format for pipeline compatibility)
     let blob = rmp_serde::to_vec(&schema)
-        .map_err(|e| format!("Serialize schema: {}", e))?;
+        .map_err(|e| format!("Serialize schema: {e}"))?;
     tx.execute(
         "INSERT OR REPLACE INTO _embedded_schema (key, value) VALUES ('schema', ?1)",
         rusqlite::params![blob],
     )
-    .map_err(|e| format!("Store schema blob: {}", e))?;
+    .map_err(|e| format!("Store schema blob: {e}"))?;
 
     // Populate column types metadata
     populate_staging_column_types(&tx, &schema)?;
 
-    tx.commit().map_err(|e| format!("Commit staging DDL: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit staging DDL: {e}"))?;
 
     let total_tables = schema.tables.len();
     let junction_tables = schema.junction_tables.len();
 
     eprintln!(
-        "  Staging DB created: {} data tables, {} junctions (no FKs, WAL mode)",
-        total_tables, junction_tables,
+        "  Staging DB created: {total_tables} data tables, {junction_tables} junctions (no FKs, WAL mode)",
     );
 
     // VACUUM the empty DB
     conn.execute_batch("PRAGMA journal_mode = DELETE; VACUUM;")
-        .map_err(|e| format!("Vacuum staging DB: {}", e))?;
+        .map_err(|e| format!("Vacuum staging DB: {e}"))?;
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
 
     let db_size_bytes = std::fs::metadata(staging_db_path)
         .map(|m| m.len())
@@ -193,8 +192,7 @@ pub fn populate_staging_from_mod(
     let total_files = files.len();
     let collect_secs = t0.elapsed().as_secs_f64();
     eprintln!(
-        "  Phase: collect_mod    {:.1}s  ({} files for staging '{}')",
-        collect_secs, total_files, mod_name
+        "  Phase: collect_mod    {collect_secs:.1}s  ({total_files} files for staging '{mod_name}')"
     );
 
     // Use the standard populate pipeline — the staging DB has the same column
@@ -270,7 +268,7 @@ fn create_staging_meta_tables(conn: &Connection) -> Result<(), String> {
             _original_hash TEXT
         ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Staging meta table error: {}", e))
+    .map_err(|e| format!("Staging meta table error: {e}"))
 }
 
 /// Create a data table for the staging DB.
@@ -337,14 +335,14 @@ fn populate_staging_column_types(
             "INSERT OR IGNORE INTO _column_types (table_name, column_name, bg3_type, sqlite_type) \
              VALUES (?1, ?2, ?3, ?4)",
         )
-        .map_err(|e| format!("Prepare column_types insert: {}", e))?;
+        .map_err(|e| format!("Prepare column_types insert: {e}"))?;
 
     for (table_name, ts) in &schema.tables {
         // PK column
         let pk_col = ts.pk_strategy.pk_column();
         let pk_type = ts.pk_strategy.pk_sql_type();
         stmt.execute(rusqlite::params![table_name, pk_col, Option::<&str>::None, pk_type])
-            .map_err(|e| format!("Insert column_types {}.{}: {}", table_name, pk_col, e))?;
+            .map_err(|e| format!("Insert column_types {table_name}.{pk_col}: {e}"))?;
 
         // Data columns
         for col in &ts.columns {
@@ -365,7 +363,7 @@ fn populate_staging_column_types(
         // Staging-specific columns
         for staging_col in &["_is_modified", "_is_new", "_is_deleted"] {
             stmt.execute(rusqlite::params![table_name, staging_col, Option::<&str>::None, "INTEGER"])
-                .map_err(|e| format!("Insert column_types {}.{}: {}", table_name, staging_col, e))?;
+                .map_err(|e| format!("Insert column_types {table_name}.{staging_col}: {e}"))?;
         }
     }
 
@@ -419,7 +417,7 @@ pub fn staging_upsert_row(
     if pk_col == "_row_id" && is_new && !columns.contains_key("_row_id") {
         let next_id: i64 = conn
             .query_row(
-                &format!("SELECT COALESCE(MAX(\"_row_id\"), 0) + 1 FROM \"{}\"", table),
+                &format!("SELECT COALESCE(MAX(\"_row_id\"), 0) + 1 FROM \"{table}\""),
                 [],
                 |row| row.get(0),
             )
@@ -431,8 +429,7 @@ pub fn staging_upsert_row(
         .get(&pk_col)
         .ok_or_else(|| {
             format!(
-                "Missing PK column '{}' in upsert data for table '{}'",
-                pk_col, table
+                "Missing PK column '{pk_col}' in upsert data for table '{table}'"
             )
         })?
         .clone();
@@ -448,16 +445,15 @@ pub fn staging_upsert_row(
     // Check if row already exists
     let existing_is_new: Option<bool> = {
         let sql = format!(
-            "SELECT \"_is_new\" FROM \"{}\" WHERE \"{}\" = ?1",
-            table, pk_col
+            "SELECT \"_is_new\" FROM \"{table}\" WHERE \"{pk_col}\" = ?1"
         );
-        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare check: {}", e))?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare check: {e}"))?;
         stmt.query_row([&pk_value], |row| {
             let v: i32 = row.get(0)?;
             Ok(v == 1)
         })
         .optional()
-        .map_err(|e| format!("Check existing: {}", e))?
+        .map_err(|e| format!("Check existing: {e}"))?
     };
 
     let was_insert = existing_is_new.is_none();
@@ -467,7 +463,7 @@ pub fn staging_upsert_row(
         let set_clauses: Vec<String> = columns
             .iter()
             .filter(|(k, _)| **k != pk_col)
-            .map(|(k, _)| format!("\"{}\" = ?", k))
+            .map(|(k, _)| format!("\"{k}\" = ?"))
             .collect();
 
         if set_clauses.is_empty() {
@@ -477,11 +473,10 @@ pub fn staging_upsert_row(
                 "\"_is_modified\" = 1"
             };
             let sql = format!(
-                "UPDATE \"{}\" SET {} WHERE \"{}\" = ?1",
-                table, tracking, pk_col
+                "UPDATE \"{table}\" SET {tracking} WHERE \"{pk_col}\" = ?1"
             );
             conn.execute(&sql, rusqlite::params![pk_value])
-                .map_err(|e| format!("Update tracking: {}", e))?;
+                .map_err(|e| format!("Update tracking: {e}"))?;
         } else {
             let tracking = if prev_is_new {
                 ", \"_is_new\" = 1"
@@ -490,8 +485,7 @@ pub fn staging_upsert_row(
             };
             let all_sets = format!("{}{}", set_clauses.join(", "), tracking);
             let sql = format!(
-                "UPDATE \"{}\" SET {} WHERE \"{}\" = ?",
-                table, all_sets, pk_col
+                "UPDATE \"{table}\" SET {all_sets} WHERE \"{pk_col}\" = ?"
             );
 
             let mut values: Vec<String> = columns
@@ -504,16 +498,16 @@ pub fn staging_upsert_row(
             let refs: Vec<&dyn rusqlite::types::ToSql> =
                 values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
             conn.execute(&sql, refs.as_slice())
-                .map_err(|e| format!("Update row: {}", e))?;
+                .map_err(|e| format!("Update row: {e}"))?;
         }
     } else {
         // Row doesn't exist → INSERT
-        let mut all_cols: Vec<String> = columns.keys().map(|c| format!("\"{}\"", c)).collect();
+        let mut all_cols: Vec<String> = columns.keys().map(|c| format!("\"{c}\"")).collect();
         all_cols.push("\"_is_new\"".to_string());
         all_cols.push("\"_is_modified\"".to_string());
 
         let mut placeholders: Vec<String> =
-            (1..=columns.len()).map(|i| format!("?{}", i)).collect();
+            (1..=columns.len()).map(|i| format!("?{i}")).collect();
         let new_val = if is_new { "1" } else { "0" };
         let mod_val = if is_new { "0" } else { "1" };
         placeholders.push(new_val.to_string());
@@ -530,7 +524,7 @@ pub fn staging_upsert_row(
         let refs: Vec<&dyn rusqlite::types::ToSql> =
             values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
         conn.execute(&sql, refs.as_slice())
-            .map_err(|e| format!("Insert row: {}", e))?;
+            .map_err(|e| format!("Insert row: {e}"))?;
     }
 
     // Undo: record change
@@ -569,25 +563,24 @@ pub fn staging_mark_deleted(
 
     let is_new: Option<bool> = {
         let sql = format!(
-            "SELECT \"_is_new\" FROM \"{}\" WHERE \"{}\" = ?1",
-            table, pk_col
+            "SELECT \"_is_new\" FROM \"{table}\" WHERE \"{pk_col}\" = ?1"
         );
-        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
         stmt.query_row([pk], |row| {
             let v: i32 = row.get(0)?;
             Ok(v == 1)
         })
         .optional()
-        .map_err(|e| format!("Check: {}", e))?
+        .map_err(|e| format!("Check: {e}"))?
     };
 
     match is_new {
         None => Ok(false),
         Some(true) => {
             // _is_new=1 → hard delete (entry only existed in staging)
-            let sql = format!("DELETE FROM \"{}\" WHERE \"{}\" = ?1", table, pk_col);
+            let sql = format!("DELETE FROM \"{table}\" WHERE \"{pk_col}\" = ?1");
             conn.execute(&sql, [pk])
-                .map_err(|e| format!("Hard delete: {}", e))?;
+                .map_err(|e| format!("Hard delete: {e}"))?;
             // Undo: record hard delete (new_row = None since row is gone)
             if journal_active {
                 staging_record_change(conn, "delete", table, pk, old_row_json.as_deref(), None)?;
@@ -597,11 +590,10 @@ pub fn staging_mark_deleted(
         Some(false) => {
             // Existing row → soft delete
             let sql = format!(
-                "UPDATE \"{}\" SET \"_is_deleted\" = 1 WHERE \"{}\" = ?1",
-                table, pk_col
+                "UPDATE \"{table}\" SET \"_is_deleted\" = 1 WHERE \"{pk_col}\" = ?1"
             );
             conn.execute(&sql, [pk])
-                .map_err(|e| format!("Soft delete: {}", e))?;
+                .map_err(|e| format!("Soft delete: {e}"))?;
             // Undo: record soft delete
             if journal_active {
                 let new_row_json = capture_row_as_json(conn, table, &pk_col, pk)?;
@@ -631,12 +623,11 @@ pub fn staging_unmark_deleted(
     };
 
     let sql = format!(
-        "UPDATE \"{}\" SET \"_is_deleted\" = 0 WHERE \"{}\" = ?1",
-        table, pk_col
+        "UPDATE \"{table}\" SET \"_is_deleted\" = 0 WHERE \"{pk_col}\" = ?1"
     );
     let affected = conn
         .execute(&sql, [pk])
-        .map_err(|e| format!("Undelete: {}", e))?;
+        .map_err(|e| format!("Undelete: {e}"))?;
     let result = affected > 0;
 
     // Undo: record state change
@@ -688,7 +679,7 @@ pub fn staging_batch_write(
 ) -> Result<StagingBatchResult, String> {
     let tx = conn
         .unchecked_transaction()
-        .map_err(|e| format!("Begin batch transaction: {}", e))?;
+        .map_err(|e| format!("Begin batch transaction: {e}"))?;
 
     let total = operations.len();
 
@@ -720,7 +711,7 @@ pub fn staging_batch_write(
     }
 
     tx.commit()
-        .map_err(|e| format!("Commit batch: {}", e))?;
+        .map_err(|e| format!("Commit batch: {e}"))?;
 
     Ok(StagingBatchResult {
         total,
@@ -761,13 +752,12 @@ pub fn staging_query_changes(
     for (table_name, ts) in &tables {
         let pk_col = ts.pk_strategy.pk_column();
         let sql = format!(
-            "SELECT * FROM \"{}\" WHERE \"_is_new\" = 1 OR \"_is_modified\" = 1 OR \"_is_deleted\" = 1",
-            table_name
+            "SELECT * FROM \"{table_name}\" WHERE \"_is_new\" = 1 OR \"_is_modified\" = 1 OR \"_is_deleted\" = 1"
         );
 
         let mut stmt = conn
             .prepare(&sql)
-            .map_err(|e| format!("Query changes in {}: {}", table_name, e))?;
+            .map_err(|e| format!("Query changes in {table_name}: {e}"))?;
         let col_count = stmt.column_count();
         let col_names: Vec<String> = (0..col_count)
             .map(|i| stmt.column_name(i).unwrap().to_string())
@@ -823,10 +813,10 @@ pub fn staging_query_changes(
                     columns,
                 })
             })
-            .map_err(|e| format!("Map changes in {}: {}", table_name, e))?;
+            .map_err(|e| format!("Map changes in {table_name}: {e}"))?;
 
         for row in rows {
-            changes.push(row.map_err(|e| format!("Row error in {}: {}", table_name, e))?);
+            changes.push(row.map_err(|e| format!("Row error in {table_name}: {e}"))?);
         }
     }
 
@@ -862,8 +852,7 @@ pub fn staging_list_sections(
                 SUM(CASE WHEN \"_is_new\" = 1 THEN 1 ELSE 0 END), \
                 SUM(CASE WHEN \"_is_modified\" = 1 THEN 1 ELSE 0 END), \
                 SUM(CASE WHEN \"_is_deleted\" = 1 THEN 1 ELSE 0 END) \
-             FROM \"{}\"",
-            table_name
+             FROM \"{table_name}\""
         );
 
         let counts = conn
@@ -884,7 +873,7 @@ pub fn staging_list_sections(
                         .unwrap_or(0) as usize,
                 ))
             })
-            .map_err(|e| format!("Count rows in {}: {}", table_name, e))?;
+            .map_err(|e| format!("Count rows in {table_name}: {e}"))?;
 
         sections.push(StagingSectionSummary {
             table_name: table_name.clone(),
@@ -911,17 +900,16 @@ pub fn staging_query_section(
     let resolved = resolve_staging_table(conn, table)?;
 
     let sql = if include_deleted {
-        format!("SELECT * FROM \"{}\"", resolved)
+        format!("SELECT * FROM \"{resolved}\"")
     } else {
         format!(
-            "SELECT * FROM \"{}\" WHERE \"_is_deleted\" = 0",
-            resolved
+            "SELECT * FROM \"{resolved}\" WHERE \"_is_deleted\" = 0"
         )
     };
 
     let mut stmt = conn
         .prepare(&sql)
-        .map_err(|e| format!("Query section {}: {}", table, e))?;
+        .map_err(|e| format!("Query section {table}: {e}"))?;
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
         .map(|i| stmt.column_name(i).unwrap().to_string())
@@ -937,11 +925,11 @@ pub fn staging_query_section(
             }
             Ok(map)
         })
-        .map_err(|e| format!("Map rows in {}: {}", table, e))?;
+        .map_err(|e| format!("Map rows in {table}: {e}"))?;
 
     let mut result = Vec::new();
     for row in rows {
-        result.push(row.map_err(|e| format!("Row error: {}", e))?);
+        result.push(row.map_err(|e| format!("Row error: {e}"))?);
     }
     Ok(result)
 }
@@ -956,12 +944,11 @@ pub fn staging_get_row(
     let pk_col = get_pk_column(conn, &resolved)?;
 
     let sql = format!(
-        "SELECT * FROM \"{}\" WHERE \"{}\" = ?1",
-        resolved, pk_col
+        "SELECT * FROM \"{resolved}\" WHERE \"{pk_col}\" = ?1"
     );
     let mut stmt = conn
         .prepare(&sql)
-        .map_err(|e| format!("Prepare get_row: {}", e))?;
+        .map_err(|e| format!("Prepare get_row: {e}"))?;
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
         .map(|i| stmt.column_name(i).unwrap().to_string())
@@ -978,7 +965,7 @@ pub fn staging_get_row(
             Ok(map)
         })
         .optional()
-        .map_err(|e| format!("Get row: {}", e))?;
+        .map_err(|e| format!("Get row: {e}"))?;
 
     Ok(result)
 }
@@ -995,7 +982,7 @@ pub fn ensure_staging_authoring_table(conn: &Connection) -> Result<(), String> {
             _original_hash TEXT
         ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Create _staging_authoring: {}", e))?;
+    .map_err(|e| format!("Create _staging_authoring: {e}"))?;
 
     // For existing tables that might lack new columns, attempt to add them.
     for (col, default) in &[
@@ -1006,14 +993,12 @@ pub fn ensure_staging_authoring_table(conn: &Connection) -> Result<(), String> {
     ] {
         let has_col = conn
             .prepare(&format!(
-                "SELECT \"{}\" FROM _staging_authoring LIMIT 0",
-                col
+                "SELECT \"{col}\" FROM _staging_authoring LIMIT 0"
             ))
             .is_ok();
         if !has_col {
             let _ = conn.execute_batch(&format!(
-                "ALTER TABLE _staging_authoring ADD COLUMN \"{}\" {}",
-                col, default
+                "ALTER TABLE _staging_authoring ADD COLUMN \"{col}\" {default}"
             ));
         }
     }
@@ -1033,7 +1018,7 @@ pub fn staging_get_meta(
             |row| row.get(0),
         )
         .optional()
-        .map_err(|e| format!("Get meta '{}': {}", key, e))?;
+        .map_err(|e| format!("Get meta '{key}': {e}"))?;
     Ok(result)
 }
 
@@ -1047,7 +1032,7 @@ pub fn staging_set_meta(
         "INSERT OR REPLACE INTO _staging_authoring (key, value) VALUES (?1, ?2)",
         rusqlite::params![key, value],
     )
-    .map_err(|e| format!("Set meta '{}': {}", key, e))?;
+    .map_err(|e| format!("Set meta '{key}': {e}"))?;
     Ok(())
 }
 
@@ -1086,7 +1071,7 @@ fn resolve_staging_table(conn: &Connection, table: &str) -> Result<String, Strin
             return Ok(resolved);
         }
     }
-    Err(format!("Table '{}' not found in staging schema", table))
+    Err(format!("Table '{table}' not found in staging schema"))
 }
 
 /// Resolve a frontend table name (e.g. `lsx__Progressions`) to the actual
@@ -1157,7 +1142,7 @@ fn get_pk_column(conn: &Connection, table: &str) -> Result<String, String> {
     let ts = schema
         .tables
         .get(table)
-        .ok_or_else(|| format!("Table '{}' not in schema", table))?;
+        .ok_or_else(|| format!("Table '{table}' not in schema"))?;
     Ok(ts.pk_strategy.pk_column().to_string())
 }
 
@@ -1171,9 +1156,9 @@ fn load_embedded_schema(
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("Load embedded schema: {}", e))?;
+        .map_err(|e| format!("Load embedded schema: {e}"))?;
 
-    rmp_serde::from_slice(&blob).map_err(|e| format!("Deserialize schema: {}", e))
+    rmp_serde::from_slice(&blob).map_err(|e| format!("Deserialize schema: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1201,7 +1186,7 @@ pub fn ensure_undo_journal_table(conn: &Connection) -> Result<(), String> {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )
-    .map_err(|e| format!("Create undo journal: {}", e))
+    .map_err(|e| format!("Create undo journal: {e}"))
 }
 
 /// Record a change in the undo journal. Called by staging write functions.
@@ -1218,7 +1203,7 @@ pub fn staging_record_change(
          VALUES (?1, ?2, ?3, ?4, ?5)",
         rusqlite::params![label, table_name, pk_value, old_row, new_row],
     )
-    .map_err(|e| format!("Record undo change: {}", e))?;
+    .map_err(|e| format!("Record undo change: {e}"))?;
     Ok(())
 }
 
@@ -1244,14 +1229,14 @@ pub fn staging_snapshot(conn: &Connection, label: &str) -> Result<i64, String> {
                 [ptr],
                 |row| row.get(0),
             )
-            .map_err(|e| format!("Check redo boundaries: {}", e))?;
+            .map_err(|e| format!("Check redo boundaries: {e}"))?;
 
         if redo_boundary_count > 0 {
             conn.execute(
                 "DELETE FROM _staging_undo_journal WHERE id > ?1",
                 [ptr],
             )
-            .map_err(|e| format!("Prune redo: {}", e))?;
+            .map_err(|e| format!("Prune redo: {e}"))?;
         }
     }
 
@@ -1261,7 +1246,7 @@ pub fn staging_snapshot(conn: &Connection, label: &str) -> Result<i64, String> {
          VALUES (?1, '__boundary__', '', NULL, NULL)",
         [label],
     )
-    .map_err(|e| format!("Insert boundary: {}", e))?;
+    .map_err(|e| format!("Insert boundary: {e}"))?;
 
     let boundary_id = conn.last_insert_rowid();
     staging_set_meta(conn, "undo_pointer", &boundary_id.to_string())?;
@@ -1292,7 +1277,7 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
             |row| row.get(0),
         )
         .optional()
-        .map_err(|e| format!("Find prev boundary: {}", e))?
+        .map_err(|e| format!("Find prev boundary: {e}"))?
         .flatten();
 
     let lower = prev_boundary.unwrap_or(0);
@@ -1306,7 +1291,7 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                  WHERE id > ?1 AND id < ?2 AND table_name != '__boundary__' \
                  ORDER BY id DESC",
             )
-            .map_err(|e| format!("Query undo entries: {}", e))?;
+            .map_err(|e| format!("Query undo entries: {e}"))?;
 
         let result = stmt.query_map(rusqlite::params![lower, pointer], |row| {
             Ok((
@@ -1316,9 +1301,9 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                 row.get::<_, Option<String>>(3)?,
             ))
         })
-        .map_err(|e| format!("Map undo entries: {}", e))?
+        .map_err(|e| format!("Map undo entries: {e}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Collect undo entries: {}", e))?;
+        .map_err(|e| format!("Collect undo entries: {e}"))?;
         result
     };
 
@@ -1331,7 +1316,7 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                     "DELETE FROM _staging_authoring WHERE key = 'undo_pointer'",
                     [],
                 )
-                .map_err(|e| format!("Clear undo pointer: {}", e))?;
+                .map_err(|e| format!("Clear undo pointer: {e}"))?;
             }
         }
         return Ok(vec![]);
@@ -1341,7 +1326,7 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
 
     let tx = conn
         .unchecked_transaction()
-        .map_err(|e| format!("Begin undo transaction: {}", e))?;
+        .map_err(|e| format!("Begin undo transaction: {e}"))?;
 
     let mut replayed = Vec::new();
     for (table_name, pk_value, old_row, new_row) in &entries {
@@ -1368,11 +1353,11 @@ pub fn staging_undo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                 "DELETE FROM _staging_authoring WHERE key = 'undo_pointer'",
                 [],
             )
-            .map_err(|e| format!("Clear undo pointer: {}", e))?;
+            .map_err(|e| format!("Clear undo pointer: {e}"))?;
         }
     }
 
-    tx.commit().map_err(|e| format!("Commit undo: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit undo: {e}"))?;
 
     Ok(replayed)
 }
@@ -1396,7 +1381,7 @@ pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
             |row| row.get(0),
         )
         .optional()
-        .map_err(|e| format!("Find next boundary: {}", e))?
+        .map_err(|e| format!("Find next boundary: {e}"))?
         .flatten();
 
     let next_boundary = match next_boundary {
@@ -1413,7 +1398,7 @@ pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                  WHERE id > ?1 AND id < ?2 AND table_name != '__boundary__' \
                  ORDER BY id ASC",
             )
-            .map_err(|e| format!("Query redo entries: {}", e))?;
+            .map_err(|e| format!("Query redo entries: {e}"))?;
 
         let result = stmt.query_map(rusqlite::params![pointer_val, next_boundary], |row| {
             Ok((
@@ -1423,9 +1408,9 @@ pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
                 row.get::<_, Option<String>>(3)?,
             ))
         })
-        .map_err(|e| format!("Map redo entries: {}", e))?
+        .map_err(|e| format!("Map redo entries: {e}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Collect redo entries: {}", e))?;
+        .map_err(|e| format!("Collect redo entries: {e}"))?;
         result
     };
 
@@ -1439,7 +1424,7 @@ pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
 
     let tx = conn
         .unchecked_transaction()
-        .map_err(|e| format!("Begin redo transaction: {}", e))?;
+        .map_err(|e| format!("Begin redo transaction: {e}"))?;
 
     let mut replayed = Vec::new();
     for (table_name, pk_value, old_row, new_row) in &entries {
@@ -1459,9 +1444,137 @@ pub fn staging_redo(conn: &Connection) -> Result<Vec<UndoReplayEntry>, String> {
     }
 
     staging_set_meta(&tx, "undo_pointer", &next_boundary.to_string())?;
-    tx.commit().map_err(|e| format!("Commit redo: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit redo: {e}"))?;
 
     Ok(replayed)
+}
+
+/// Replace all rows in a staging table with the given baseline rows and
+/// clear the undo journal for that table.  Used by "Reset Section" to
+/// restore a section to its state when the project was first opened.
+///
+/// `rows` must have the same shape as `staging_query_section` output
+/// (all data columns + `_is_new`, `_is_modified`, `_is_deleted`).
+/// Returns the number of rows restored.
+pub fn staging_replace_section(
+    conn: &Connection,
+    table: &str,
+    rows: &[HashMap<String, serde_json::Value>],
+) -> Result<usize, String> {
+    let resolved = resolve_staging_table(conn, table)?;
+    let table = resolved.as_str();
+
+    // Get schema columns so we know which columns belong in this table
+    let schema = load_embedded_schema(conn)?;
+    let ts = schema
+        .tables
+        .get(table)
+        .ok_or_else(|| format!("Table '{table}' not in embedded schema"))?;
+    let schema_cols: Vec<&str> = ts.columns.iter().map(|c| c.name.as_str()).collect();
+
+    // Tracking columns that also need to be restored
+    let tracking_cols = ["_is_new", "_is_modified", "_is_deleted"];
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Begin replace transaction: {e}"))?;
+
+    // 1. Delete all existing rows
+    tx.execute(&format!("DELETE FROM \"{table}\""), [])
+        .map_err(|e| format!("Clear table '{table}': {e}"))?;
+
+    // 2. Insert each baseline row
+    if !rows.is_empty() {
+        // Determine columns to insert from the first row, filtered to known columns
+        let insert_cols: Vec<String> = {
+            let mut cols: Vec<String> = schema_cols
+                .iter()
+                .filter(|c| rows[0].contains_key(**c))
+                .map(|c| c.to_string())
+                .collect();
+            for tc in &tracking_cols {
+                if rows[0].contains_key(*tc) && !cols.contains(&tc.to_string()) {
+                    cols.push(tc.to_string());
+                }
+            }
+            cols
+        };
+
+        let col_list = insert_cols
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholders = (1..=insert_cols.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!("INSERT INTO \"{table}\" ({col_list}) VALUES ({placeholders})");
+
+        let mut stmt = tx.prepare(&sql).map_err(|e| format!("Prepare insert: {e}"))?;
+
+        for row in rows {
+            let values: Vec<Box<dyn rusqlite::types::ToSql>> = insert_cols
+                .iter()
+                .map(|col| -> Box<dyn rusqlite::types::ToSql> {
+                    match row.get(col.as_str()) {
+                        Some(serde_json::Value::String(s)) => Box::new(s.clone()),
+                        Some(serde_json::Value::Number(n)) => {
+                            if let Some(i) = n.as_i64() {
+                                Box::new(i)
+                            } else if let Some(f) = n.as_f64() {
+                                Box::new(f)
+                            } else {
+                                Box::new(n.to_string())
+                            }
+                        }
+                        Some(serde_json::Value::Bool(b)) => Box::new(*b as i32),
+                        Some(serde_json::Value::Null) | None => {
+                            Box::new(rusqlite::types::Null)
+                        }
+                        Some(other) => Box::new(other.to_string()),
+                    }
+                })
+                .collect();
+
+            let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+            stmt.execute(refs.as_slice())
+                .map_err(|e| format!("Insert baseline row: {e}"))?;
+        }
+    }
+
+    // 3. Clear undo journal entries for this table
+    if undo_journal_exists(&tx) {
+        tx.execute(
+            "DELETE FROM _staging_undo_journal WHERE table_name = ?1",
+            [table],
+        )
+        .map_err(|e| format!("Clear undo journal for '{table}': {e}"))?;
+
+        // Reset undo pointer to the latest remaining boundary (if any)
+        let max_boundary: i64 = tx
+            .query_row(
+                "SELECT COALESCE(MAX(id), 0) FROM _staging_undo_journal WHERE table_name = '__boundary__'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Query max boundary: {e}"))?;
+
+        if max_boundary > 0 {
+            staging_set_meta(&tx, "undo_pointer", &max_boundary.to_string())?;
+        } else {
+            // No boundaries left — clear pointer
+            tx.execute(
+                "DELETE FROM _staging_authoring WHERE key = 'undo_pointer'",
+                [],
+            )
+            .map_err(|e| format!("Clear undo pointer: {e}"))?;
+        }
+    }
+
+    tx.commit().map_err(|e| format!("Commit replace: {e}"))?;
+
+    Ok(rows.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -1485,7 +1598,7 @@ fn get_undo_pointer(conn: &Connection) -> Result<Option<i64>, String> {
         Some(s) => {
             let id: i64 = s
                 .parse()
-                .map_err(|_| format!("Invalid undo_pointer: {}", s))?;
+                .map_err(|_| format!("Invalid undo_pointer: {s}"))?;
             Ok(Some(id))
         }
         None => {
@@ -1497,7 +1610,7 @@ fn get_undo_pointer(conn: &Connection) -> Result<Option<i64>, String> {
                     [],
                     |row| row.get(0),
                 )
-                .map_err(|e| format!("Query max boundary: {}", e))?;
+                .map_err(|e| format!("Query max boundary: {e}"))?;
 
             if max_boundary == 0 {
                 Ok(None)
@@ -1516,12 +1629,11 @@ fn capture_row_as_json(
     pk_value: &str,
 ) -> Result<Option<String>, String> {
     let sql = format!(
-        "SELECT * FROM \"{}\" WHERE \"{}\" = ?1",
-        table, pk_col
+        "SELECT * FROM \"{table}\" WHERE \"{pk_col}\" = ?1"
     );
     let mut stmt = conn
         .prepare(&sql)
-        .map_err(|e| format!("Capture row prep: {}", e))?;
+        .map_err(|e| format!("Capture row prep: {e}"))?;
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
         .map(|i| stmt.column_name(i).unwrap().to_string())
@@ -1537,12 +1649,12 @@ fn capture_row_as_json(
             Ok(map)
         })
         .optional()
-        .map_err(|e| format!("Capture row query: {}", e))?;
+        .map_err(|e| format!("Capture row query: {e}"))?;
 
     match result {
         Some(map) => {
             let json = serde_json::to_string(&serde_json::Value::Object(map))
-                .map_err(|e| format!("Serialize captured row: {}", e))?;
+                .map_err(|e| format!("Serialize captured row: {e}"))?;
             Ok(Some(json))
         }
         None => Ok(None),
@@ -1568,11 +1680,10 @@ fn replay_undo_entry(
         (None, Some(_)) => {
             // Was an INSERT → undo by DELETE
             let sql = format!(
-                "DELETE FROM \"{}\" WHERE \"{}\" = ?1",
-                table_name, pk_col
+                "DELETE FROM \"{table_name}\" WHERE \"{pk_col}\" = ?1"
             );
             conn.execute(&sql, [pk_value])
-                .map_err(|e| format!("Undo delete {}.{}: {}", table_name, pk_value, e))?;
+                .map_err(|e| format!("Undo delete {table_name}.{pk_value}: {e}"))?;
             Ok("delete".to_string())
         }
         (Some(old), None) => {
@@ -1586,8 +1697,7 @@ fn replay_undo_entry(
             Ok("update".to_string())
         }
         (None, None) => Err(format!(
-            "Invalid journal entry: both old_row and new_row are NULL for {}.{}",
-            table_name, pk_value
+            "Invalid journal entry: both old_row and new_row are NULL for {table_name}.{pk_value}"
         )),
     }
 }
@@ -1616,11 +1726,10 @@ fn replay_redo_entry(
         (Some(_), None) => {
             // Was a DELETE → redo by DELETE
             let sql = format!(
-                "DELETE FROM \"{}\" WHERE \"{}\" = ?1",
-                table_name, pk_col
+                "DELETE FROM \"{table_name}\" WHERE \"{pk_col}\" = ?1"
             );
             conn.execute(&sql, [pk_value])
-                .map_err(|e| format!("Redo delete {}.{}: {}", table_name, pk_value, e))?;
+                .map_err(|e| format!("Redo delete {table_name}.{pk_value}: {e}"))?;
             Ok("delete".to_string())
         }
         (Some(_), Some(new)) => {
@@ -1629,8 +1738,7 @@ fn replay_redo_entry(
             Ok("update".to_string())
         }
         (None, None) => Err(format!(
-            "Invalid journal entry: both old_row and new_row are NULL for {}.{}",
-            table_name, pk_value
+            "Invalid journal entry: both old_row and new_row are NULL for {table_name}.{pk_value}"
         )),
     }
 }
@@ -1638,10 +1746,10 @@ fn replay_redo_entry(
 /// Insert a row from a JSON string.
 fn insert_row_from_json(conn: &Connection, table: &str, json: &str) -> Result<(), String> {
     let map: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for insert: {}", e))?;
+        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for insert: {e}"))?;
 
-    let cols: Vec<String> = map.keys().map(|k| format!("\"{}\"", k)).collect();
-    let placeholders: Vec<String> = (1..=map.len()).map(|i| format!("?{}", i)).collect();
+    let cols: Vec<String> = map.keys().map(|k| format!("\"{k}\"")).collect();
+    let placeholders: Vec<String> = (1..=map.len()).map(|i| format!("?{i}")).collect();
     let sql = format!(
         "INSERT OR REPLACE INTO \"{}\" ({}) VALUES ({})",
         table,
@@ -1654,7 +1762,7 @@ fn insert_row_from_json(conn: &Connection, table: &str, json: &str) -> Result<()
     let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|b| b.as_ref()).collect();
 
     conn.execute(&sql, refs.as_slice())
-        .map_err(|e| format!("Insert from JSON into {}: {}", table, e))?;
+        .map_err(|e| format!("Insert from JSON into {table}: {e}"))?;
     Ok(())
 }
 
@@ -1667,12 +1775,12 @@ fn update_row_from_json(
     json: &str,
 ) -> Result<(), String> {
     let map: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for update: {}", e))?;
+        serde_json::from_str(json).map_err(|e| format!("Parse row JSON for update: {e}"))?;
 
     let set_clauses: Vec<String> = map
         .keys()
         .filter(|k| k.as_str() != pk_col)
-        .map(|k| format!("\"{}\" = ?", k))
+        .map(|k| format!("\"{k}\" = ?"))
         .collect();
 
     if set_clauses.is_empty() {
@@ -1696,7 +1804,7 @@ fn update_row_from_json(
     let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|b| b.as_ref()).collect();
 
     conn.execute(&sql, refs.as_slice())
-        .map_err(|e| format!("Update from JSON in {}: {}", table, e))?;
+        .map_err(|e| format!("Update from JSON in {table}: {e}"))?;
     Ok(())
 }
 
@@ -2712,13 +2820,11 @@ mod tests {
 
         for name in &injection_names {
             let result = staging_upsert_row(&conn, name, &cols, true);
-            assert!(result.is_err(), "Should reject table name: {}", name);
+            assert!(result.is_err(), "Should reject table name: {name}");
             let err = result.unwrap_err();
             assert!(
                 err.contains("not found in staging schema") || err.contains("not in schema"),
-                "Expected schema-not-found error for '{}', got: {}",
-                name,
-                err,
+                "Expected schema-not-found error for '{name}', got: {err}",
             );
         }
 
@@ -2742,7 +2848,7 @@ mod tests {
 
         for name in &["entries; DROP TABLE entries;", "test\"; --"] {
             let result = staging_mark_deleted(&conn, name, "safe-row");
-            assert!(result.is_err(), "Should reject table name: {}", name);
+            assert!(result.is_err(), "Should reject table name: {name}");
         }
 
         // Row survives

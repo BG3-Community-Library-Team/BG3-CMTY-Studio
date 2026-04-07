@@ -191,8 +191,7 @@ fn invalid_seek(position: u64, len: u64) -> Error {
     Error::new(
         ErrorKind::InvalidInput,
         format!(
-            "seek outside bounded reader range (position={}, len={})",
-            position, len
+            "seek outside bounded reader range (position={position}, len={len})"
         ),
     )
 }
@@ -201,8 +200,7 @@ fn invalid_seek_display(base: u64, delta: i64, len: u64) -> Error {
     Error::new(
         ErrorKind::InvalidInput,
         format!(
-            "seek outside bounded reader range (base={}, delta={}, len={})",
-            base, delta, len
+            "seek outside bounded reader range (base={base}, delta={delta}, len={len})"
         ),
     )
 }

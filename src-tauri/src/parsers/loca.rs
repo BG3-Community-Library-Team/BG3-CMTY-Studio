@@ -22,9 +22,9 @@ pub fn parse_loca_file(path: &Path) -> Result<Vec<LocaEntry>, String> {
 
 pub fn parse_loca<R: Read + Seek>(mut reader: R) -> Result<Vec<LocaEntry>, String> {
     let file_len = reader.seek(SeekFrom::End(0))
-        .map_err(|e| format!("Failed to inspect loca stream: {}", e))?;
+        .map_err(|e| format!("Failed to inspect loca stream: {e}"))?;
     reader.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("Failed to rewind loca stream: {}", e))?;
+        .map_err(|e| format!("Failed to rewind loca stream: {e}"))?;
 
     if file_len < HEADER_SIZE {
         return Err("Loca file too small to contain a header".into());
@@ -33,8 +33,7 @@ pub fn parse_loca<R: Read + Seek>(mut reader: R) -> Result<Vec<LocaEntry>, Strin
     let signature = read_u32(&mut reader)?;
     if signature != LOCA_SIGNATURE {
         return Err(format!(
-            "Incorrect signature in localization file: expected {:08X}, got {:08X}",
-            LOCA_SIGNATURE, signature
+            "Incorrect signature in localization file: expected {LOCA_SIGNATURE:08X}, got {signature:08X}"
         ));
     }
 
@@ -44,20 +43,17 @@ pub fn parse_loca<R: Read + Seek>(mut reader: R) -> Result<Vec<LocaEntry>, Strin
 
     if texts_offset < table_end {
         return Err(format!(
-            "Invalid loca text offset {} before entry table end {}",
-            texts_offset, table_end
+            "Invalid loca text offset {texts_offset} before entry table end {table_end}"
         ));
     }
     if texts_offset > file_len {
         return Err(format!(
-            "Invalid loca text offset {} beyond file size {}",
-            texts_offset, file_len
+            "Invalid loca text offset {texts_offset} beyond file size {file_len}"
         ));
     }
     if table_end > file_len {
         return Err(format!(
-            "Invalid loca entry table end {} beyond file size {}",
-            table_end, file_len
+            "Invalid loca entry table end {table_end} beyond file size {file_len}"
         ));
     }
 
@@ -65,14 +61,14 @@ pub fn parse_loca<R: Read + Seek>(mut reader: R) -> Result<Vec<LocaEntry>, Strin
     for _ in 0..num_entries {
         let mut key_bytes = [0u8; KEY_SIZE];
         reader.read_exact(&mut key_bytes)
-            .map_err(|e| format!("Failed to read loca entry key: {}", e))?;
+            .map_err(|e| format!("Failed to read loca entry key: {e}"))?;
         let version = read_u16(&mut reader)?;
         let length = read_u32(&mut reader)? as usize;
         raw_entries.push((decode_key(&key_bytes)?, version, length));
     }
 
     reader.seek(SeekFrom::Start(texts_offset))
-        .map_err(|e| format!("Failed to seek to loca text section: {}", e))?;
+        .map_err(|e| format!("Failed to seek to loca text section: {e}"))?;
 
     let mut entries = Vec::with_capacity(num_entries);
     for (key, version, length) in raw_entries {
@@ -94,7 +90,7 @@ fn decode_key(bytes: &[u8; KEY_SIZE]) -> Result<String, String> {
     let key_len = bytes.iter().position(|b| *b == 0).unwrap_or(KEY_SIZE);
     std::str::from_utf8(&bytes[..key_len])
         .map(|s| s.to_string())
-        .map_err(|e| format!("Invalid UTF-8 in loca key: {}", e))
+        .map_err(|e| format!("Invalid UTF-8 in loca key: {e}"))
 }
 
 fn read_text<R: Read>(reader: &mut R, length: usize) -> Result<String, String> {
@@ -104,27 +100,27 @@ fn read_text<R: Read>(reader: &mut R, length: usize) -> Result<String, String> {
 
     let mut buffer = vec![0u8; length];
     reader.read_exact(&mut buffer)
-        .map_err(|e| format!("Failed to read loca text: {}", e))?;
+        .map_err(|e| format!("Failed to read loca text: {e}"))?;
 
     if buffer.last() == Some(&0) {
         buffer.pop();
     }
 
     String::from_utf8(buffer)
-        .map_err(|e| format!("Invalid UTF-8 in loca text: {}", e))
+        .map_err(|e| format!("Invalid UTF-8 in loca text: {e}"))
 }
 
 fn read_u16<R: Read>(reader: &mut R) -> Result<u16, String> {
     let mut buf = [0u8; 2];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u16: {}", e))?;
+        .map_err(|e| format!("Failed to read u16: {e}"))?;
     Ok(u16::from_le_bytes(buf))
 }
 
 fn read_u32<R: Read>(reader: &mut R) -> Result<u32, String> {
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u32: {}", e))?;
+        .map_err(|e| format!("Failed to read u32: {e}"))?;
     Ok(u32::from_le_bytes(buf))
 }
 

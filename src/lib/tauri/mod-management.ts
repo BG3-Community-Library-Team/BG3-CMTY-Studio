@@ -52,6 +52,18 @@ export async function readModMeta(modPath: string): Promise<ModMetaInfo> {
   return invoke("cmd_read_mod_meta", { modPath });
 }
 
+// ─── File Utilities ────────────────────────────────────────────────
+
+/** Copy a file from source to destination, creating parent dirs as needed. */
+export async function copyFile(source: string, destination: string): Promise<void> {
+  return invoke("cmd_copy_file", { source, destination });
+}
+
+/** Check whether a file exists at the given path. */
+export async function fileExists(path: string): Promise<boolean> {
+  return invoke("cmd_file_exists", { path });
+}
+
 // ─── Mod Scaffold ──────────────────────────────────────────────────
 
 export interface CreateModResult {

@@ -206,7 +206,7 @@ where
     // Build the extraction regex (all public roots, all subfolders + Stats)
     let data_filter = build_pipeline_filter()?;
     if let Some(pattern) = data_filter.regex_pattern() {
-        diagnostics.push(format!("Extraction regex: {}", pattern));
+        diagnostics.push(format!("Extraction regex: {pattern}"));
     }
 
     // Collect all .pak files in data_dir for diagnostics and DiceSet/hotfix detection
@@ -234,8 +234,8 @@ where
 
     for pak_name in &data_pak_names {
         processed_data_paks += 1;
-        emit_progress(&on_progress, &pipeline_start, format!("Extracting {}.pak", pak_name),
-            format!("{}/{}", processed_data_paks, total_paks_to_extract),
+        emit_progress(&on_progress, &pipeline_start, format!("Extracting {pak_name}.pak"),
+            format!("{processed_data_paks}/{total_paks_to_extract}"),
             progress_pct(processed_data_paks - 1, total_paks_to_extract));
 
         match load_data_pak(
@@ -250,16 +250,16 @@ where
                 diagnostics.extend(diag);
             }
             Err(e) => {
-                diagnostics.push(format!("FAIL {}: {}", pak_name, e));
-                errors.push(format!("{}.pak: {}", pak_name, e));
+                diagnostics.push(format!("FAIL {pak_name}: {e}"));
+                errors.push(format!("{pak_name}.pak: {e}"));
             }
         }
     }
 
     for ds_pak in &diceset_paks {
         processed_data_paks += 1;
-        emit_progress(&on_progress, &pipeline_start, format!("Extracting {}", ds_pak),
-            format!("{}/{}", processed_data_paks, total_paks_to_extract),
+        emit_progress(&on_progress, &pipeline_start, format!("Extracting {ds_pak}"),
+            format!("{processed_data_paks}/{total_paks_to_extract}"),
             progress_pct(processed_data_paks - 1, total_paks_to_extract));
         let ds_name = ds_pak.trim_end_matches(".pak");
         match load_data_pak(
@@ -274,15 +274,15 @@ where
                 diagnostics.extend(diag);
             }
             Err(e) => {
-                diagnostics.push(format!("FAIL {}: {}", ds_pak, e));
+                diagnostics.push(format!("FAIL {ds_pak}: {e}"));
             }
         }
     }
 
     for hf_pak in &hotfix_paks {
         processed_data_paks += 1;
-        emit_progress(&on_progress, &pipeline_start, format!("Extracting {}", hf_pak),
-            format!("{}/{}", processed_data_paks, total_paks_to_extract),
+        emit_progress(&on_progress, &pipeline_start, format!("Extracting {hf_pak}"),
+            format!("{processed_data_paks}/{total_paks_to_extract}"),
             progress_pct(processed_data_paks - 1, total_paks_to_extract));
         let hf_name = hf_pak.trim_end_matches(".pak");
         match load_data_pak(
@@ -297,8 +297,8 @@ where
                 diagnostics.extend(diag);
             }
             Err(e) => {
-                diagnostics.push(format!("FAIL {}: {}", hf_pak, e));
-                errors.push(format!("{}: {}", hf_pak, e));
+                diagnostics.push(format!("FAIL {hf_pak}: {e}"));
+                errors.push(format!("{hf_pak}: {e}"));
             }
         }
     }
@@ -369,7 +369,7 @@ where
         &base_file_vec,
         &config.work_dir,
         &config.build_options,
-    ).map_err(|e| format!("Populate ref_base: {}", e))?;
+    ).map_err(|e| format!("Populate ref_base: {e}"))?;
 
     let base_db_size = fs::metadata(&config.base_db_path)
         .map(|m| m.len()).unwrap_or(0);
@@ -408,7 +408,7 @@ where
             &honor_file_vec,
             &config.work_dir,
             &honor_build_options,
-        ).map_err(|e| format!("Populate ref_honor: {}", e))?;
+        ).map_err(|e| format!("Populate ref_honor: {e}"))?;
 
         let honor_db_size = fs::metadata(&config.honor_db_path)
             .map(|m| m.len()).unwrap_or(0);
@@ -491,7 +491,7 @@ pub fn collect_files_from_paks(data_dir: &Path) -> Result<(Vec<FileEntry>, Vec<S
                 all_files.extend(files);
                 diagnostics.extend(diag);
             }
-            Err(e) => return Err(format!("{}.pak: {}", pak_name, e)),
+            Err(e) => return Err(format!("{pak_name}.pak: {e}")),
         }
     }
 
@@ -504,7 +504,7 @@ pub fn collect_files_from_paks(data_dir: &Path) -> Result<(Vec<FileEntry>, Vec<S
                 diagnostics.extend(diag);
             }
             Err(e) => {
-                diagnostics.push(format!("SKIP {}: {}", ds_pak, e));
+                diagnostics.push(format!("SKIP {ds_pak}: {e}"));
             }
         }
     }
@@ -522,7 +522,7 @@ pub fn collect_files_from_paks(data_dir: &Path) -> Result<(Vec<FileEntry>, Vec<S
                 diagnostics.extend(diag);
             }
             Err(e) => {
-                diagnostics.push(format!("SKIP {}: {}", hf_pak, e));
+                diagnostics.push(format!("SKIP {hf_pak}: {e}"));
             }
         }
     }
@@ -624,7 +624,7 @@ where
             ));
         }
         Err(e) => {
-            diagnostics.push(format!("WARN: Editor file scan failed: {}", e));
+            diagnostics.push(format!("WARN: Editor file scan failed: {e}"));
         }
     }
 
@@ -667,7 +667,7 @@ where
         Path::new(game_data_path),
         options,
     )
-    .map_err(|e| format!("Populate ref_base: {}", e))?;
+    .map_err(|e| format!("Populate ref_base: {e}"))?;
 
     let base_db_size = fs::metadata(base_db_path)
         .map(|m| m.len())
@@ -703,7 +703,7 @@ where
                 Path::new(game_data_path),
                 &honor_options,
             )
-            .map_err(|e| format!("Populate ref_honor: {}", e))?;
+            .map_err(|e| format!("Populate ref_honor: {e}"))?;
 
             let honor_db_size = fs::metadata(hp).map(|m| m.len()).unwrap_or(0);
             let summary = BuildSummary {
@@ -758,7 +758,7 @@ where
 fn resolve_data_dir(game_data_path: &str, diagnostics: &mut Vec<String>) -> Result<PathBuf, String> {
     let mut data_dir = PathBuf::from(game_data_path);
     if !data_dir.exists() {
-        return Err(format!("Game data directory does not exist: {}", game_data_path));
+        return Err(format!("Game data directory does not exist: {game_data_path}"));
     }
 
     // Auto-resolve: if user pointed at game root instead of Data/
@@ -791,7 +791,7 @@ fn has_pak_files(dir: &Path) -> bool {
 /// List all .pak filenames in a directory (non-recursive).
 fn list_pak_files(dir: &Path) -> Result<Vec<String>, String> {
     let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Cannot read data dir: {}", e))?;
+        .map_err(|e| format!("Cannot read data dir: {e}"))?;
     let mut paks: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "pak"))
@@ -806,8 +806,8 @@ fn count_paks_to_extract(data_dir: &Path, all_pak_files: &[String]) -> usize {
     let mut count = 0;
     // Named data paks
     for pak_name in DATA_PAKS {
-        let p = data_dir.join(format!("{}.pak", pak_name));
-        let alt = data_dir.join(format!("{}_0.pak", pak_name));
+        let p = data_dir.join(format!("{pak_name}.pak"));
+        let alt = data_dir.join(format!("{pak_name}_0.pak"));
         if p.exists() || alt.exists() {
             count += 1;
         }
@@ -837,8 +837,8 @@ fn load_data_pak_streamed(
     data_filter: &PakEntryFilter,
 ) -> Result<(Vec<FileEntry>, usize, Vec<String>), String> {
     let mut diag = Vec::new();
-    let pak_path = data_dir.join(format!("{}.pak", pak_name));
-    let alt_path = data_dir.join(format!("{}_0.pak", pak_name));
+    let pak_path = data_dir.join(format!("{pak_name}.pak"));
+    let alt_path = data_dir.join(format!("{pak_name}_0.pak"));
 
     let chosen = if pak_path.exists() {
         pak_path
@@ -874,8 +874,8 @@ fn extract_data_pak(
     data_filter: &PakEntryFilter,
 ) -> Result<(usize, Vec<String>), String> {
     let mut diag = Vec::new();
-    let pak_path = data_dir.join(format!("{}.pak", pak_name));
-    let alt_path = data_dir.join(format!("{}_0.pak", pak_name));
+    let pak_path = data_dir.join(format!("{pak_name}.pak"));
+    let alt_path = data_dir.join(format!("{pak_name}_0.pak"));
 
     let chosen = if pak_path.exists() {
         pak_path
@@ -894,7 +894,7 @@ fn extract_data_pak(
     let count = extract_data_entries_native(&chosen, &dest, data_filter)?;
     let extract_secs = extract_start.elapsed().as_secs_f64();
 
-    let msg = format!("  {} files extracted from {} in {:.1}s", count, pak_name, extract_secs);
+    let msg = format!("  {count} files extracted from {pak_name} in {extract_secs:.1}s");
     tracing::info!("[pipeline] {}", msg);
     diag.push(msg);
     Ok((count, diag))
@@ -935,7 +935,7 @@ fn collect_data_entries_native(
         let target_db = target_db_for_module(&mod_name);
         let priority = module_priority(&mod_name);
         let byte_limit = usize::try_from(entry.effective_size())
-            .map_err(|_| format!("Pak entry too large to materialize: {}", package_path))?;
+            .map_err(|_| format!("Pak entry too large to materialize: {package_path}"))?;
         let mut source = reader.open_entry(entry).map_err(|e| e.to_string())?;
         let bytes = source.read_to_end_with_limit(byte_limit).map_err(|e| e.to_string())?;
 
@@ -1028,7 +1028,7 @@ fn extract_loca(
 
     // Extract only .loca files (skip any .bnk or asset files)
     fs::create_dir_all(loca_dir)
-        .map_err(|e| format!("Create loca dir: {}", e))?;
+        .map_err(|e| format!("Create loca dir: {e}"))?;
 
     let pak_size_mb = fs::metadata(&loca_pak).map(|m| m.len()).unwrap_or(0) as f64 / (1024.0 * 1024.0);
     tracing::info!("[pipeline] Extracting {} ({:.0} MB) → {}", loca_pak.display(), pak_size_mb, loca_dir.display());
@@ -1040,16 +1040,16 @@ fn extract_loca(
             tracing::info!("[pipeline]   {} .loca files extracted in {:.1}s", count, secs);
             *paks_extracted += 1;
             *files_extracted += count;
-            diagnostics.push(format!("Loca pak: {} files extracted in {:.1}s", count, secs));
+            diagnostics.push(format!("Loca pak: {count} files extracted in {secs:.1}s"));
         }
         Err(e) => {
-            errors.push(format!("Loca extraction: {}", e));
+            errors.push(format!("Loca extraction: {e}"));
             return Ok(0);
         }
     }
 
     let extracted_files = count_files_recursive(loca_dir);
-    diagnostics.push(format!("Localization files ready for ingestion: {}", extracted_files));
+    diagnostics.push(format!("Localization files ready for ingestion: {extracted_files}"));
     Ok(extracted_files)
 }
 
@@ -1110,7 +1110,7 @@ fn load_loca_streamed(
             Ok((files, count))
         }
         Err(e) => {
-            errors.push(format!("Loca extraction: {}", e));
+            errors.push(format!("Loca extraction: {e}"));
             Ok((Vec::new(), 0))
         }
     }
@@ -1175,7 +1175,7 @@ fn collect_loca_entries_native(pak_path: &Path) -> Result<Vec<FileEntry>, String
 
         let rel_path = localization_rel_path(package_path);
         let byte_limit = usize::try_from(entry.effective_size())
-            .map_err(|_| format!("Pak entry too large to materialize: {}", package_path))?;
+            .map_err(|_| format!("Pak entry too large to materialize: {package_path}"))?;
         let mut source = reader.open_entry(entry).map_err(|e| e.to_string())?;
         let bytes = source.read_to_end_with_limit(byte_limit).map_err(|e| e.to_string())?;
 
@@ -1197,7 +1197,7 @@ fn localization_rel_path(package_path: &str) -> String {
     let relative = normalized
         .strip_prefix("Localization/")
         .unwrap_or(&normalized);
-    format!("Localization/{}", relative)
+    format!("Localization/{relative}")
 }
 
 #[cfg(test)]
@@ -1322,11 +1322,10 @@ fn cleanup_work_dir(work_dir: &Path) -> Result<usize, String> {
         let ext = entry.path().extension()
             .and_then(|e| e.to_str())
             .unwrap_or("");
-        if matches!(ext, "lsx" | "lsf" | "lsfx" | "loca" | "xml" | "txt") {
-            if fs::remove_file(entry.path()).is_ok() {
+        if matches!(ext, "lsx" | "lsf" | "lsfx" | "loca" | "xml" | "txt")
+            && fs::remove_file(entry.path()).is_ok() {
                 removed += 1;
             }
-        }
     }
 
     // Clean up empty directories (bottom-up)
@@ -1336,10 +1335,10 @@ fn cleanup_work_dir(work_dir: &Path) -> Result<usize, String> {
         .filter(|e| e.file_type().is_dir())
         .map(|e| e.into_path())
         .collect();
-    dirs.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
+    dirs.sort_by_key(|b| std::cmp::Reverse(b.components().count()));
     for d in &dirs {
         if d.as_path() == work_dir { continue; }
-        if fs::read_dir(d).map_or(false, |mut e| e.next().is_none()) {
+        if fs::read_dir(d).is_ok_and(|mut e| e.next().is_none()) {
             let _ = fs::remove_dir(d);
         }
     }
@@ -1470,7 +1469,7 @@ mod tests {
         for root in ALL_PUBLIC_ROOTS {
             let escaped = regex::escape(root);
             assert!(regex_str.contains(&escaped),
-                "Regex should contain root: {}", root);
+                "Regex should contain root: {root}");
         }
     }
 
@@ -1638,7 +1637,7 @@ mod tests {
 
         // Create files from different modules
         for (module, _) in &[("Shared", 10), ("Gustav", 30), ("GustavX", 50)] {
-            let dir = work.join(format!("{}/Public/{}/Progressions", module, module));
+            let dir = work.join(format!("{module}/Public/{module}/Progressions"));
             fs::create_dir_all(&dir).unwrap();
             fs::write(dir.join("Progressions.lsx"), "<xml/>").unwrap();
         }
@@ -1832,7 +1831,7 @@ mod tests {
             )
             .expect("find tags table");
         let tags_rows: i64 = conn
-            .query_row(&format!("SELECT COUNT(*) FROM \"{}\"", tags_table), [], |row| row.get(0))
+            .query_row(&format!("SELECT COUNT(*) FROM \"{tags_table}\""), [], |row| row.get(0))
             .unwrap();
         assert!(tags_rows > 0, "expected pipeline-shaped .lsf fixture rows");
 
@@ -1861,7 +1860,7 @@ mod tests {
             phase: "Extracting Gustav.pak".to_string(),
             detail: "1/5".to_string(),
             percent: 20,
-            elapsed_secs: 3.14,
+            elapsed_secs: 3.125,
         };
 
         let json = serde_json::to_string(&progress).unwrap();

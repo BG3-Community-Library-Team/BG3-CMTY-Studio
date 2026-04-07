@@ -70,7 +70,7 @@ pub fn parse_lsx_resource(content: &str) -> Result<LsxResource, String> {
                         });
                         node_depth += 1;
                         if node_depth > MAX_NESTING_DEPTH {
-                            return Err(format!("LSX nesting depth exceeds {} limit", MAX_NESTING_DEPTH));
+                            return Err(format!("LSX nesting depth exceeds {MAX_NESTING_DEPTH} limit"));
                         }
                     }
                     "attribute" => {
@@ -362,8 +362,7 @@ fn push_completed_node(
 
 fn parse_commented_nodes(comment_text: &str) -> Result<Vec<LsxNode>, String> {
     let wrapped = format!(
-        r#"<?xml version="1.0" encoding="utf-8"?><save><region id="temp"><node id="root"><children>{}</children></node></region></save>"#,
-        comment_text
+        r#"<?xml version="1.0" encoding="utf-8"?><save><region id="temp"><node id="root"><children>{comment_text}</children></node></region></save>"#
     );
     let mut resource = parse_lsx_resource(&wrapped)?;
     let mut nodes: Vec<LsxNode> = resource

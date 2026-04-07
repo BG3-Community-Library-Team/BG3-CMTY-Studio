@@ -59,12 +59,12 @@ fn main() {
     let (mut files, pak_diags) =
         reference_db::pipeline::collect_files_from_paks(&game_data_dir)
             .unwrap_or_else(|e| {
-                eprintln!("ERROR: {}", e);
+                eprintln!("ERROR: {e}");
                 std::process::exit(1);
             });
     eprintln!("  {} files from paks in {:.1}s", files.len(), t0.elapsed().as_secs_f64());
     for d in &pak_diags {
-        eprintln!("    {}", d);
+        eprintln!("    {d}");
     }
 
     // Phase 1b: Collect Editor files (AllSpark XCD/XMD + .lsefx) from disk
@@ -76,7 +76,7 @@ fn main() {
                     editor_files.len(), t_ed.elapsed().as_secs_f64());
                 files.extend(editor_files);
             }
-            Err(e) => eprintln!("  WARN: Editor file scan failed: {}", e),
+            Err(e) => eprintln!("  WARN: Editor file scan failed: {e}"),
         }
     }
 
@@ -85,7 +85,7 @@ fn main() {
     let t1 = Instant::now();
     let schema = reference_db::discovery::discover_schema(&files, &game_data_dir)
         .unwrap_or_else(|e| {
-            eprintln!("ERROR: {}", e);
+            eprintln!("ERROR: {e}");
             std::process::exit(1);
         });
     eprintln!(
@@ -116,7 +116,7 @@ fn main() {
 
     reference_db::builder::create_schema_db(&ref_base_path, &schema)
         .unwrap_or_else(|e| {
-            eprintln!("ERROR: {}", e);
+            eprintln!("ERROR: {e}");
             std::process::exit(1);
         });
 
@@ -136,7 +136,7 @@ fn main() {
     }
     std::fs::copy(&ref_base_path, &ref_honor_path)
         .unwrap_or_else(|e| {
-            eprintln!("ERROR: Cannot copy to ref_honor: {}", e);
+            eprintln!("ERROR: Cannot copy to ref_honor: {e}");
             std::process::exit(1);
         });
     eprintln!("  ref_honor.sqlite: copied");
@@ -155,7 +155,7 @@ fn main() {
 
     reference_db::builder::create_mods_schema_db(&ref_mods_path, &schema)
         .unwrap_or_else(|e| {
-            eprintln!("ERROR: {}", e);
+            eprintln!("ERROR: {e}");
             std::process::exit(1);
         });
 
@@ -168,7 +168,7 @@ fn main() {
 
     let staging_summary = reference_db::staging::create_staging_db(&ref_base_path, &staging_path)
         .unwrap_or_else(|e| {
-            eprintln!("ERROR: {}", e);
+            eprintln!("ERROR: {e}");
             std::process::exit(1);
         });
 
@@ -180,7 +180,7 @@ fn main() {
     );
 
     let total_secs = start.elapsed().as_secs_f64();
-    eprintln!("\n=== Done in {:.1}s ===", total_secs);
+    eprintln!("\n=== Done in {total_secs:.1}s ===");
     eprintln!("  ref_base.sqlite:  {}", ref_base_path.display());
     eprintln!("  ref_honor.sqlite: {}", ref_honor_path.display());
     eprintln!("  ref_mods.sqlite:  {}", ref_mods_path.display());

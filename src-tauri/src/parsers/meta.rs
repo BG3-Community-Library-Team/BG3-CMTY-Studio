@@ -99,7 +99,7 @@ pub fn parse_meta_lsx(content: &str) -> Result<ModMeta, String> {
 /// Parse a meta.yaml file (converted from meta.lsx) and extract mod metadata.
 pub fn parse_meta_yaml(content: &str) -> Result<ModMeta, String> {
     let doc: LsxYamlDoc =
-        serde_saphyr::from_str(content).map_err(|e| format!("Failed to parse meta.yaml: {}", e))?;
+        serde_saphyr::from_str(content).map_err(|e| format!("Failed to parse meta.yaml: {e}"))?;
 
     let module_info = doc
         .nodes
@@ -505,7 +505,7 @@ fn decode_version64(raw: &str) -> String {
     let minor    = (v >> 47) & 0xFF;       // 8 bits
     let revision = (v >> 31) & 0xFFFF;     // 16 bits
     let build    = v & 0x7FFF_FFFF;        // 31 bits
-    format!("{}.{}.{}.{}", major, minor, revision, build)
+    format!("{major}.{minor}.{revision}.{build}")
 }
 
 #[cfg(test)]

@@ -152,6 +152,14 @@ export async function stagingRedo(
 
 // === Maintenance API ===
 
+export async function stagingReplaceSection(
+  stagingDbPath: string,
+  table: string,
+  rows: Record<string, unknown>[],
+): Promise<number> {
+  return invoke("cmd_staging_replace_section", { stagingDbPath, table, rows });
+}
+
 export async function stagingWalCheckpoint(
   stagingDbPath: string,
 ): Promise<void> {

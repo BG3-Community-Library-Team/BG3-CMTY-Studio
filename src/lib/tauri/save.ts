@@ -46,6 +46,24 @@ export async function saveProject(
   });
 }
 
+export async function saveSection(
+  stagingDbPath: string,
+  refBasePath: string,
+  modPath: string,
+  modName: string,
+  modFolder: string,
+  tableName: string,
+): Promise<SaveProjectResult> {
+  return invoke("cmd_save_section", {
+    stagingDbPath,
+    refBasePath,
+    modPath,
+    modName,
+    modFolder,
+    tableName,
+  });
+}
+
 export async function validateHandlers(
   stagingDbPath: string,
   refBasePath: string,

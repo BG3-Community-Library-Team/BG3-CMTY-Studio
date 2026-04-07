@@ -225,7 +225,7 @@ pub fn build_reference_db(unpacked_path: &Path, db_path: &Path) -> Result<BuildS
     let files = collect_files(unpacked_path)?;
     let total_files = files.len();
     let collect_secs = t0.elapsed().as_secs_f64();
-    eprintln!("  Phase: collect_files  {:.1}s  ({} files)", collect_secs, total_files);
+    eprintln!("  Phase: collect_files  {collect_secs:.1}s  ({total_files} files)");
 
     // Remove existing DB
     if db_path.exists() {
@@ -235,7 +235,7 @@ pub fn build_reference_db(unpacked_path: &Path, db_path: &Path) -> Result<BuildS
                 let _ = std::fs::remove_file(&bak);
                 std::fs::rename(db_path, &bak)
             })
-            .map_err(|e| format!("Cannot remove existing DB: {}", e))?;
+            .map_err(|e| format!("Cannot remove existing DB: {e}"))?;
     }
     for sfx in &["-wal", "-shm"] {
         let p = PathBuf::from(format!("{}{}", db_path.display(), sfx));
@@ -303,7 +303,7 @@ pub fn populate_reference_db(
         .collect();
     let total_files = files.len();
     let collect_secs = t0.elapsed().as_secs_f64();
-    eprintln!("  Phase: collect_files  {:.1}s  ({} files for {:?})", collect_secs, total_files, target);
+    eprintln!("  Phase: collect_files  {collect_secs:.1}s  ({total_files} files for {target:?})");
 
     // Populate data (schema is loaded from the DB internally)
     let result = builder::populate_db(db_path, &files, unpacked_path, options)?;
@@ -352,7 +352,7 @@ pub fn populate_mods_db(
     let files = collect_mod_files(mod_path, mod_name)?;
     let total_files = files.len();
     let collect_secs = t0.elapsed().as_secs_f64();
-    eprintln!("  Phase: collect_mod    {:.1}s  ({} files for mod '{}')", collect_secs, total_files, mod_name);
+    eprintln!("  Phase: collect_mod    {collect_secs:.1}s  ({total_files} files for mod '{mod_name}')");
 
     let result = builder::populate_db(db_path, &files, mod_path, options)?;
 
@@ -437,7 +437,7 @@ pub fn collect_mod_files_from_pak(
     use crate::pak::PakReader;
 
     let reader = PakReader::open(pak_path)
-        .map_err(|e| format!("Failed to open pak: {}", e))?;
+        .map_err(|e| format!("Failed to open pak: {e}"))?;
 
     let mut files = Vec::new();
     let mut has_public = false;
@@ -467,7 +467,7 @@ pub fn collect_mod_files_from_pak(
         };
 
         let byte_limit = usize::try_from(entry.effective_size())
-            .map_err(|_| format!("Pak entry too large: {}", package_path))?;
+            .map_err(|_| format!("Pak entry too large: {package_path}"))?;
         let mut source = reader.open_entry(entry).map_err(|e| e.to_string())?;
         let bytes = source.read_to_end_with_limit(byte_limit).map_err(|e| e.to_string())?;
 

@@ -4,10 +4,10 @@
  */
 import { m } from "../../paraglide/messages.js";
 
-export type ActivityView = "explorer" | "editor" | "search" | "settings" | "loaded-data" | "help";
+export type ActivityView = "project" | "explorer" | "editor" | "search" | "settings" | "loaded-data" | "help";
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
-const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["explorer", "search", "loaded-data", "settings", "help"];
+const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "loaded-data", "settings", "help"];
 
 export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "notifications";
 
@@ -40,7 +40,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
@@ -118,7 +118,10 @@ class UiStore {
         const known = new Set<string>(DEFAULT_ACTIVITY_BAR_ORDER);
         const valid = parsed.filter(id => known.has(id)) as ActivityView[];
         const missing = DEFAULT_ACTIVITY_BAR_ORDER.filter(id => !valid.includes(id));
-        return [...valid, ...missing];
+        // Prepend newly added views (like "project") so they appear first
+        const prepend = missing.filter(id => DEFAULT_ACTIVITY_BAR_ORDER.indexOf(id) === 0);
+        const append = missing.filter(id => DEFAULT_ACTIVITY_BAR_ORDER.indexOf(id) !== 0);
+        return [...prepend, ...valid, ...append];
       }
     } catch { /* fallback to defaults */ }
     return [...DEFAULT_ACTIVITY_BAR_ORDER];

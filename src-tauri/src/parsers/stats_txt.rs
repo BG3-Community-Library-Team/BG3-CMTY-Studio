@@ -147,7 +147,7 @@ fn parse_nonstandard_stats(content: &str, file_stem: &str) -> Vec<StatsEntry> {
                 current_name = values.first().cloned();
                 current_data.clear();
                 for (i, val) in values.iter().enumerate().skip(1) {
-                    current_data.insert(format!("Param{}", i), val.clone());
+                    current_data.insert(format!("Param{i}"), val.clone());
                 }
             }
             continue;
@@ -261,7 +261,7 @@ pub fn write_stats_file(entries: &[StatsEntry]) -> String {
         let _ = writeln!(out, "new entry \"{}\"", entry.name);
         let _ = writeln!(out, "type \"{}\"", entry.entry_type);
         if let Some(ref parent) = entry.parent {
-            let _ = writeln!(out, "using \"{}\"", parent);
+            let _ = writeln!(out, "using \"{parent}\"");
         }
         // Sort data keys for deterministic output
         let mut keys: Vec<&String> = entry.data.keys().collect();

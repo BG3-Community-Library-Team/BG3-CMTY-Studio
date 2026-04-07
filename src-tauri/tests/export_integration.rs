@@ -1056,14 +1056,13 @@ fn test_reset_staging_tracking_clears_flags() {
     for table in &tables {
         conn.execute(
             &format!(
-                "UPDATE \"{}\" SET _is_new=0, _is_modified=0 WHERE _is_new=1 OR _is_modified=1",
-                table
+                "UPDATE \"{table}\" SET _is_new=0, _is_modified=0 WHERE _is_new=1 OR _is_modified=1"
             ),
             [],
         ).unwrap();
 
         conn.execute(
-            &format!("DELETE FROM \"{}\" WHERE _is_deleted=1", table),
+            &format!("DELETE FROM \"{table}\" WHERE _is_deleted=1"),
             [],
         ).unwrap();
     }
@@ -1115,8 +1114,7 @@ fn test_save_project_nonexistent_staging_db() {
     let msg = err.to_string();
     assert!(
         msg.contains("unable to open") || msg.contains("not found") || msg.contains("no such"),
-        "Error should indicate file not found, got: {}",
-        msg
+        "Error should indicate file not found, got: {msg}"
     );
 }
 

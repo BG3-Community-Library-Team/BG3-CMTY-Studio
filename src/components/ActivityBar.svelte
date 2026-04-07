@@ -7,8 +7,10 @@
   import Settings from "@lucide/svelte/icons/settings";
   import Database from "@lucide/svelte/icons/database";
   import HelpCircle from "@lucide/svelte/icons/help-circle";
+  import FileBox from "@lucide/svelte/icons/file-box";
 
   const VIEW_REGISTRY: Record<string, { label: () => string; icon: typeof FolderOpen }> = {
+    project: { label: () => m.activity_bar_project(), icon: FileBox },
     explorer: { label: () => m.activity_bar_explorer(), icon: FolderOpen },
     search: { label: () => m.activity_bar_search(), icon: Search },
     "loaded-data": { label: () => m.activity_bar_loaded_data(), icon: Database },
@@ -19,6 +21,7 @@
   let views = $derived(
     uiStore.activityBarOrder
       .filter(id => id !== "search" || modStore.scanResult)
+      .filter(id => id !== "project" || modStore.scanResult)
       .filter(id => id in VIEW_REGISTRY)
       .map(id => ({ id, label: VIEW_REGISTRY[id].label(), icon: VIEW_REGISTRY[id].icon }))
   );

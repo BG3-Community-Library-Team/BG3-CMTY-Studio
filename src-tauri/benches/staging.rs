@@ -44,7 +44,7 @@ fn test_columns() -> Vec<ColumnDef> {
 fn build_test_schema(n_tables: usize) -> DiscoveredSchema {
     let mut tables = HashMap::new();
     for i in 0..n_tables {
-        let name = format!("lsx__ClassDescriptions__{}", i);
+        let name = format!("lsx__ClassDescriptions__{i}");
         tables.insert(
             name.clone(),
             TableSchema {
@@ -183,7 +183,7 @@ fn test_uuid(i: usize) -> String {
 fn test_row_columns(uuid: &str) -> HashMap<String, String> {
     let mut cols = HashMap::new();
     cols.insert("UUID".into(), uuid.into());
-    cols.insert("Name".into(), format!("TestClass_{}", uuid));
+    cols.insert("Name".into(), format!("TestClass_{uuid}"));
     cols.insert("DisplayName".into(), "h00000000g0000".into());
     cols.insert("Description".into(), "h11111111g1111".into());
     cols.insert("ParentGuid".into(), "00000000-0000-0000-0000-000000000000".into());
@@ -237,7 +237,7 @@ fn bench_batch_100_toggles(c: &mut Criterion) {
         tx.commit().unwrap();
     }
 
-    let pks: Vec<String> = (0..100).map(|i| test_uuid(i)).collect();
+    let pks: Vec<String> = (0..100).map(test_uuid).collect();
 
     c.bench_function("batch_100_toggles", |b| {
         b.iter(|| {
@@ -270,7 +270,7 @@ fn bench_hydration_500(c: &mut Criterion) {
     // Create 5 tables × 100 entries each = 500 entries
     let conn = create_bench_staging_db(5);
     for t in 0..5 {
-        let table = format!("lsx__ClassDescriptions__{}", t);
+        let table = format!("lsx__ClassDescriptions__{t}");
         let tx = conn.unchecked_transaction().unwrap();
         for i in 0..100 {
             let uuid = test_uuid(t * 1000 + i);
@@ -301,7 +301,7 @@ fn bench_export_plan_1000(c: &mut Criterion) {
                 // Setup: create a populated DB each time (ExportContext consumes conn)
                 let conn = create_bench_staging_db(10);
                 for t in 0..10 {
-                    let table = format!("lsx__ClassDescriptions__{}", t);
+                    let table = format!("lsx__ClassDescriptions__{t}");
                     let tx = conn.unchecked_transaction().unwrap();
                     for i in 0..100 {
                         let uuid = test_uuid(t * 1000 + i);

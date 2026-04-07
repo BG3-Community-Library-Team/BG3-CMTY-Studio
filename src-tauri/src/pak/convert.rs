@@ -44,7 +44,7 @@ pub fn convert_pak_path_to_lsf(pak_path: &PakPath) -> PakResult<PakPath> {
     let s = pak_path.as_str();
     if !s.ends_with(".lsx") {
         return Err(PakError::invalid_path(format!(
-            "cannot convert non-.lsx path to .lsf: {}", s
+            "cannot convert non-.lsx path to .lsf: {s}"
         )));
     }
     let new_path = format!("{}.lsf", &s[..s.len() - 4]);

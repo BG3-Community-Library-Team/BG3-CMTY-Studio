@@ -170,7 +170,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
     // 1. Find and parse meta.lsx or meta.yaml
     let meta_path = find_meta_lsx(&mod_root)?;
     let meta_content = fs::read_to_string(&meta_path)
-        .map_err(|e| format!("Failed to read meta: {}", e))?;
+        .map_err(|e| format!("Failed to read meta: {e}"))?;
     let is_yaml_meta = meta_path
         .extension()
         .is_some_and(|ext| ext == "yaml");
@@ -272,17 +272,16 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
 
         // SEC-03: Canonicalize to resolve any .. or relative components
         let extra_root = extra_root.canonicalize().map_err(|e| {
-            format!("Failed to canonicalize extra scan path '{}': {}", extra, e)
+            format!("Failed to canonicalize extra scan path '{extra}': {e}")
         })?;
 
         // SEC-03: Reject symlinks
         let meta = fs::symlink_metadata(&extra_root).map_err(|e| {
-            format!("Failed to read metadata for extra scan path '{}': {}", extra, e)
+            format!("Failed to read metadata for extra scan path '{extra}': {e}")
         })?;
         if meta.file_type().is_symlink() {
             return Err(format!(
-                "Extra scan path '{}' is a symlink, which is not allowed for security reasons",
-                extra
+                "Extra scan path '{extra}' is a symlink, which is not allowed for security reasons"
             ));
         }
 
@@ -683,8 +682,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(
             err.contains("canonicalize"),
-            "Expected canonicalization error, got: {}",
-            err
+            "Expected canonicalization error, got: {err}"
         );
     }
 
@@ -711,8 +709,7 @@ mod tests {
         if let Err(err) = &result {
             assert!(
                 !err.contains("canonicalize"),
-                "Path with .. should have been canonicalized successfully, got: {}",
-                err
+                "Path with .. should have been canonicalized successfully, got: {err}"
             );
         }
 
@@ -773,8 +770,7 @@ mod tests {
             let err = result.unwrap_err();
             assert!(
                 err.contains("symlink"),
-                "Expected symlink rejection error, got: {}",
-                err
+                "Expected symlink rejection error, got: {err}"
             );
 
             // cleanup

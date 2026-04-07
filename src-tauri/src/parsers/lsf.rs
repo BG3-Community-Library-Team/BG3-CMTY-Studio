@@ -85,9 +85,9 @@ pub fn parse_lsf_file(path: &Path) -> Result<LsxResource, String> {
 
 pub fn parse_lsf<R: Read + Seek>(mut reader: R) -> Result<LsxResource, String> {
     let file_len = reader.seek(SeekFrom::End(0))
-        .map_err(|e| format!("Failed to inspect lsf stream: {}", e))?;
+        .map_err(|e| format!("Failed to inspect lsf stream: {e}"))?;
     reader.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("Failed to rewind lsf stream: {}", e))?;
+        .map_err(|e| format!("Failed to rewind lsf stream: {e}"))?;
 
     if file_len < 16 {
         return Err("LSF file too small to contain a header".into());
@@ -96,14 +96,13 @@ pub fn parse_lsf<R: Read + Seek>(mut reader: R) -> Result<LsxResource, String> {
     let signature = read_u32(&mut reader)?;
     if signature != LSF_SIGNATURE {
         return Err(format!(
-            "Incorrect signature in LSF file: expected {:08X}, got {:08X}",
-            LSF_SIGNATURE, signature
+            "Incorrect signature in LSF file: expected {LSF_SIGNATURE:08X}, got {signature:08X}"
         ));
     }
 
     let version = read_u32(&mut reader)?;
     if !(MIN_BG3_VERSION..=MAX_KNOWN_BG3_VERSION).contains(&version) {
-        return Err(format!("Unsupported BG3 LSF version {}", version));
+        return Err(format!("Unsupported BG3 LSF version {version}"));
     }
 
     if version >= 5 {
@@ -234,8 +233,7 @@ fn read_section<R: Read>(
 ) -> Result<Vec<u8>, String> {
     if uncompressed_size as usize > MAX_SECTION_BYTES {
         return Err(format!(
-            "LSF section exceeds size limit: {} bytes",
-            uncompressed_size
+            "LSF section exceeds size limit: {uncompressed_size} bytes"
         ));
     }
 
@@ -246,7 +244,7 @@ fn read_section<R: Read>(
     if size_on_disk == 0 {
         let mut bytes = vec![0u8; uncompressed_size as usize];
         reader.read_exact(&mut bytes)
-            .map_err(|e| format!("Failed to read uncompressed LSF section: {}", e))?;
+            .map_err(|e| format!("Failed to read uncompressed LSF section: {e}"))?;
         return Ok(bytes);
     }
 
@@ -255,7 +253,7 @@ fn read_section<R: Read>(
 
     let mut compressed = vec![0u8; compressed_len];
     reader.read_exact(&mut compressed)
-        .map_err(|e| format!("Failed to read compressed LSF section: {}", e))?;
+        .map_err(|e| format!("Failed to read compressed LSF section: {e}"))?;
 
     match compression {
         PakCompression::None => Ok(compressed),
@@ -263,7 +261,7 @@ fn read_section<R: Read>(
             let mut decoder = ZlibDecoder::new(Cursor::new(compressed));
             let mut output = Vec::with_capacity(uncompressed_size as usize);
             decoder.read_to_end(&mut output)
-                .map_err(|e| format!("Failed to decompress LSF zlib section: {}", e))?;
+                .map_err(|e| format!("Failed to decompress LSF zlib section: {e}"))?;
             Ok(output)
         }
         PakCompression::Lz4 => {
@@ -271,22 +269,22 @@ fn read_section<R: Read>(
                 let mut decoder = FrameDecoder::new(Cursor::new(compressed));
                 let mut output = Vec::with_capacity(uncompressed_size as usize);
                 decoder.read_to_end(&mut output)
-                    .map_err(|e| format!("Failed to decompress LSF LZ4 frame section: {}", e))?;
+                    .map_err(|e| format!("Failed to decompress LSF LZ4 frame section: {e}"))?;
                 Ok(output)
             } else {
                 block::decompress(&compressed, uncompressed_size as usize)
-                    .map_err(|e| format!("Failed to decompress LSF LZ4 block section: {}", e))
+                    .map_err(|e| format!("Failed to decompress LSF LZ4 block section: {e}"))
             }
         }
         PakCompression::Zstd => Err("Zstd-compressed LSF sections are not implemented yet".into()),
-        PakCompression::Unknown(value) => Err(format!("Unknown LSF compression method {}", value)),
+        PakCompression::Unknown(value) => Err(format!("Unknown LSF compression method {value}")),
     }
 }
 
 fn read_names<R: Read>(mut reader: R) -> Result<Vec<Vec<String>>, String> {
     let bucket_count = read_u32(&mut reader)? as usize;
     if bucket_count > NAME_HASH_BUCKET_LIMIT {
-        return Err(format!("LSF name table bucket count too large: {}", bucket_count));
+        return Err(format!("LSF name table bucket count too large: {bucket_count}"));
     }
 
     let mut names = Vec::with_capacity(bucket_count);
@@ -297,9 +295,9 @@ fn read_names<R: Read>(mut reader: R) -> Result<Vec<Vec<String>>, String> {
             let len = read_u16(&mut reader)? as usize;
             let mut bytes = vec![0u8; len];
             reader.read_exact(&mut bytes)
-                .map_err(|e| format!("Failed to read LSF name bytes: {}", e))?;
+                .map_err(|e| format!("Failed to read LSF name bytes: {e}"))?;
             let value = String::from_utf8(bytes)
-                .map_err(|e| format!("Invalid UTF-8 in LSF name table: {}", e))?;
+                .map_err(|e| format!("Invalid UTF-8 in LSF name table: {e}"))?;
             bucket.push(value);
         }
         names.push(bucket);
@@ -369,7 +367,7 @@ fn read_attributes_v2<R: Read>(
 
         let chain_index = node_index + 1;
         if chain_index < 0 {
-            return Err(format!("Invalid negative node index {} in LSF attribute table", node_index));
+            return Err(format!("Invalid negative node index {node_index} in LSF attribute table"));
         }
 
         let chain_index = chain_index as usize;
@@ -428,7 +426,7 @@ fn read_keys<R: Read>(
         let key = resolve_name(names, name_index, name_offset)?.to_string();
 
         let node = nodes.get_mut(node_index)
-            .ok_or_else(|| format!("LSF key references missing node index {}", node_index))?;
+            .ok_or_else(|| format!("LSF key references missing node index {node_index}"))?;
         node.key_attribute = Some(key);
     }
 
@@ -492,7 +490,7 @@ fn read_node_attributes(
 
     while next_index != -1 {
         let info = attributes.get(next_index as usize)
-            .ok_or_else(|| format!("LSF node references missing attribute index {}", next_index))?;
+            .ok_or_else(|| format!("LSF node references missing attribute index {next_index}"))?;
         parsed.push(read_attribute_value(names, info, values)?);
         next_index = info.next_attribute_index;
     }
@@ -591,7 +589,7 @@ fn read_typed_value<R: Read>(
             }
             Ok((handle.clone(), Some(handle), Some(version), arguments))
         }
-        _ => Err(format!("Unsupported LSF attribute type {}", type_id)),
+        _ => Err(format!("Unsupported LSF attribute type {type_id}")),
     }
 }
 
@@ -620,7 +618,7 @@ fn resolve_name(names: &[Vec<String>], name_index: usize, name_offset: usize) ->
         .get(name_index)
         .and_then(|bucket| bucket.get(name_offset))
         .map(|value| value.as_str())
-        .ok_or_else(|| format!("Missing LSF name table entry {}/{}", name_index, name_offset))
+        .ok_or_else(|| format!("Missing LSF name table entry {name_index}/{name_offset}"))
 }
 
 fn attribute_type_name(type_id: u32) -> Result<&'static str, String> {
@@ -659,7 +657,7 @@ fn attribute_type_name(type_id: u32) -> Result<&'static str, String> {
         31 => Ok("guid"),
         32 => Ok("int64"),
         33 => Ok("TranslatedFSString"),
-        _ => Err(format!("Unknown LSF attribute type {}", type_id)),
+        _ => Err(format!("Unknown LSF attribute type {type_id}")),
     }
 }
 
@@ -668,7 +666,7 @@ fn vector_columns(type_id: u32) -> Result<usize, String> {
         8 | 11 => Ok(2),
         9 | 12 => Ok(3),
         10 | 13 => Ok(4),
-        _ => Err(format!("Attribute type {} is not a vector", type_id)),
+        _ => Err(format!("Attribute type {type_id} is not a vector")),
     }
 }
 
@@ -677,7 +675,7 @@ fn matrix_rows(type_id: u32) -> Result<usize, String> {
         14 => Ok(2),
         15 | 16 => Ok(3),
         17 | 18 => Ok(4),
-        _ => Err(format!("Attribute type {} is not a matrix", type_id)),
+        _ => Err(format!("Attribute type {type_id} is not a matrix")),
     }
 }
 
@@ -686,7 +684,7 @@ fn matrix_columns(type_id: u32) -> Result<usize, String> {
         14 => Ok(2),
         15 | 17 => Ok(3),
         16 | 18 => Ok(4),
-        _ => Err(format!("Attribute type {} is not a matrix", type_id)),
+        _ => Err(format!("Attribute type {type_id} is not a matrix")),
     }
 }
 
@@ -709,13 +707,13 @@ fn read_f32_vector<R: Read>(reader: &mut R, count: usize) -> Result<Vec<String>,
 fn read_bytes_exact<R: Read>(reader: &mut R, len: usize) -> Result<Vec<u8>, String> {
     let mut bytes = vec![0u8; len];
     reader.read_exact(&mut bytes)
-        .map_err(|e| format!("Failed to read LSF bytes: {}", e))?;
+        .map_err(|e| format!("Failed to read LSF bytes: {e}"))?;
     Ok(bytes)
 }
 
 fn read_utf8_exact<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
     let bytes = read_bytes_exact(reader, len)?;
-    String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 in LSF value: {}", e))
+    String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 in LSF value: {e}"))
 }
 
 fn read_lsf_wide_string<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
@@ -736,12 +734,12 @@ fn read_lsf_wide_string<R: Read>(reader: &mut R, len: usize) -> Result<String, S
         }
 
         return String::from_utf16(&words)
-            .map_err(|e| format!("Invalid UTF-16 in LSF value: {}", e));
+            .map_err(|e| format!("Invalid UTF-16 in LSF value: {e}"));
     }
 
     let trimmed_len = bytes.iter().rposition(|byte| *byte != 0).map(|index| index + 1).unwrap_or(0);
     String::from_utf8(bytes[..trimmed_len].to_vec())
-        .map_err(|e| format!("Invalid UTF-8 in LSF wide string value: {}", e))
+        .map_err(|e| format!("Invalid UTF-8 in LSF wide string value: {e}"))
 }
 
 fn read_translated_string_payload<R: Read>(reader: &mut R) -> Result<(String, u16), String> {
@@ -755,7 +753,7 @@ fn read_lsf_utf8_string<R: Read>(reader: &mut R, len: usize) -> Result<String, S
     let bytes = read_bytes_exact(reader, len)?;
     let trimmed_len = bytes.iter().rposition(|byte| *byte != 0).map(|index| index + 1).unwrap_or(0);
     String::from_utf8(bytes[..trimmed_len].to_vec())
-        .map_err(|e| format!("Invalid UTF-8 in LSF value: {}", e))
+        .map_err(|e| format!("Invalid UTF-8 in LSF value: {e}"))
 }
 
 fn read_lsf_guid(bytes: &[u8]) -> Result<Uuid, String> {
@@ -775,7 +773,7 @@ fn read_lsf_guid(bytes: &[u8]) -> Result<Uuid, String> {
 fn bytes_to_hex(bytes: &[u8]) -> String {
     let mut output = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        output.push_str(&format!("{:02x}", byte));
+        output.push_str(&format!("{byte:02x}"));
     }
     output
 }
@@ -783,7 +781,7 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 fn read_u8<R: Read>(reader: &mut R) -> Result<u8, String> {
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u8: {}", e))?;
+        .map_err(|e| format!("Failed to read u8: {e}"))?;
     Ok(buf[0])
 }
 
@@ -794,21 +792,21 @@ fn read_i8<R: Read>(reader: &mut R) -> Result<i8, String> {
 fn read_u16<R: Read>(reader: &mut R) -> Result<u16, String> {
     let mut buf = [0u8; 2];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u16: {}", e))?;
+        .map_err(|e| format!("Failed to read u16: {e}"))?;
     Ok(u16::from_le_bytes(buf))
 }
 
 fn read_i16<R: Read>(reader: &mut R) -> Result<i16, String> {
     let mut buf = [0u8; 2];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read i16: {}", e))?;
+        .map_err(|e| format!("Failed to read i16: {e}"))?;
     Ok(i16::from_le_bytes(buf))
 }
 
 fn read_u32<R: Read>(reader: &mut R) -> Result<u32, String> {
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u32: {}", e))?;
+        .map_err(|e| format!("Failed to read u32: {e}"))?;
     Ok(u32::from_le_bytes(buf))
 }
 
@@ -817,42 +815,42 @@ fn read_u32_opt<R: Read>(reader: &mut R) -> Result<Option<u32>, String> {
     match reader.read_exact(&mut buf) {
         Ok(()) => Ok(Some(u32::from_le_bytes(buf))),
         Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
-        Err(err) => Err(format!("Failed to read u32: {}", err)),
+        Err(err) => Err(format!("Failed to read u32: {err}")),
     }
 }
 
 fn read_i32<R: Read>(reader: &mut R) -> Result<i32, String> {
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read i32: {}", e))?;
+        .map_err(|e| format!("Failed to read i32: {e}"))?;
     Ok(i32::from_le_bytes(buf))
 }
 
 fn read_u64<R: Read>(reader: &mut R) -> Result<u64, String> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read u64: {}", e))?;
+        .map_err(|e| format!("Failed to read u64: {e}"))?;
     Ok(u64::from_le_bytes(buf))
 }
 
 fn read_i64<R: Read>(reader: &mut R) -> Result<i64, String> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read i64: {}", e))?;
+        .map_err(|e| format!("Failed to read i64: {e}"))?;
     Ok(i64::from_le_bytes(buf))
 }
 
 fn read_f32<R: Read>(reader: &mut R) -> Result<f32, String> {
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read f32: {}", e))?;
+        .map_err(|e| format!("Failed to read f32: {e}"))?;
     Ok(f32::from_le_bytes(buf))
 }
 
 fn read_f64<R: Read>(reader: &mut R) -> Result<f64, String> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)
-        .map_err(|e| format!("Failed to read f64: {}", e))?;
+        .map_err(|e| format!("Failed to read f64: {e}"))?;
     Ok(f64::from_le_bytes(buf))
 }
 
@@ -1259,7 +1257,7 @@ fn write_translated_string(buf: &mut Vec<u8>, handle: &str, version: u16) {
 
 fn write_lsf_guid_bytes(buf: &mut Vec<u8>, value: &str) -> Result<(), String> {
     let uuid = Uuid::parse_str(value)
-        .map_err(|e| format!("Invalid GUID '{}': {}", value, e))?;
+        .map_err(|e| format!("Invalid GUID '{value}': {e}"))?;
     let mut bytes = uuid.to_bytes_le();
     // Reverse the byte-pair swap done in read_lsf_guid
     for index in (8..16).step_by(2) {
@@ -1863,10 +1861,10 @@ mod tests {
         );
 
         for point in expand_points(&missing_in_native).into_iter().take(20) {
-            println!("{}_MISSING_IN_NATIVE {}", label, point);
+            println!("{label}_MISSING_IN_NATIVE {point}");
         }
         for point in expand_points(&missing_in_lsx).into_iter().take(20) {
-            println!("{}_MISSING_IN_LSX {}", label, point);
+            println!("{label}_MISSING_IN_LSX {point}");
         }
 
         assert!(!native_points.is_empty(), "expected native value inventory for {}", lsf_path.display());
@@ -1984,8 +1982,7 @@ mod tests {
             .replace("&#xD;&#xA;", " ")
             .replace("&#13;&#10;", " ")
             .replace("\r\n", " ")
-            .replace('\n', " ")
-            .replace('\r', " ")
+            .replace(['\n', '\r'], " ")
             .replace("&quot;", "\"")
             .replace("&apos;", "'")
             .replace("&lt;", "<")

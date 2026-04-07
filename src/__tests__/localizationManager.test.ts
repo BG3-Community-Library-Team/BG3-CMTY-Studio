@@ -4,6 +4,7 @@ import {
   isContentHandle,
   parseHandleVersion,
   autoLocalize,
+  resolveLoca,
   type AutoLocaEntry,
 } from "../lib/utils/localizationManager.js";
 
@@ -178,5 +179,89 @@ describe("autoLocaEntries persistence", () => {
     for (const [handle, entry] of map) {
       expect(restored.get(handle)).toEqual(entry);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveLoca
+// ---------------------------------------------------------------------------
+describe("resolveLoca", () => {
+  let autoMap: Map<string, AutoLocaEntry>;
+  const noGlobal = () => undefined;
+
+  beforeEach(() => {
+    autoMap = new Map();
+  });
+
+  it("returns empty string for empty value", () => {
+    expect(resolveLoca("", autoMap, noGlobal)).toBe("");
+  });
+
+  it("returns plain text as-is when not a handle", () => {
+    expect(resolveLoca("Hello World", autoMap, noGlobal)).toBe("Hello World");
+  });
+
+  it("resolves handle;version from auto-loca entries", () => {
+    const handle = generateContentHandle();
+    autoMap.set(handle, { text: "My Display Text", version: 1 });
+    expect(resolveLoca(`${handle};1`, autoMap, noGlobal)).toBe("My Display Text");
+  });
+
+  it("resolves handle;version from global loca map when not in auto", () => {
+    const handle = generateContentHandle();
+    const globalLookup = (h: string) => (h === handle ? "Global Text" : undefined);
+    expect(resolveLoca(`${handle};1`, autoMap, globalLookup)).toBe("Global Text");
+  });
+
+  it("resolves bare handle from auto-loca entries", () => {
+    const handle = generateContentHandle();
+    autoMap.set(handle, { text: "Bare Auto", version: 1 });
+    expect(resolveLoca(handle, autoMap, noGlobal)).toBe("Bare Auto");
+  });
+
+  it("resolves bare handle from global loca map", () => {
+    const handle = generateContentHandle();
+    const globalLookup = (h: string) => (h === handle ? "Bare Global" : undefined);
+    expect(resolveLoca(handle, autoMap, globalLookup)).toBe("Bare Global");
+  });
+
+  it("strips pipe delimiters and resolves handle;version", () => {
+    const handle = generateContentHandle();
+    autoMap.set(handle, { text: "Piped Text", version: 2 });
+    expect(resolveLoca(`|${handle};2|`, autoMap, noGlobal)).toBe("Piped Text");
+  });
+
+  it("strips pipe delimiters and resolves bare handle", () => {
+    const handle = generateContentHandle();
+    const globalLookup = (h: string) => (h === handle ? "Piped Global" : undefined);
+    expect(resolveLoca(`|${handle}|`, autoMap, globalLookup)).toBe("Piped Global");
+  });
+
+  it("falls back to original value when handle is unresolvable", () => {
+    const handle = generateContentHandle();
+    expect(resolveLoca(`${handle};1`, autoMap, noGlobal)).toBe(`${handle};1`);
+  });
+
+  it("falls back to original value for bare handle not in any map", () => {
+    const handle = generateContentHandle();
+    expect(resolveLoca(handle, autoMap, noGlobal)).toBe(handle);
+  });
+
+  it("prefers auto-loca over global for handle;version", () => {
+    const handle = generateContentHandle();
+    autoMap.set(handle, { text: "Auto Wins", version: 1 });
+    const globalLookup = (h: string) => (h === handle ? "Global Loses" : undefined);
+    expect(resolveLoca(`${handle};1`, autoMap, globalLookup)).toBe("Auto Wins");
+  });
+
+  it("prefers auto-loca over global for bare handle", () => {
+    const handle = generateContentHandle();
+    autoMap.set(handle, { text: "Auto Bare Wins", version: 1 });
+    const globalLookup = (h: string) => (h === handle ? "Global Bare Loses" : undefined);
+    expect(resolveLoca(handle, autoMap, globalLookup)).toBe("Auto Bare Wins");
+  });
+
+  it("returns original value with pipes when inner content is not a handle", () => {
+    expect(resolveLoca("|not a handle|", autoMap, noGlobal)).toBe("|not a handle|");
   });
 });

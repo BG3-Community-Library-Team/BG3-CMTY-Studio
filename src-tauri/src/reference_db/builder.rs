@@ -66,7 +66,7 @@ fn maybe_log_row_error(
             } else {
                 value.clone()
             };
-            format!("{}={}", name, clipped)
+            format!("{name}={clipped}")
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -81,7 +81,7 @@ fn maybe_log_row_error(
         if sample_attrs.is_empty() {
             String::new()
         } else {
-            format!(" :: attrs [{}]", sample_attrs)
+            format!(" :: attrs [{sample_attrs}]")
         }
     );
 }
@@ -107,19 +107,19 @@ pub fn create_schema_db(
     schema: &DiscoveredSchema,
 ) -> Result<(), String> {
     let conn = Connection::open(db_path)
-        .map_err(|e| format!("Cannot open DB: {}", e))?;
+        .map_err(|e| format!("Cannot open DB: {e}"))?;
 
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA page_size = 8192;",
     )
-    .map_err(|e| format!("Pragma error: {}", e))?;
+    .map_err(|e| format!("Pragma error: {e}"))?;
 
     // Wrap all DDL + metadata in a single transaction to avoid per-statement
     // fsyncs.  Without this, ~5500 individual commits each trigger an fsync
     // which can take 400+ seconds on spinning disks.
     let tx = conn.unchecked_transaction()
-        .map_err(|e| format!("Begin transaction: {}", e))?;
+        .map_err(|e| format!("Begin transaction: {e}"))?;
 
     // Meta tables
     create_meta_tables(&tx)?;
@@ -131,7 +131,7 @@ pub fn create_schema_db(
             value BLOB NOT NULL
          ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Create _embedded_schema: {}", e))?;
+    .map_err(|e| format!("Create _embedded_schema: {e}"))?;
 
     // Data tables
     let mut fk_count = 0;
@@ -161,7 +161,7 @@ pub fn create_schema_db(
     // Populate column types (static metadata — store at schema-creation time)
     populate_column_types(&tx, schema)?;
 
-    tx.commit().map_err(|e| format!("Commit schema DDL: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit schema DDL: {e}"))?;
 
     eprintln!(
         "  Schema DB created: {} tables, {} junctions, {} FK constraints",
@@ -172,22 +172,22 @@ pub fn create_schema_db(
 
     // VACUUM the empty DB (tiny — very fast)
     conn.execute_batch("PRAGMA journal_mode = DELETE; VACUUM;")
-        .map_err(|e| format!("Vacuum schema DB: {}", e))?;
+        .map_err(|e| format!("Vacuum schema DB: {e}"))?;
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
     Ok(())
 }
 
 /// Serialize and store the discovered schema in the `_embedded_schema` table.
 fn save_schema_to_db(conn: &Connection, schema: &DiscoveredSchema) -> Result<(), String> {
     let blob = rmp_serde::to_vec(schema)
-        .map_err(|e| format!("Serialize schema: {}", e))?;
+        .map_err(|e| format!("Serialize schema: {e}"))?;
 
     conn.execute(
         "INSERT OR REPLACE INTO _embedded_schema (key, value) VALUES ('schema', ?1)",
         params![blob],
     )
-    .map_err(|e| format!("Store schema blob: {}", e))?;
+    .map_err(|e| format!("Store schema blob: {e}"))?;
 
     eprintln!("  Embedded schema blob: {} bytes", blob.len());
     Ok(())
@@ -196,7 +196,7 @@ fn save_schema_to_db(conn: &Connection, schema: &DiscoveredSchema) -> Result<(),
 /// Load the discovered schema from the `_embedded_schema` table.
 pub fn load_schema_from_db(db_path: &Path) -> Result<DiscoveredSchema, String> {
     let conn = Connection::open(db_path)
-        .map_err(|e| format!("Cannot open DB: {}", e))?;
+        .map_err(|e| format!("Cannot open DB: {e}"))?;
 
     let blob: Vec<u8> = conn
         .query_row(
@@ -204,15 +204,15 @@ pub fn load_schema_from_db(db_path: &Path) -> Result<DiscoveredSchema, String> {
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("Load schema blob: {}", e))?;
+        .map_err(|e| format!("Load schema blob: {e}"))?;
 
     let schema: DiscoveredSchema = rmp_serde::from_slice(&blob)
-        .map_err(|e| format!("Deserialize schema: {}", e))?;
+        .map_err(|e| format!("Deserialize schema: {e}"))?;
 
     eprintln!("  Loaded embedded schema: {} tables, {} junctions",
         schema.tables.len(), schema.junction_tables.len());
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
     Ok(schema)
 }
 
@@ -228,16 +228,16 @@ pub fn create_mods_schema_db(
     schema: &DiscoveredSchema,
 ) -> Result<(), String> {
     let conn = Connection::open(db_path)
-        .map_err(|e| format!("Cannot open DB: {}", e))?;
+        .map_err(|e| format!("Cannot open DB: {e}"))?;
 
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA page_size = 8192;",
     )
-    .map_err(|e| format!("Pragma error: {}", e))?;
+    .map_err(|e| format!("Pragma error: {e}"))?;
 
     let tx = conn.unchecked_transaction()
-        .map_err(|e| format!("Begin transaction: {}", e))?;
+        .map_err(|e| format!("Begin transaction: {e}"))?;
 
     // Meta tables (same as base/honor)
     create_meta_tables(&tx)?;
@@ -249,7 +249,7 @@ pub fn create_mods_schema_db(
             value BLOB NOT NULL
          ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Create _embedded_schema: {}", e))?;
+    .map_err(|e| format!("Create _embedded_schema: {e}"))?;
 
     // Data tables with composite PKs — no FK constraints
     for ts in schema.tables.values() {
@@ -277,7 +277,7 @@ pub fn create_mods_schema_db(
     save_schema_to_db(&tx, schema)?;
     populate_column_types(&tx, schema)?;
 
-    tx.commit().map_err(|e| format!("Commit mods schema DDL: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit mods schema DDL: {e}"))?;
 
     eprintln!(
         "  Mods schema DB created: {} tables, {} junctions (composite PKs, no FKs)",
@@ -286,9 +286,9 @@ pub fn create_mods_schema_db(
     );
 
     conn.execute_batch("PRAGMA journal_mode = DELETE; VACUUM;")
-        .map_err(|e| format!("Vacuum mods schema DB: {}", e))?;
+        .map_err(|e| format!("Vacuum mods schema DB: {e}"))?;
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
     Ok(())
 }
 
@@ -382,15 +382,15 @@ fn populate_db_in_memory(
     options: &BuildOptions,
 ) -> Result<BuildResult, String> {
     let mut mem_conn = Connection::open_in_memory()
-        .map_err(|e| format!("Open in-memory DB: {}", e))?;
+        .map_err(|e| format!("Open in-memory DB: {e}"))?;
     {
         let file_conn = Connection::open(db_path)
-            .map_err(|e| format!("Open schema DB for backup: {}", e))?;
+            .map_err(|e| format!("Open schema DB for backup: {e}"))?;
         let backup = rusqlite::backup::Backup::new(&file_conn, &mut mem_conn)
-            .map_err(|e| format!("Backup schema to memory: {}", e))?;
+            .map_err(|e| format!("Backup schema to memory: {e}"))?;
         backup
             .run_to_completion(i32::MAX, std::time::Duration::ZERO, None)
-            .map_err(|e| format!("Backup to memory failed: {}", e))?;
+            .map_err(|e| format!("Backup to memory failed: {e}"))?;
     }
     eprintln!("  Schema loaded into memory");
 
@@ -402,7 +402,7 @@ fn populate_db_in_memory(
              PRAGMA temp_store = MEMORY;
              PRAGMA locking_mode = EXCLUSIVE;",
         )
-        .map_err(|e| format!("Pragma error: {}", e))?;
+        .map_err(|e| format!("Pragma error: {e}"))?;
 
     mem_conn.set_prepared_statement_cache_capacity(3000);
 
@@ -459,40 +459,40 @@ fn populate_db_in_memory(
         let _ = std::fs::remove_file(db_path);
         let db_str = db_path.to_string_lossy();
         for suffix in &["-wal", "-shm"] {
-            let p = format!("{}{}", db_str, suffix);
+            let p = format!("{db_str}{suffix}");
             let _ = std::fs::remove_file(&p);
         }
 
         let escaped = db_path.to_string_lossy().replace('\'', "''");
         mem_conn
-            .execute_batch(&format!("VACUUM INTO '{}'", escaped))
-            .map_err(|e| format!("VACUUM INTO failed: {}", e))?;
+            .execute_batch(&format!("VACUUM INTO '{escaped}'"))
+            .map_err(|e| format!("VACUUM INTO failed: {e}"))?;
 
         let write_secs = t_write.elapsed().as_secs_f64();
         phase_times.write_to_disk = write_secs;
         // vacuum is included in write_to_disk — no separate vacuum phase
-        eprintln!("  Phase: write+vacuum   {:.1}s  (VACUUM INTO)", write_secs);
+        eprintln!("  Phase: write+vacuum   {write_secs:.1}s  (VACUUM INTO)");
     } else {
         // No vacuum requested — use backup API for a straight write.
         {
             let _ = std::fs::remove_file(db_path);
             let db_str = db_path.to_string_lossy();
             for suffix in &["-wal", "-shm"] {
-                let p = format!("{}{}", db_str, suffix);
+                let p = format!("{db_str}{suffix}");
                 let _ = std::fs::remove_file(&p);
             }
 
             let mut out_conn = Connection::open(db_path)
-                .map_err(|e| format!("Open output DB: {}", e))?;
+                .map_err(|e| format!("Open output DB: {e}"))?;
             let backup = rusqlite::backup::Backup::new(&mem_conn, &mut out_conn)
-                .map_err(|e| format!("Backup to disk: {}", e))?;
+                .map_err(|e| format!("Backup to disk: {e}"))?;
             backup
                 .run_to_completion(i32::MAX, std::time::Duration::ZERO, None)
-                .map_err(|e| format!("Write to disk failed: {}", e))?;
+                .map_err(|e| format!("Write to disk failed: {e}"))?;
         }
         let write_secs = t_write.elapsed().as_secs_f64();
         phase_times.write_to_disk = write_secs;
-        eprintln!("  Phase: write_to_disk  {:.1}s", write_secs);
+        eprintln!("  Phase: write_to_disk  {write_secs:.1}s");
     }
 
     Ok(BuildResult {
@@ -533,7 +533,7 @@ fn populate_db_on_disk(
                     i,
                 ));
                 std::fs::copy(db_path, &p)
-                    .map_err(|e| format!("Copy schema for effect partition {}: {}", i, e))?;
+                    .map_err(|e| format!("Copy schema for effect partition {i}: {e}"))?;
                 Ok(p)
             })
             .collect::<Result<_, String>>()?
@@ -542,7 +542,7 @@ fn populate_db_on_disk(
     };
 
     let mut conn = Connection::open(db_path)
-        .map_err(|e| format!("Open DB for on-disk populate: {}", e))?;
+        .map_err(|e| format!("Open DB for on-disk populate: {e}"))?;
 
     conn.execute_batch(
         "PRAGMA foreign_keys = OFF;
@@ -553,7 +553,7 @@ fn populate_db_on_disk(
          PRAGMA mmap_size = 536870912;
          PRAGMA locking_mode = EXCLUSIVE;",
     )
-    .map_err(|e| format!("Pragma error: {}", e))?;
+    .map_err(|e| format!("Pragma error: {e}"))?;
 
     conn.set_prepared_statement_cache_capacity(3000);
 
@@ -570,7 +570,7 @@ fn populate_db_on_disk(
             .iter()
             .map(|p| {
                 let c = Connection::open(p)
-                    .map_err(|e| format!("Open effect partition: {}", e))?;
+                    .map_err(|e| format!("Open effect partition: {e}"))?;
                 c.execute_batch(
                     "PRAGMA foreign_keys = OFF;
                      PRAGMA journal_mode = OFF;
@@ -579,7 +579,7 @@ fn populate_db_on_disk(
                      PRAGMA temp_store = MEMORY;
                      PRAGMA locking_mode = EXCLUSIVE;",
                 )
-                .map_err(|e| format!("Effect partition pragma: {}", e))?;
+                .map_err(|e| format!("Effect partition pragma: {e}"))?;
                 c.set_prepared_statement_cache_capacity(3000);
                 Ok(c)
             })
@@ -615,17 +615,17 @@ fn populate_db_on_disk(
     if options.vacuum {
         let t_vac = Instant::now();
         conn.execute_batch("PRAGMA journal_mode = DELETE; VACUUM;")
-            .map_err(|e| format!("Vacuum error: {}", e))?;
+            .map_err(|e| format!("Vacuum error: {e}"))?;
         phase_times.vacuum = t_vac.elapsed().as_secs_f64();
         eprintln!("  Phase: vacuum         {:.1}s", phase_times.vacuum);
     }
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
 
     // Clean up any stale WAL/SHM files so subsequent read-only ATTACH works.
     let db_str = db_path.to_string_lossy();
     for suffix in &["-wal", "-shm"] {
-        let _ = std::fs::remove_file(format!("{}{}", db_str, suffix));
+        let _ = std::fs::remove_file(format!("{db_str}{suffix}"));
     }
 
     Ok(BuildResult {
@@ -659,25 +659,24 @@ fn prepare_partition_conn(
     cache_size_kb: i64,
 ) -> Result<Connection, String> {
     let mut conn = Connection::open_in_memory()
-        .map_err(|e| format!("Open partition in-memory DB: {}", e))?;
+        .map_err(|e| format!("Open partition in-memory DB: {e}"))?;
     {
         let file_conn = Connection::open(schema_db_path)
-            .map_err(|e| format!("Open schema for partition backup: {}", e))?;
+            .map_err(|e| format!("Open schema for partition backup: {e}"))?;
         let backup = rusqlite::backup::Backup::new(&file_conn, &mut conn)
-            .map_err(|e| format!("Backup schema to partition: {}", e))?;
+            .map_err(|e| format!("Backup schema to partition: {e}"))?;
         backup
             .run_to_completion(i32::MAX, std::time::Duration::ZERO, None)
-            .map_err(|e| format!("Partition schema backup failed: {}", e))?;
+            .map_err(|e| format!("Partition schema backup failed: {e}"))?;
     }
     conn.execute_batch(&format!(
         "PRAGMA foreign_keys = OFF;
          PRAGMA journal_mode = OFF;
-         PRAGMA cache_size = -{};
+         PRAGMA cache_size = -{cache_size_kb};
          PRAGMA temp_store = MEMORY;
          PRAGMA locking_mode = EXCLUSIVE;",
-        cache_size_kb,
     ))
-    .map_err(|e| format!("Partition pragma error: {}", e))?;
+    .map_err(|e| format!("Partition pragma error: {e}"))?;
     conn.set_prepared_statement_cache_capacity(3000);
     Ok(conn)
 }
@@ -700,7 +699,7 @@ fn pre_populate_sources(
         for (i, name) in names.iter().enumerate() {
             let id = (i + 1) as i64;
             conn.execute("INSERT OR IGNORE INTO _sources (id, name) VALUES (?1, ?2)", params![id, name])
-                .map_err(|e| format!("Pre-populate _sources: {}", e))?;
+                .map_err(|e| format!("Pre-populate _sources: {e}"))?;
         }
     }
 
@@ -880,12 +879,12 @@ fn run_parallel_insert(
             // In-memory: backup to temp file for ATTACH bridge (reuse path).
             {
                 let mut out = Connection::open(&tmp_merge_path)
-                    .map_err(|e| format!("Open merge temp file: {}", e))?;
+                    .map_err(|e| format!("Open merge temp file: {e}"))?;
                 let backup = rusqlite::backup::Backup::new(&conn, &mut out)
-                    .map_err(|e| format!("Backup effect sub-{} to temp: {}", i, e))?;
+                    .map_err(|e| format!("Backup effect sub-{i} to temp: {e}"))?;
                 backup
                     .run_to_completion(i32::MAX, std::time::Duration::ZERO, None)
-                    .map_err(|e| format!("Write effect sub-{} temp: {}", i, e))?;
+                    .map_err(|e| format!("Write effect sub-{i} temp: {e}"))?;
             }
             tmp_merge_path.clone()
         };
@@ -901,7 +900,7 @@ fn run_parallel_insert(
 
     let merge_secs = t_merge.elapsed().as_secs_f64();
     phase_times.merge = merge_secs;
-    eprintln!("  Phase: merge_effect   {:.1}s", merge_secs);
+    eprintln!("  Phase: merge_effect   {merge_secs:.1}s");
 
     Ok((total_counts, row_counts))
 }
@@ -921,8 +920,8 @@ fn merge_partition_from_file(
     // ATTACH and copy data.
     let escaped = source_path.to_string_lossy().replace('\'', "''");
     dest_conn
-        .execute_batch(&format!("ATTACH DATABASE '{}' AS effect_db", escaped))
-        .map_err(|e| format!("Attach effect temp: {}", e))?;
+        .execute_batch(&format!("ATTACH DATABASE '{escaped}' AS effect_db"))
+        .map_err(|e| format!("Attach effect temp: {e}"))?;
 
     // Copy _source_files (non-overlapping file_ids).
     dest_conn
@@ -932,7 +931,7 @@ fn merge_partition_from_file(
              SELECT file_id, path, file_type, mod_name, region_id, row_count, file_size
              FROM effect_db._source_files",
         )
-        .map_err(|e| format!("Merge _source_files: {}", e))?;
+        .map_err(|e| format!("Merge _source_files: {e}"))?;
 
     // Build set of tables that actually received rows in this partition.
     let populated: HashSet<&str> = effect_row_counts
@@ -952,12 +951,11 @@ fn merge_partition_from_file(
         dest_conn
             .execute(
                 &format!(
-                    "INSERT OR IGNORE INTO main.\"{}\" SELECT * FROM effect_db.\"{}\"",
-                    table_name, table_name
+                    "INSERT OR IGNORE INTO main.\"{table_name}\" SELECT * FROM effect_db.\"{table_name}\""
                 ),
                 [],
             )
-            .map_err(|e| format!("Merge table '{}': {}", table_name, e))?;
+            .map_err(|e| format!("Merge table '{table_name}': {e}"))?;
         merged_tables += 1;
     }
 
@@ -980,7 +978,7 @@ fn merge_partition_from_file(
 
     dest_conn
         .execute_batch("DETACH DATABASE effect_db")
-        .map_err(|e| format!("Detach effect temp: {}", e))?;
+        .map_err(|e| format!("Detach effect temp: {e}"))?;
 
     // Clean up temp file.
     let _ = std::fs::remove_file(source_path);
@@ -1027,7 +1025,7 @@ fn run_pipeline_insert(
         Some(n) => n.min(default_threads),
         None => default_threads,
     };
-    eprintln!("  Parallel parse threads: {}", num_threads);
+    eprintln!("  Parallel parse threads: {num_threads}");
 
     let t_insert = Instant::now();
     let mut counts = PopulateCounts::default();
@@ -1040,7 +1038,7 @@ fn run_pipeline_insert(
 
     let tx = conn
         .unchecked_transaction()
-        .map_err(|e| format!("Transaction error: {}", e))?;
+        .map_err(|e| format!("Transaction error: {e}"))?;
 
     let (parse_chunk_size, channel_capacity) = adaptive_pipeline_params();
     {
@@ -1103,7 +1101,7 @@ fn run_pipeline_insert(
         });
     }
 
-    tx.commit().map_err(|e| format!("Commit error: {}", e))?;
+    tx.commit().map_err(|e| format!("Commit error: {e}"))?;
 
     phase_times.data_insert = t_insert.elapsed().as_secs_f64();
     eprintln!(
@@ -1118,7 +1116,7 @@ fn run_pipeline_insert(
         for (pak, rows) in &paks {
             let files = pak_files.get(*pak).copied().unwrap_or(0);
             let avg = if files > 0 { *rows / files } else { 0 };
-            eprintln!("    {:<20} {:>10} rows  {:>6} files  ({} rows/file)", pak, rows, files, avg);
+            eprintln!("    {pak:<20} {rows:>10} rows  {files:>6} files  ({avg} rows/file)");
         }
     }
 
@@ -1131,18 +1129,18 @@ fn count_fk_constraints(conn: &Connection) -> Result<usize, String> {
     let table_names: Vec<String> = {
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-            .map_err(|e| format!("List tables: {}", e))?;
+            .map_err(|e| format!("List tables: {e}"))?;
         let names = stmt.query_map([], |row| row.get(0))
-            .map_err(|e| format!("Query tables: {}", e))?
+            .map_err(|e| format!("Query tables: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
         names
     };
     for table_name in &table_names {
-        let sql = format!("PRAGMA foreign_key_list(\"{}\")", table_name);
-        let mut stmt = conn.prepare(&sql).map_err(|e| format!("FK list: {}", e))?;
+        let sql = format!("PRAGMA foreign_key_list(\"{table_name}\")");
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("FK list: {e}"))?;
         let n: usize = stmt.query_map([], |_| Ok(()))
-            .map_err(|e| format!("FK query: {}", e))?
+            .map_err(|e| format!("FK query: {e}"))?
             .count();
         count += n;
     }
@@ -1157,7 +1155,7 @@ pub fn build_db(
     schema: &DiscoveredSchema,
 ) -> Result<BuildResult, String> {
     let conn = Connection::open(db_path)
-        .map_err(|e| format!("Cannot open DB: {}", e))?;
+        .map_err(|e| format!("Cannot open DB: {e}"))?;
 
     // Performance pragmas
     conn.execute_batch(
@@ -1169,7 +1167,7 @@ pub fn build_db(
          PRAGMA foreign_keys = OFF;
          PRAGMA mmap_size = 1073741824;",
     )
-    .map_err(|e| format!("Pragma error: {}", e))?;
+    .map_err(|e| format!("Pragma error: {e}"))?;
 
     let mut phase_times = PhaseTimes::default();
 
@@ -1213,7 +1211,7 @@ pub fn build_db(
     for chunk in files.chunks(batch_size) {
         let tx = conn
             .unchecked_transaction()
-            .map_err(|e| format!("Transaction error: {}", e))?;
+            .map_err(|e| format!("Transaction error: {e}"))?;
 
         for file in chunk {
             match process_file(&tx, file, unpacked_path, schema) {
@@ -1229,7 +1227,7 @@ pub fn build_db(
         }
 
         tx.commit()
-            .map_err(|e| format!("Commit error: {}", e))?;
+            .map_err(|e| format!("Commit error: {e}"))?;
     }
     phase_times.data_insert = t_insert.elapsed().as_secs_f64();
     eprintln!("  Phase: data_insert    {:.1}s  ({} rows, {} files)",
@@ -1252,11 +1250,11 @@ pub fn build_db(
          VACUUM;
          PRAGMA journal_mode = WAL;",
     )
-    .map_err(|e| format!("Vacuum error: {}", e))?;
+    .map_err(|e| format!("Vacuum error: {e}"))?;
     phase_times.vacuum = t_vac.elapsed().as_secs_f64();
     eprintln!("  Phase: vacuum         {:.1}s", phase_times.vacuum);
 
-    conn.close().map_err(|(_conn, e)| format!("Close error: {}", e))?;
+    conn.close().map_err(|(_conn, e)| format!("Close error: {e}"))?;
 
     Ok(BuildResult {
         total_rows,
@@ -1306,7 +1304,7 @@ fn create_meta_tables(conn: &Connection) -> Result<(), String> {
             row_count     INTEGER DEFAULT 0
         ) WITHOUT ROWID;",
     )
-    .map_err(|e| format!("Meta table error: {}", e))
+    .map_err(|e| format!("Meta table error: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1438,7 +1436,7 @@ fn process_file(
          VALUES (?1, ?2, ?3, NULL, 0, ?4)",
     )
     .and_then(|mut stmt| stmt.execute(params![file.rel_path, file.file_type.as_str(), mod_name, file_size]))
-    .map_err(|e| format!("Insert source file: {}", e))?;
+    .map_err(|e| format!("Insert source file: {e}"))?;
 
     let file_id = tx.last_insert_rowid();
 
@@ -1455,7 +1453,7 @@ fn process_file(
         "UPDATE _source_files SET region_id = ?1, row_count = ?2 WHERE file_id = ?3",
     )
     .and_then(|mut stmt| stmt.execute(params![result.region_id, result.rows as i64, file_id]))
-    .map_err(|e| format!("Update source file: {}", e))?;
+    .map_err(|e| format!("Update source file: {e}"))?;
 
     Ok(result)
 }
@@ -1581,8 +1579,7 @@ fn insert_resource_parsed_node_direct(
                 for (child_table, child_pk) in &child_pks {
                     if let Some(jn) = find_junction_table(schema, &node.table_name, child_table) {
                         let jct_sql = format!(
-                            "INSERT OR IGNORE INTO \"{}\" (parent_id, child_id) VALUES (?1, ?2)",
-                            jn
+                            "INSERT OR IGNORE INTO \"{jn}\" (parent_id, child_id) VALUES (?1, ?2)"
                         );
                         let _ = tx.prepare_cached(&jct_sql)
                             .and_then(|mut stmt| stmt.execute(params![parent_pk, child_pk]));
@@ -1666,7 +1663,7 @@ fn collect_resource_attribute(
         let col_name = if attr.attr_type == "TranslatedString" {
             attr_id_lower.clone()
         } else {
-            format!("{}_handle", attr_id_lower)
+            format!("{attr_id_lower}_handle")
         };
         let ts_type = if attr.attr_type.is_empty() {
             "TranslatedString".to_string()
@@ -1678,7 +1675,7 @@ fn collect_resource_attribute(
 
     if attr.attr_type == "TranslatedString" {
         if let Some(version) = attr.version {
-            attrs.push((format!("{}_version", attr_id_lower), "int32".to_string(), version.to_string()));
+            attrs.push((format!("{attr_id_lower}_version"), "int32".to_string(), version.to_string()));
         }
     }
 }
@@ -1693,7 +1690,7 @@ fn insert_lsx_row(
 ) -> Result<Option<String>, String> {
     let ts = match schema.tables.get(table_name) {
         Some(ts) => ts,
-        None => return Err(format!("Unknown table: {}", table_name)),
+        None => return Err(format!("Unknown table: {table_name}")),
     };
 
     // Build column list and values
@@ -1763,18 +1760,17 @@ fn insert_lsx_row(
     }
 
     // Build SQL
-    let col_list: String = col_names.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
-    let placeholders: String = (1..=values.len()).map(|i| format!("?{}", i)).collect::<Vec<_>>().join(", ");
+    let col_list: String = col_names.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+    let placeholders: String = (1..=values.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ");
     let sql = format!(
-        "INSERT OR IGNORE INTO \"{}\" ({}) VALUES ({})",
-        table_name, col_list, placeholders
+        "INSERT OR IGNORE INTO \"{table_name}\" ({col_list}) VALUES ({placeholders})"
     );
 
     let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
 
     let rows_affected = tx.prepare_cached(&sql)
         .and_then(|mut stmt| stmt.execute(params.as_slice()))
-        .map_err(|e| format!("Insert into '{}': {}", table_name, e))?;
+        .map_err(|e| format!("Insert into '{table_name}': {e}"))?;
 
     // For Rowid tables, capture the auto-assigned rowid as the PK value.
     if ts.pk_strategy == PkStrategy::Rowid && rows_affected > 0 {
@@ -1857,7 +1853,7 @@ fn process_stats(
                         Some(c) => SqlValue::Text(c.to_string()),
                         None => SqlValue::Null,
                     });
-                    col_names.push(format!("{}_version", k));
+                    col_names.push(format!("{k}_version"));
                     values.push(match ver.parse::<i64>() {
                         Ok(n) => SqlValue::Integer(n),
                         Err(_) => SqlValue::Text(ver.to_string()),
@@ -1885,23 +1881,22 @@ fn process_stats(
 
         let col_list: String = col_names
             .iter()
-            .map(|c| format!("\"{}\"", c))
+            .map(|c| format!("\"{c}\""))
             .collect::<Vec<_>>()
             .join(", ");
         let placeholders: String = (1..=values.len())
-            .map(|i| format!("?{}", i))
+            .map(|i| format!("?{i}"))
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "INSERT OR IGNORE INTO \"{}\" ({}) VALUES ({})",
-            table_name, col_list, placeholders
+            "INSERT OR IGNORE INTO \"{table_name}\" ({col_list}) VALUES ({placeholders})"
         );
 
         let params: Vec<&dyn rusqlite::types::ToSql> =
             values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
         tx.prepare_cached(&sql)
             .and_then(|mut stmt| stmt.execute(params.as_slice()))
-            .map_err(|e| format!("Insert stats: {}", e))?;
+            .map_err(|e| format!("Insert stats: {e}"))?;
 
         Ok(true)
     };
@@ -1981,7 +1976,7 @@ fn process_stats(
                 "INSERT INTO \"txt__raw\" (_file_id, content) VALUES (?1, ?2)",
             )
             .and_then(|mut stmt| stmt.execute(params![file_id, content]))
-            .map_err(|e| format!("Insert raw txt: {}", e))?;
+            .map_err(|e| format!("Insert raw txt: {e}"))?;
             total_rows += 1;
         }
 
@@ -2029,7 +2024,7 @@ fn process_loca(
             "INSERT OR IGNORE INTO \"loca__english\" (contentuid, _file_id, version, text) VALUES (?1, ?2, ?3, ?4)",
         )
         .and_then(|mut stmt| stmt.execute(params![entry.contentuid, file_id, entry.version, entry.text]))
-        .map_err(|e| format!("Insert loca: {}", e))?;
+        .map_err(|e| format!("Insert loca: {e}"))?;
         total_rows += 1;
     }
 
@@ -2135,7 +2130,7 @@ fn process_allspark(
                 "INSERT OR IGNORE INTO \"allspark__components\" (_file_id, name, tooltip, color) VALUES (?1, ?2, ?3, ?4)",
             )
             .and_then(|mut stmt| stmt.execute(params![file_id, name, comp.tooltip, comp.color]))
-            .map_err(|e| format!("Insert allspark component: {}", e))?;
+            .map_err(|e| format!("Insert allspark component: {e}"))?;
             total_rows += 1;
         }
     }
@@ -2153,7 +2148,7 @@ fn process_allspark(
                     file_id, guid, comp_name, prop.name, prop.type_name,
                     prop.specializable as i32, prop.tooltip, prop.default_value,
                 ]))
-                .map_err(|e| format!("Insert allspark property: {}", e))?;
+                .map_err(|e| format!("Insert allspark property: {e}"))?;
                 total_rows += 1;
             }
         }
@@ -2171,7 +2166,7 @@ fn process_allspark(
                 .and_then(|mut stmt| stmt.execute(params![
                     file_id, group.guid, comp_name, group.name, group.collapsed, idx as i64,
                 ]))
-                .map_err(|e| format!("Insert allspark property group: {}", e))?;
+                .map_err(|e| format!("Insert allspark property group: {e}"))?;
                 total_rows += 1;
             }
         }
@@ -2190,7 +2185,7 @@ fn process_allspark(
                     .and_then(|mut stmt| stmt.execute(params![
                         file_id, group.guid, comp_name, prop_guid, idx as i64,
                     ]))
-                    .map_err(|e| format!("Insert allspark property group ref: {}", e))?;
+                    .map_err(|e| format!("Insert allspark property group ref: {e}"))?;
                     total_rows += 1;
                 }
             }
@@ -2204,7 +2199,7 @@ fn process_allspark(
                 "INSERT OR IGNORE INTO \"allspark__modules\" (_file_id, guid, name) VALUES (?1, ?2, ?3)",
             )
             .and_then(|mut stmt| stmt.execute(params![file_id, module.guid, module.name]))
-            .map_err(|e| format!("Insert allspark module: {}", e))?;
+            .map_err(|e| format!("Insert allspark module: {e}"))?;
             total_rows += 1;
         }
     }
@@ -2219,7 +2214,7 @@ fn process_allspark(
                      VALUES (?1, ?2, ?3, ?4)",
                 )
                 .and_then(|mut stmt| stmt.execute(params![file_id, module.guid, guid, prop_name]))
-                .map_err(|e| format!("Insert allspark module property: {}", e))?;
+                .map_err(|e| format!("Insert allspark module property: {e}"))?;
                 total_rows += 1;
             }
         }
@@ -2263,7 +2258,7 @@ fn process_effect(
             file_id, effect_id, effect.version, effect.effect_version,
             effect.phases_xml, effect.colors_xml, source_file,
         ]))
-        .map_err(|e| format!("Insert effect: {}", e))?;
+        .map_err(|e| format!("Insert effect: {e}"))?;
         total_rows += 1;
     }
 
@@ -2286,7 +2281,7 @@ fn process_effect(
                         comp.start, comp.end, track.name, tg.name,
                         effect_id, source_file,
                     ]))
-                    .map_err(|e| format!("Insert effect component: {}", e))?;
+                    .map_err(|e| format!("Insert effect component: {e}"))?;
                     total_rows += 1;
                 }
 
@@ -2300,7 +2295,7 @@ fn process_effect(
                         .and_then(|mut stmt| stmt.execute(params![
                             file_id, prop.guid, comp.instance_name, effect_id, source_file,
                         ]))
-                        .map_err(|e| format!("Insert effect property: {}", e))?;
+                        .map_err(|e| format!("Insert effect property: {e}"))?;
                         total_rows += 1;
                     }
 
@@ -2317,7 +2312,7 @@ fn process_effect(
                                 datum.platform, datum.lod, value,
                                 effect_id, source_file,
                             ]))
-                            .map_err(|e| format!("Insert effect datum: {}", e))?;
+                            .map_err(|e| format!("Insert effect datum: {e}"))?;
                             total_rows += 1;
                         }
                     }
@@ -2345,7 +2340,7 @@ fn populate_table_meta(conn: &Connection, schema: &DiscoveredSchema, row_counts:
              (table_name, source_type, region_id, node_id, parent_tables, row_count)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
-        .map_err(|e| format!("Prepare meta: {}", e))?;
+        .map_err(|e| format!("Prepare meta: {e}"))?;
 
     for (table_name, ts) in &schema.tables {
         // Use pre-tracked row counts when available, otherwise COUNT(*)
@@ -2353,7 +2348,7 @@ fn populate_table_meta(conn: &Connection, schema: &DiscoveredSchema, row_counts:
             row_counts.get(table_name).copied().unwrap_or(0)
         } else {
             conn.query_row(
-                &format!("SELECT COUNT(*) FROM \"{}\"", table_name),
+                &format!("SELECT COUNT(*) FROM \"{table_name}\""),
                 [],
                 |row| row.get(0),
             )
@@ -2376,7 +2371,7 @@ fn populate_table_meta(conn: &Connection, schema: &DiscoveredSchema, row_counts:
             parent_str,
             row_count,
         ])
-        .map_err(|e| format!("Insert meta for '{}': {}", table_name, e))?;
+        .map_err(|e| format!("Insert meta for '{table_name}': {e}"))?;
     }
 
     // Junction table metadata — still uses COUNT(*) since junction rows
@@ -2411,10 +2406,9 @@ fn build_indexes(conn: &Connection, schema: &DiscoveredSchema) -> Result<(), Str
         // _file_id index
         if ts.has_file_id {
             conn.execute_batch(&format!(
-                "CREATE INDEX IF NOT EXISTS \"idx_{tn}__fid\" ON \"{tn}\"(\"_file_id\")",
-                tn = table_name
+                "CREATE INDEX IF NOT EXISTS \"idx_{table_name}__fid\" ON \"{table_name}\"(\"_file_id\")"
             ))
-            .map_err(|e| format!("Index error: {}", e))?;
+            .map_err(|e| format!("Index error: {e}"))?;
         }
 
         // _parent_key index — removed: parent-child relationships are now
@@ -2424,10 +2418,9 @@ fn build_indexes(conn: &Connection, schema: &DiscoveredSchema) -> Result<(), Str
         if table_name.starts_with("stats__")
             && ts.columns.iter().any(|c| c.name == "_entry_name") {
                 conn.execute_batch(&format!(
-                    "CREATE INDEX IF NOT EXISTS \"idx_{tn}__ent\" ON \"{tn}\"(\"_entry_name\")",
-                    tn = table_name
+                    "CREATE INDEX IF NOT EXISTS \"idx_{table_name}__ent\" ON \"{table_name}\"(\"_entry_name\")"
                 ))
-                .map_err(|e| format!("Index error: {}", e))?;
+                .map_err(|e| format!("Index error: {e}"))?;
             }
 
         // Loca contentuid (it's the PK so already indexed)
@@ -2442,12 +2435,12 @@ fn populate_column_types(conn: &Connection, schema: &DiscoveredSchema) -> Result
             "INSERT OR IGNORE INTO _column_types (table_name, column_name, bg3_type, sqlite_type)
              VALUES (?1, ?2, ?3, ?4)",
         )
-        .map_err(|e| format!("Prepare column types: {}", e))?;
+        .map_err(|e| format!("Prepare column types: {e}"))?;
 
     for (table_name, ts) in &schema.tables {
         for col in &ts.columns {
             stmt.execute(params![table_name, col.name, col.bg3_type, col.sqlite_type])
-                .map_err(|e| format!("Insert column type: {}", e))?;
+                .map_err(|e| format!("Insert column type: {e}"))?;
         }
     }
 
@@ -2477,7 +2470,7 @@ fn backfill_orphaned_loca(
          VALUES (?1, 'synthetic:loca_placeholder', 'synthetic', NULL, NULL, 0, 0)",
         params![SYNTHETIC_FILE_ID],
     )
-    .map_err(|e| format!("Insert synthetic source file: {}", e))?;
+    .map_err(|e| format!("Insert synthetic source file: {e}"))?;
 
     // Collect all (table, column) pairs that have an FK → loca__english
     let mut loca_fk_cols: Vec<(String, String)> = Vec::new();
@@ -2515,8 +2508,6 @@ fn backfill_orphaned_loca(
         .map(|(tbl, col)| {
             format!(
                 "SELECT DISTINCT \"{col}\" AS handle FROM \"{tbl}\" WHERE \"{col}\" IS NOT NULL AND \"{col}\" != ''",
-                tbl = tbl,
-                col = col,
             )
         })
         .collect();
@@ -2524,8 +2515,7 @@ fn backfill_orphaned_loca(
     let mut existing_queries = vec![format!("SELECT contentuid FROM main.\"{}\"", LOCA_TABLE)];
     if base_has_loca {
         existing_queries.push(format!(
-            "SELECT contentuid FROM \"{}\".\"{}\"",
-            ALIAS_BASE, LOCA_TABLE
+            "SELECT contentuid FROM \"{ALIAS_BASE}\".\"{LOCA_TABLE}\""
         ));
     }
 
@@ -2545,20 +2535,20 @@ fn backfill_orphaned_loca(
 
     let inserted: usize = conn
         .execute(&sql, params![PLACEHOLDER_TEXT])
-        .map_err(|e| format!("Backfill orphaned loca: {}", e))?;
+        .map_err(|e| format!("Backfill orphaned loca: {e}"))?;
 
     if attached_here {
         cross_db::detach(conn, ALIAS_BASE)?;
     }
 
     if inserted > 0 {
-        eprintln!("  Backfilled {} orphaned loca handles with placeholder text", inserted);
+        eprintln!("  Backfilled {inserted} orphaned loca handles with placeholder text");
         // Update the synthetic source file row count
         conn.execute(
             "UPDATE _source_files SET row_count = ?1 WHERE file_id = ?2",
             params![inserted as i64, SYNTHETIC_FILE_ID],
         )
-        .map_err(|e| format!("Update synthetic source file: {}", e))?;
+        .map_err(|e| format!("Update synthetic source file: {e}"))?;
     }
 
     Ok(())
@@ -2604,12 +2594,11 @@ fn attach_base_fallback_if_needed(
 
 fn has_table_in_schema(conn: &Connection, schema_alias: &str, table_name: &str) -> Result<bool, String> {
     let sql = format!(
-        "SELECT COUNT(*) FROM \"{}\".sqlite_master WHERE type='table' AND name=?1",
-        schema_alias
+        "SELECT COUNT(*) FROM \"{schema_alias}\".sqlite_master WHERE type='table' AND name=?1"
     );
     let count: i64 = conn
         .query_row(&sql, params![table_name], |row| row.get(0))
-        .map_err(|e| format!("Check table {}.{}: {}", schema_alias, table_name, e))?;
+        .map_err(|e| format!("Check table {schema_alias}.{table_name}: {e}"))?;
     Ok(count > 0)
 }
 
@@ -2645,12 +2634,12 @@ impl SourceIdCache {
         let mut cache = HashMap::with_capacity(8);
         let mut max_id = 0i64;
         let mut stmt = conn.prepare("SELECT id, name FROM _sources")
-            .map_err(|e| format!("Load _sources: {}", e))?;
+            .map_err(|e| format!("Load _sources: {e}"))?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        }).map_err(|e| format!("Query _sources: {}", e))?;
+        }).map_err(|e| format!("Query _sources: {e}"))?;
         for row in rows {
-            let (id, name) = row.map_err(|e| format!("Read _sources row: {}", e))?;
+            let (id, name) = row.map_err(|e| format!("Read _sources row: {e}"))?;
             if id > max_id { max_id = id; }
             cache.insert(name, id);
         }
@@ -2665,7 +2654,7 @@ impl SourceIdCache {
         let id = self.next_id;
         tx.prepare_cached("INSERT OR IGNORE INTO _sources (id, name) VALUES (?1, ?2)")
             .and_then(|mut stmt| stmt.execute(params![id, mod_name]))
-            .map_err(|e| format!("Insert _sources: {}", e))?;
+            .map_err(|e| format!("Insert _sources: {e}"))?;
         self.cache.insert(mod_name.to_string(), id);
         self.next_id += 1;
         Ok(id)
@@ -2754,16 +2743,15 @@ fn build_insert_plans(schema: &DiscoveredSchema) -> HashMap<String, TableInsertP
         }
 
         let col_list: String = col_names.iter()
-            .map(|c| format!("\"{}\"", c))
+            .map(|c| format!("\"{c}\""))
             .collect::<Vec<_>>()
             .join(", ");
         let placeholders: String = (1..=idx)
-            .map(|i| format!("?{}", i))
+            .map(|i| format!("?{i}"))
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "INSERT OR IGNORE INTO \"{}\" ({}) VALUES ({})",
-            table_name, col_list, placeholders
+            "INSERT OR IGNORE INTO \"{table_name}\" ({col_list}) VALUES ({placeholders})"
         );
 
         let fk_cols: HashSet<String> = ts.fk_constraints.iter()
@@ -3153,7 +3141,7 @@ fn parse_nonstandard_stats_content(
                 let values = parse_csv_values(&t[q..]);
                 current_name = values.first().cloned();
                 for (i, val) in values.iter().enumerate().skip(1) {
-                    current_data.push((format!("Param{}", i), val.clone()));
+                    current_data.push((format!("Param{i}"), val.clone()));
                 }
             } else {
                 current_name = None;
@@ -3342,10 +3330,10 @@ fn parse_loca_file(file: &FileEntry) -> ParsedContent {
 fn read_text_content(file: &FileEntry) -> Result<String, String> {
     if let Some(bytes) = file.in_memory_bytes() {
         String::from_utf8(bytes.to_vec())
-            .map_err(|e| format!("UTF-8 decode error: {}", e))
+            .map_err(|e| format!("UTF-8 decode error: {e}"))
     } else {
         std::fs::read_to_string(&file.abs_path)
-            .map_err(|e| format!("Read error: {}", e))
+            .map_err(|e| format!("Read error: {e}"))
     }
 }
 
@@ -3377,7 +3365,7 @@ fn insert_parsed_file(
     .and_then(|mut stmt| stmt.execute(params![
         file_id, file.rel_path, file.file_type.as_str(), parsed.mod_name, parsed.file_size
     ]))
-    .map_err(|e| format!("Insert source file: {}", e))?;
+    .map_err(|e| format!("Insert source file: {e}"))?;
 
     let (rows, errors, region_id) = match &mut parsed.content {
         ParsedContent::Lsx { last_region_id, root_nodes } => {
@@ -3422,7 +3410,7 @@ fn insert_parsed_file(
         "UPDATE _source_files SET region_id = ?1, row_count = ?2 WHERE file_id = ?3",
     )
     .and_then(|mut stmt| stmt.execute(params![region_id, rows as i64, file_id]))
-    .map_err(|e| format!("Update source file: {}", e))?;
+    .map_err(|e| format!("Update source file: {e}"))?;
 
     Ok((rows, errors))
 }
@@ -3591,7 +3579,7 @@ fn insert_row_planned(
 ) -> Result<(Option<String>, bool), String> {
     let plan = match plans.get_mut(table_name) {
         Some(p) => p,
-        None => return Err(format!("No plan for table: {}", table_name)),
+        None => return Err(format!("No plan for table: {table_name}")),
     };
 
     // Reset reusable row buffer to all NULLs
@@ -3648,13 +3636,13 @@ fn insert_row_planned(
     // Execute via cached prepared statement — direct binding avoids
     // per-row Vec<&dyn ToSql> allocation.
     let mut stmt = tx.prepare_cached(&plan.sql)
-        .map_err(|e| format!("Prepare '{}': {}", table_name, e))?;
+        .map_err(|e| format!("Prepare '{table_name}': {e}"))?;
     for (i, v) in plan.row_buf.iter().enumerate() {
         v.bind_to(&mut stmt, i + 1)
-            .map_err(|e| format!("Bind col {} in '{}': {}", i, table_name, e))?;
+            .map_err(|e| format!("Bind col {i} in '{table_name}': {e}"))?;
     }
     let rows_affected = stmt.raw_execute()
-        .map_err(|e| format!("Insert into '{}': {}", table_name, e))?;
+        .map_err(|e| format!("Insert into '{table_name}': {e}"))?;
 
     let was_inserted = rows_affected > 0;
 
@@ -3729,7 +3717,7 @@ fn insert_parsed_stats(
                             plan.row_buf[idx] = SqlValue::Text(c.to_string());
                         }
                     }
-                    let ver_key = format!("{}_version", key_lower);
+                    let ver_key = format!("{key_lower}_version");
                     if let Some(&idx) = plan.col_map.get(&ver_key) {
                         plan.row_buf[idx] = match ver.parse::<i64>() {
                             Ok(n) => SqlValue::Integer(n),
@@ -3773,7 +3761,7 @@ fn insert_parsed_stats(
                 "INSERT INTO \"txt__raw\" (_file_id, content) VALUES (?1, ?2)",
             )
             .and_then(|mut stmt| stmt.execute(params![file_id, content]))
-            .map_err(|e| format!("Insert raw txt: {}", e))?;
+            .map_err(|e| format!("Insert raw txt: {e}"))?;
             total_rows += 1;
             if let Some(c) = row_counts.get_mut("txt__raw") { *c += 1; }
         }
@@ -3808,29 +3796,28 @@ fn insert_parsed_loca(
             .join(", ");
 
         let sql = format!(
-            "INSERT OR IGNORE INTO \"loca__english\" (contentuid, _file_id, \"_SourceID\", version, text) VALUES {}",
-            placeholders
+            "INSERT OR IGNORE INTO \"loca__english\" (contentuid, _file_id, \"_SourceID\", version, text) VALUES {placeholders}"
         );
 
         let mut stmt = tx.prepare_cached(&sql)
-            .map_err(|e| format!("Prepare loca batch: {}", e))?;
+            .map_err(|e| format!("Prepare loca batch: {e}"))?;
 
         for (i, entry) in chunk.iter().enumerate() {
             let b = i * COLS_PER_ROW + 1;
             stmt.raw_bind_parameter(b, &entry.contentuid)
-                .map_err(|e| format!("Bind loca: {}", e))?;
+                .map_err(|e| format!("Bind loca: {e}"))?;
             stmt.raw_bind_parameter(b + 1, file_id)
-                .map_err(|e| format!("Bind loca: {}", e))?;
+                .map_err(|e| format!("Bind loca: {e}"))?;
             stmt.raw_bind_parameter(b + 2, source_id)
-                .map_err(|e| format!("Bind loca: {}", e))?;
+                .map_err(|e| format!("Bind loca: {e}"))?;
             stmt.raw_bind_parameter(b + 3, entry.version)
-                .map_err(|e| format!("Bind loca: {}", e))?;
+                .map_err(|e| format!("Bind loca: {e}"))?;
             stmt.raw_bind_parameter(b + 4, &entry.text as &dyn rusqlite::types::ToSql)
-                .map_err(|e| format!("Bind loca: {}", e))?;
+                .map_err(|e| format!("Bind loca: {e}"))?;
         }
 
         stmt.raw_execute()
-            .map_err(|e| format!("Execute loca batch: {}", e))?;
+            .map_err(|e| format!("Execute loca batch: {e}"))?;
     }
 
     let total_rows = entries.len();
@@ -3874,13 +3861,13 @@ fn insert_parsed_equipment(
         }
 
         let mut stmt = tx.prepare_cached(&plan.sql)
-            .map_err(|e| format!("Prepare equipment: {}", e))?;
+            .map_err(|e| format!("Prepare equipment: {e}"))?;
         for (i, v) in plan.row_buf.iter().enumerate() {
             v.bind_to(&mut stmt, i + 1)
-                .map_err(|e| format!("Bind equipment col {}: {}", i, e))?;
+                .map_err(|e| format!("Bind equipment col {i}: {e}"))?;
         }
         stmt.raw_execute()
-            .map_err(|e| format!("Insert equipment: {}", e))?;
+            .map_err(|e| format!("Insert equipment: {e}"))?;
         total_rows += 1;
     }
     if let Some(c) = row_counts.get_mut("stats__equipment") { *c += total_rows as i64; }
@@ -3912,29 +3899,28 @@ fn insert_parsed_valuelists(
             .join(", ");
 
         let sql = format!(
-            "INSERT OR IGNORE INTO \"valuelist_entries\" (list_key, value_name, value_index, _file_id, \"_SourceID\") VALUES {}",
-            placeholders
+            "INSERT OR IGNORE INTO \"valuelist_entries\" (list_key, value_name, value_index, _file_id, \"_SourceID\") VALUES {placeholders}"
         );
 
         let mut stmt = tx.prepare_cached(&sql)
-            .map_err(|e| format!("Prepare valuelist batch: {}", e))?;
+            .map_err(|e| format!("Prepare valuelist batch: {e}"))?;
 
         for (i, entry) in chunk.iter().enumerate() {
             let b = i * COLS_PER_ROW + 1;
             stmt.raw_bind_parameter(b, &entry.list_key)
-                .map_err(|e| format!("Bind valuelist: {}", e))?;
+                .map_err(|e| format!("Bind valuelist: {e}"))?;
             stmt.raw_bind_parameter(b + 1, &entry.value_name)
-                .map_err(|e| format!("Bind valuelist: {}", e))?;
+                .map_err(|e| format!("Bind valuelist: {e}"))?;
             stmt.raw_bind_parameter(b + 2, entry.value_index)
-                .map_err(|e| format!("Bind valuelist: {}", e))?;
+                .map_err(|e| format!("Bind valuelist: {e}"))?;
             stmt.raw_bind_parameter(b + 3, file_id)
-                .map_err(|e| format!("Bind valuelist: {}", e))?;
+                .map_err(|e| format!("Bind valuelist: {e}"))?;
             stmt.raw_bind_parameter(b + 4, source_id)
-                .map_err(|e| format!("Bind valuelist: {}", e))?;
+                .map_err(|e| format!("Bind valuelist: {e}"))?;
         }
 
         stmt.raw_execute()
-            .map_err(|e| format!("Execute valuelist batch: {}", e))?;
+            .map_err(|e| format!("Execute valuelist batch: {e}"))?;
     }
 
     let total_rows = entries.len();
@@ -3967,29 +3953,28 @@ fn insert_parsed_modifiers(
             .join(", ");
 
         let sql = format!(
-            "INSERT OR IGNORE INTO \"modifier_definitions\" (type_name, field_name, field_type, _file_id, \"_SourceID\") VALUES {}",
-            placeholders
+            "INSERT OR IGNORE INTO \"modifier_definitions\" (type_name, field_name, field_type, _file_id, \"_SourceID\") VALUES {placeholders}"
         );
 
         let mut stmt = tx.prepare_cached(&sql)
-            .map_err(|e| format!("Prepare modifier batch: {}", e))?;
+            .map_err(|e| format!("Prepare modifier batch: {e}"))?;
 
         for (i, entry) in chunk.iter().enumerate() {
             let b = i * COLS_PER_ROW + 1;
             stmt.raw_bind_parameter(b, &entry.type_name)
-                .map_err(|e| format!("Bind modifier: {}", e))?;
+                .map_err(|e| format!("Bind modifier: {e}"))?;
             stmt.raw_bind_parameter(b + 1, &entry.field_name)
-                .map_err(|e| format!("Bind modifier: {}", e))?;
+                .map_err(|e| format!("Bind modifier: {e}"))?;
             stmt.raw_bind_parameter(b + 2, &entry.field_type)
-                .map_err(|e| format!("Bind modifier: {}", e))?;
+                .map_err(|e| format!("Bind modifier: {e}"))?;
             stmt.raw_bind_parameter(b + 3, file_id)
-                .map_err(|e| format!("Bind modifier: {}", e))?;
+                .map_err(|e| format!("Bind modifier: {e}"))?;
             stmt.raw_bind_parameter(b + 4, source_id)
-                .map_err(|e| format!("Bind modifier: {}", e))?;
+                .map_err(|e| format!("Bind modifier: {e}"))?;
         }
 
         stmt.raw_execute()
-            .map_err(|e| format!("Execute modifier batch: {}", e))?;
+            .map_err(|e| format!("Execute modifier batch: {e}"))?;
     }
 
     let total_rows = entries.len();

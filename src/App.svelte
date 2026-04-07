@@ -6,7 +6,6 @@
   import OutputSidebar from "./components/OutputSidebar.svelte";
   import FirstRunModal from "./components/FirstRunModal.svelte";
   import CreateModModal from "./components/CreateModModal.svelte";
-  import ExportModModal from "./components/ExportModModal.svelte";
   import PanelSplitter from "./components/PanelSplitter.svelte";
   import ToastContainer from "./components/ToastContainer.svelte";
   import StatusBar from "./components/StatusBar.svelte";
@@ -17,6 +16,7 @@
   import SearchPanel from "./components/SearchPanel.svelte";
   import SettingsView from "./components/SettingsView.svelte";
   import HelpSidebarPanel from "./components/HelpSidebarPanel.svelte";
+  import ProjectPanel from "./components/ProjectPanel.svelte";
   import LoadedDataPanel from "./components/hamburger/LoadedDataPanel.svelte";
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
   import EntrySummary from "./components/manual-entry/EntrySummary.svelte";
@@ -72,7 +72,6 @@
   });
 
   let showFirstRunModal = $state(false);
-  let showExportModModal = $state(false);
 
   // ERR-006 Option C: Global unhandled error/rejection safety net
   $effect(() => {
@@ -95,13 +94,6 @@
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
     };
-  });
-
-  // Listen for global export modal open event (from OutputSidebar export button)
-  $effect(() => {
-    function onOpenExportModal() { showExportModModal = true; }
-    window.addEventListener("open-export-mod-modal", onOpenExportModal);
-    return () => window.removeEventListener("open-export-mod-modal", onOpenExportModal);
   });
 
   // PF-034: Register static commands
@@ -187,17 +179,7 @@
           uiStore.showCreateModModal = true;
         },
       },
-      {
-        id: "action.exportMod",
-        label: m.command_label_export_mod(),
-        category: "action",
-        icon: "⚡",
-        shortcut: "Ctrl+Shift+E",
-        enabled: () => !!modStore.scanResult,
-        execute: () => {
-          showExportModModal = true;
-        },
-      },
+
       {
         id: "action.convertConfig",
         label: m.command_label_convert_config(),
@@ -320,6 +302,39 @@
           toastStore.info(m.app_section_reset(), m.app_section_restored({ section: SECTION_DISPLAY_NAMES[section] }));
         },
       })),
+      // ── Close Project: clear all state (File menu command) ──
+      {
+        id: "action.closeProject",
+        label: m.command_label_close_project(),
+        category: "action",
+        icon: "⏏",
+        enabled: () => !!modStore.scanResult,
+        execute: async () => {
+          if (projectStore.dirty) {
+            const confirmed = await ask(
+              m.app_unsaved_changes_exit(),
+              { title: m.app_unsaved_changes_title(), kind: "warning" },
+            );
+            if (!confirmed) return;
+          }
+          projectStore.reset();
+          modStore.reset();
+          modStore.selectedModPath = "";
+          toastStore.info(m.app_project_closed());
+        },
+      },
+      // ── Package Project: create .pak from mod folder ──
+      {
+        id: "action.packageProject",
+        label: m.command_label_package_project(),
+        category: "action",
+        icon: "📦",
+        shortcut: "Ctrl+Shift+E",
+        enabled: () => !!modStore.scanResult,
+        execute: () => {
+          toastStore.info("Package Project", "Packaging will create a .pak file. Coming soon.");
+        },
+      },
       // ── Exit Mod: clear all state ──
       {
         id: "action.exitMod",
@@ -339,6 +354,17 @@
           modStore.reset();
           modStore.selectedModPath = "";
           toastStore.info(m.app_mod_closed(), m.app_all_data_cleared());
+        },
+      },
+      // ── Edit README ──
+      {
+        id: "action.editReadme",
+        label: "Edit README",
+        category: "action",
+        icon: "📝",
+        enabled: () => !!modStore.scanResult,
+        execute: () => {
+          uiStore.openTab({ id: "readme", label: "README.md", type: "readme", icon: "📝" });
         },
       },
       // ── Dev: Theme Gallery ──
@@ -489,6 +515,13 @@
       root.classList.add("reduced-motion");
     } else {
       root.classList.remove("reduced-motion");
+    }
+  });
+
+  // Guard: switch away from project view when mod is unloaded
+  $effect(() => {
+    if (!modStore.scanResult && uiStore.activeView === "project") {
+      uiStore.activeView = "explorer";
     }
   });
 
@@ -708,7 +741,7 @@
           {modStore.error}
         </div>
       {/if}
-      {#if !settingsStore.vanillaPath && modStore.scanResult}
+      {#if !settingsStore.gameDataPath && modStore.scanResult}
         <div class="flex items-center gap-2 px-4 py-2 bg-[var(--th-warn-bg,rgba(120,53,15,0.3))] border-b border-[var(--th-warn-border,rgba(180,83,9,0.5))] text-[var(--th-warn-text,#fcd34d)] text-xs">
           <span class="flex-1">{m.app_vanilla_not_configured()}</span>
           <button
@@ -721,11 +754,15 @@
       <!-- Main content area -->
       <div bind:this={contentColumnEl} class="flex flex-1 min-h-0">
         <!-- Side panel: contextual view based on active activity -->
-        {#if uiStore.sidebarVisible && (uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings")}
+        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings")}
           <div class="side-panel" style="width: {leftPanelWidth}px; zoom: {settingsStore.zoomLevel / 100};">
             {#if uiStore.activeView === "search"}
               <ErrorBoundary name="Search Panel">
                 <SearchPanel />
+              </ErrorBoundary>
+            {:else if uiStore.activeView === "project"}
+              <ErrorBoundary name="Project Panel">
+                <ProjectPanel />
               </ErrorBoundary>
             {:else if uiStore.activeView === "loaded-data"}
               <ErrorBoundary name="Loaded Data">
@@ -772,7 +809,7 @@
               <p class="mt-3 text-xs text-[var(--th-text-400)]">{m.app_comparing_mod()}</p>
             </div>
           {/if}
-          {#if uiStore.activeView === "editor" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings"}
+          {#if uiStore.activeView === "editor" || uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings"}
             <ErrorBoundary name="Editor">
               <EditorTabs />
             </ErrorBoundary>
@@ -846,10 +883,6 @@
 </div>
 
 <CreateModModal />
-
-{#if showExportModModal}
-  <ExportModModal onclose={() => showExportModModal = false} />
-{/if}
 
 <!-- USE-03: First-run onboarding modal -->
 <FirstRunModal bind:show={showFirstRunModal} />

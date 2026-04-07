@@ -35,7 +35,7 @@ fn diagnose_row_errors() {
     let mut sorted: Vec<_> = pk_counts.iter().collect();
     sorted.sort_by_key(|(_k, v)| std::cmp::Reverse(*v));
     for (strategy, count) in sorted {
-        println!("  {:20} {}", strategy, count);
+        println!("  {strategy:20} {count}");
     }
 
     println!("\n=== Child tables with non-Rowid PK ({}) ===", has_parent_and_uuid.len());
@@ -77,7 +77,7 @@ fn diagnose_fk_mismatches() {
     let mut bad_fks = 0;
     for table in &tables {
         let fk_list: Vec<(i64, String, String, String, String)> = {
-            let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", table)).unwrap();
+            let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{table}\")")).unwrap();
             stmt.query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
@@ -101,15 +101,14 @@ fn diagnose_fk_mismatches() {
             ).unwrap_or(false);
 
             if !exists {
-                println!("  {} FK#{}: {}.{} -> {}.{} — TARGET TABLE MISSING",
-                    table, id, table, from_col, target_table, to_col);
+                println!("  {table} FK#{id}: {table}.{from_col} -> {target_table}.{to_col} — TARGET TABLE MISSING");
                 bad_fks += 1;
                 continue;
             }
 
             // Check if target column exists
             let col_exists: bool = {
-                let mut cols_stmt = conn.prepare(&format!("PRAGMA table_info(\"{}\")", target_table)).unwrap();
+                let mut cols_stmt = conn.prepare(&format!("PRAGMA table_info(\"{target_table}\")")).unwrap();
                 let cols: Vec<String> = cols_stmt.query_map([], |row| row.get::<_, String>(1))
                     .unwrap()
                     .filter_map(|r| r.ok())
@@ -118,13 +117,12 @@ fn diagnose_fk_mismatches() {
             };
 
             if !col_exists {
-                println!("  {} FK#{}: {}.{} -> {}.{} — TARGET COLUMN MISSING",
-                    table, id, table, from_col, target_table, to_col);
+                println!("  {table} FK#{id}: {table}.{from_col} -> {target_table}.{to_col} — TARGET COLUMN MISSING");
                 bad_fks += 1;
             }
         }
     }
-    println!("\nTotal bad FKs: {}", bad_fks);
+    println!("\nTotal bad FKs: {bad_fks}");
 
     // Check DDL of key problem tables
     println!("\n=== DDL of Key Tables ===");
@@ -137,10 +135,10 @@ fn diagnose_fk_mismatches() {
             [check_table],
             |r| r.get(0),
         ).unwrap_or_else(|_| "NOT FOUND".to_string());
-        println!("\n--- {} ---\n{}", check_table, ddl);
+        println!("\n--- {check_table} ---\n{ddl}");
         
         // Show FK list
-        let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", check_table)).unwrap();
+        let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{check_table}\")")).unwrap();
         let fks: Vec<String> = stmt.query_map([], |row| {
             Ok(format!("  FK#{}: {} -> {}.{}",
                 row.get::<_, i64>(0)?,
@@ -150,7 +148,7 @@ fn diagnose_fk_mismatches() {
             ))
         }).unwrap().filter_map(|r| r.ok()).collect();
         for fk in &fks {
-            println!("{}", fk);
+            println!("{fk}");
         }
     }
 
@@ -173,7 +171,7 @@ fn diagnose_fk_mismatches() {
     for table in &tables {
         // Get FK definitions for this table
         let fk_list: Vec<(i64, String, String, String)> = {
-            let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", table)).unwrap();
+            let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{table}\")")).unwrap();
             stmt.query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,  // id
@@ -190,7 +188,7 @@ fn diagnose_fk_mismatches() {
         if fk_list.is_empty() { continue; }
 
         // Run FK check
-        match conn.prepare(&format!("PRAGMA foreign_key_check(\"{}\")", table)) {
+        match conn.prepare(&format!("PRAGMA foreign_key_check(\"{table}\")")) {
             Ok(mut stmt) => {
                 // foreign_key_check returns: table, rowid, parent_table, fkid
                 let violations: Vec<(i64, String, i64)> = stmt.query_map([], |row| {
@@ -226,7 +224,7 @@ fn diagnose_fk_mismatches() {
                     let mut sample_values = Vec::new();
                     for rid in &sample_rowids {
                         let val: Option<String> = conn.query_row(
-                            &format!("SELECT \"{}\" FROM \"{}\" WHERE rowid = ?1", from_col, table),
+                            &format!("SELECT \"{from_col}\" FROM \"{table}\" WHERE rowid = ?1"),
                             [rid],
                             |r| r.get(0),
                         ).ok();
@@ -246,7 +244,7 @@ fn diagnose_fk_mismatches() {
                 }
             }
             Err(e) => {
-                println!("  {}: FK CHECK ERROR — {}", table, e);
+                println!("  {table}: FK CHECK ERROR — {e}");
             }
         }
     }
@@ -259,7 +257,7 @@ fn diagnose_fk_mismatches() {
         println!("\n  {}.{} -> {}.{} — {} violations",
             g.source_table, g.from_col, g.target_table, g.to_col, g.count);
         for (i, val) in g.sample_values.iter().enumerate() {
-            println!("    sample[{}]: {}", i, val);
+            println!("    sample[{i}]: {val}");
         }
     }
 
@@ -272,7 +270,7 @@ fn diagnose_fk_mismatches() {
     let mut target_sorted: Vec<_> = by_target.iter().collect();
     target_sorted.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
     for (target, count) in &target_sorted {
-        println!("  {:60} {}", target, count);
+        println!("  {target:60} {count}");
     }
 
     // Summary by source→target relationship type (lsx→lsx, lsx→stats, stats→lsx, stats→stats, loca→*)
@@ -287,13 +285,13 @@ fn diagnose_fk_mismatches() {
             else if g.target_table.starts_with("stats__") { "stats" }
             else if g.target_table.starts_with("loca__") { "loca" }
             else { "other" };
-        let key = format!("{} -> {}", src_type, tgt_type);
+        let key = format!("{src_type} -> {tgt_type}");
         *by_type.entry(key).or_default() += g.count;
     }
     let mut type_sorted: Vec<_> = by_type.iter().collect();
     type_sorted.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
     for (rtype, count) in &type_sorted {
-        println!("  {:20} {}", rtype, count);
+        println!("  {rtype:20} {count}");
     }
 
     println!("\n=== TOTALS ===");
@@ -315,7 +313,7 @@ fn investigate_non_loca_violations() {
 
     // Helper: run a query and print results
     let run_query = |label: &str, sql: &str| {
-        println!("\n=== {} ===", label);
+        println!("\n=== {label} ===");
         match conn.prepare(sql) {
             Ok(mut stmt) => {
                 let col_count = stmt.column_count();
@@ -333,9 +331,9 @@ fn investigate_non_loca_violations() {
                     println!("  {}", vals.join(" | "));
                     count += 1;
                 }
-                println!("  ({} rows)", count);
+                println!("  ({count} rows)");
             }
-            Err(e) => println!("  ERROR: {}", e),
+            Err(e) => println!("  ERROR: {e}"),
         }
     };
 
@@ -632,7 +630,7 @@ fn voice_deep_dive() {
             "SELECT COUNT(*) FROM lsx__Voices__Voice WHERE TableUUID = ?1", [uuid], |r| r.get(0)
         ).unwrap();
         let status = if in_uuid > 0 { "MATCH-UUID" } else if in_table > 0 { "MATCH-TableUUID" } else { "ORPHAN" };
-        println!("  {} | Voice.UUID:{} | Voice.TableUUID:{} | {}", uuid, in_uuid, in_table, status);
+        println!("  {uuid} | Voice.UUID:{in_uuid} | Voice.TableUUID:{in_table} | {status}");
     }
 
     // 2. All distinct VoiceTableUUID from CompanionPresets
@@ -649,7 +647,7 @@ fn voice_deep_dive() {
             "SELECT COUNT(*) FROM lsx__Voices__Voice WHERE TableUUID = ?1", [uuid], |r| r.get(0)
         ).unwrap();
         let status = if in_uuid > 0 { "MATCH-UUID" } else if in_table > 0 { "MATCH-TableUUID" } else { "ORPHAN" };
-        println!("  {} | Voice.UUID:{} | Voice.TableUUID:{} | {}", uuid, in_uuid, in_table, status);
+        println!("  {uuid} | Voice.UUID:{in_uuid} | Voice.TableUUID:{in_table} | {status}");
     }
 
     // 3. MaterialOverrides orphan analysis
@@ -667,9 +665,9 @@ fn voice_deep_dive() {
         "SELECT COUNT(*) FROM lsx__CharacterVisualBank__MaterialOverrides mo WHERE mo._parent_key IS NULL",
         [], |r| r.get(0)
     ).unwrap();
-    println!("  Total rows: {}", total);
-    println!("  Orphaned _parent_key: {}", orphaned);
-    println!("  NULL _parent_key: {}", null_parent);
+    println!("  Total rows: {total}");
+    println!("  Orphaned _parent_key: {orphaned}");
+    println!("  NULL _parent_key: {null_parent}");
 
     // Are orphaned parent keys actually in CharacterVisualBank__Resource.ID?
     let in_resource: i64 = conn.query_row(
@@ -679,7 +677,7 @@ fn voice_deep_dive() {
            AND mo._parent_key IN (SELECT ID FROM lsx__CharacterVisualBank__Resource)",
         [], |r| r.get(0)
     ).unwrap();
-    println!("  Orphans matching Resource.ID: {}", in_resource);
+    println!("  Orphans matching Resource.ID: {in_resource}");
 
     // Check the XML hierarchy: what parent node do MaterialOverrides sit under?
     // The Materials table has MapKey PK, so parent_key should be a Materials.MapKey
@@ -698,7 +696,7 @@ fn voice_deep_dive() {
         ).unwrap_or_else(|_| "NOT FOUND".into());
         // Extract just the first few lines
         let first_lines: String = ddl.lines().take(5).collect::<Vec<_>>().join("\n");
-        println!("  {} => {}", t, first_lines);
+        println!("  {t} => {first_lines}");
     }
 
     // 4. Source files for orphaned EffectInfo rows
@@ -706,7 +704,7 @@ fn voice_deep_dive() {
     let ddl: String = conn.query_row(
         "SELECT sql FROM sqlite_master WHERE name='_source_files'", [], |r| r.get(0)
     ).unwrap();
-    println!("{}", ddl);
+    println!("{ddl}");
 
     println!("\n=== Source files for orphaned EffectInfo rows ===");
     // Get the columns of _source_files first
@@ -714,7 +712,7 @@ fn voice_deep_dive() {
     let cols: Vec<(String, String)> = stmt.query_map([], |r| Ok((r.get(1)?, r.get(2)?)))
         .unwrap().filter_map(|r| r.ok()).collect();
     for (name, typ) in &cols {
-        println!("  col: {} ({})", name, typ);
+        println!("  col: {name} ({typ})");
     }
 
     // 5. Verify: do VisualTemplate/PhysicsTemplate orphan values exist in other bank tables?
@@ -724,7 +722,7 @@ fn voice_deep_dive() {
     ).unwrap();
     let names: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect();
     for n in &names {
-        println!("  {}", n);
+        println!("  {n}");
     }
 
     println!("\n=== PhysicsBank tables ===");
@@ -733,13 +731,13 @@ fn voice_deep_dive() {
     ).unwrap();
     let names: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect();
     for n in &names {
-        println!("  {}", n);
+        println!("  {n}");
     }
 
     // 6. Tags: check source files for orphaned tag UUIDs
     println!("\n=== Tags total count ===");
     let cnt: i64 = conn.query_row("SELECT COUNT(*) FROM lsx__Tags__Tags", [], |r| r.get(0)).unwrap();
-    println!("  {} tags in DB", cnt);
+    println!("  {cnt} tags in DB");
 
     // Check unique orphan values from FaceExpressions + Templates__Tag
     println!("\n=== Unique orphan tag UUIDs ===");
@@ -753,7 +751,7 @@ fn voice_deep_dive() {
     let vals: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect();
     println!("  {} distinct orphan values:", vals.len());
     for v in &vals {
-        println!("    {}", v);
+        println!("    {v}");
     }
 
     // 7. VoiceMeta: check if those orphan voice UUIDs match VoiceMeta file names
@@ -789,13 +787,13 @@ fn voice_deep_dive() {
             let normalized = o.replace('-', "");
             if vm_ids.contains(o) || vm_ids.contains(&normalized) {
                 in_vm += 1;
-                println!("  FOUND in VoiceMeta: {}", o);
+                println!("  FOUND in VoiceMeta: {o}");
             } else {
                 not_in_vm += 1;
             }
         }
         println!("  Origin orphans in VoiceMeta: {} / {} total orphans", in_vm, orphans.len());
-        println!("  Origin orphans NOT in VoiceMeta: {}", not_in_vm);
+        println!("  Origin orphans NOT in VoiceMeta: {not_in_vm}");
 
         // Same for CompanionPresets
         let mut stmt = conn.prepare(
@@ -809,12 +807,12 @@ fn voice_deep_dive() {
             let normalized = o.replace('-', "");
             if vm_ids.contains(o) || vm_ids.contains(&normalized) {
                 in_vm += 1;
-                println!("  CP FOUND in VoiceMeta: {}", o);
+                println!("  CP FOUND in VoiceMeta: {o}");
             }
         }
         println!("  CompanionPresets orphans in VoiceMeta: {} / {} total orphans", in_vm, orphans.len());
     } else {
-        println!("  VoiceMeta dir not found at {:?}", voicemeta_dir);
+        println!("  VoiceMeta dir not found at {voicemeta_dir:?}");
     }
 }
 
@@ -864,11 +862,11 @@ fn colorpreset_parent_analysis() {
     ).unwrap();
 
     println!("\n=== ColorPreset _parent_key Analysis ===");
-    println!("  Total rows:              {}", total);
-    println!("  NULL _parent_key:        {}", null_parent);
-    println!("  Matches Resource.ID:     {}", in_resource);
-    println!("  Matches Materials.MapKey:{}", in_materials);
-    println!("  True orphans:            {}", orphan);
+    println!("  Total rows:              {total}");
+    println!("  NULL _parent_key:        {null_parent}");
+    println!("  Matches Resource.ID:     {in_resource}");
+    println!("  Matches Materials.MapKey:{in_materials}");
+    println!("  True orphans:            {orphan}");
     println!("  (Violations would be {} if FK → Resource.ID)", total - null_parent - in_resource);
     println!("  (Violations would be {} if FK → Materials.MapKey)", total - null_parent - in_materials);
 
@@ -899,11 +897,11 @@ fn colorpreset_parent_analysis() {
     ).unwrap();
 
     println!("\n=== MaterialOverrides _parent_key Analysis ===");
-    println!("  Total rows:              {}", total);
-    println!("  NULL _parent_key:        {}", null_parent);
-    println!("  Matches Resource.ID:     {}", in_resource);
-    println!("  Matches Materials.MapKey:{}", in_materials);
-    println!("  True orphans:            {}", orphan);
+    println!("  Total rows:              {total}");
+    println!("  NULL _parent_key:        {null_parent}");
+    println!("  Matches Resource.ID:     {in_resource}");
+    println!("  Matches Materials.MapKey:{in_materials}");
+    println!("  True orphans:            {orphan}");
     println!("  (Violations would be {} if FK → Resource.ID)", total - null_parent - in_resource);
     println!("  (Violations would be {} if FK → Materials.MapKey)", total - null_parent - in_materials);
 
@@ -912,8 +910,8 @@ fn colorpreset_parent_analysis() {
         "lsx__CharacterVisualBank__ColorPreset",
         "lsx__CharacterVisualBank__MaterialOverrides",
     ] {
-        println!("\n=== FK list for {} ===", t);
-        let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", t)).unwrap();
+        println!("\n=== FK list for {t} ===");
+        let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{t}\")")).unwrap();
         let fks: Vec<String> = stmt.query_map([], |row| {
             Ok(format!("  FK#{}: {} -> {}.{}",
                 row.get::<_, i64>(0)?,
@@ -922,7 +920,7 @@ fn colorpreset_parent_analysis() {
                 row.get::<_, String>(4)?,
             ))
         }).unwrap().filter_map(|r| r.ok()).collect();
-        for fk in &fks { println!("{}", fk); }
+        for fk in &fks { println!("{fk}"); }
     }
 }
 
@@ -945,12 +943,12 @@ fn colorpreset_discovery_debug() {
     ];
     for name in &targets {
         if let Some(ts) = schema.tables.get(*name) {
-            println!("\n=== {} ===", name);
+            println!("\n=== {name} ===");
             println!("  PK strategy:    {:?}", ts.pk_strategy);
             println!("  parent_tables:  {:?}", ts.parent_tables);
             println!("  parent_tables:   {:?}", ts.parent_tables);
         } else {
-            println!("\n=== {} === NOT FOUND", name);
+            println!("\n=== {name} === NOT FOUND");
         }
     }
 }

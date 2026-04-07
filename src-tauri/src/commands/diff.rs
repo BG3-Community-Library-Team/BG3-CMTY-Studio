@@ -199,7 +199,7 @@ fn build_display_name(entry: &LsxEntry, section: Section) -> String {
                 .get("Level")
                 .map(|a| a.value.as_str())
                 .unwrap_or("?");
-            format!("{} Lv{}", name, level)
+            format!("{name} Lv{level}")
         }
         // Backgrounds and Origins use DisplayName which is a localization handle
         // Return the handle so the frontend can resolve it via localizationMap

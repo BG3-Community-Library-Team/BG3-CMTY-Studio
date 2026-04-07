@@ -101,32 +101,29 @@ impl From<PakError> for AppError {
             PakError::InvalidPath(message) => Self::invalid_input(message),
             PakError::InvalidFormat(message) => Self::parse_error(message),
             PakError::UnsupportedVersion(version) => {
-                Self::parse_error(format!("Unsupported pak version: {}", version))
+                Self::parse_error(format!("Unsupported pak version: {version}"))
             }
             PakError::BoundsViolation {
                 start,
                 len,
                 source_len,
             } => Self::parse_error(format!(
-                "Pak read exceeds bounds (start={}, len={}, source_len={})",
-                start, len, source_len
+                "Pak read exceeds bounds (start={start}, len={len}, source_len={source_len})"
             )),
             PakError::SizeLimitExceeded {
                 context,
                 size,
                 limit,
             } => Self::parse_error(format!(
-                "Pak size limit exceeded for {} (size={}, limit={})",
-                context, size, limit
+                "Pak size limit exceeded for {context} (size={size}, limit={limit})"
             )),
             PakError::NotFound(message) => Self::not_found(message),
             PakError::DeletedEntry(path) => {
-                Self::invalid_input(format!("Pak entry is marked deleted: {}", path))
+                Self::invalid_input(format!("Pak entry is marked deleted: {path}"))
             }
             PakError::Decompression(message) => Self::parse_error(message),
             PakError::NotImplemented(message) => Self::internal(format!(
-                "Pak feature not implemented: {}",
-                message
+                "Pak feature not implemented: {message}"
             )),
         }
     }

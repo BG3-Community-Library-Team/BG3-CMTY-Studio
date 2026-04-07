@@ -218,8 +218,6 @@
           readonly={readonly}
           spellcheck={false}
           autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
           aria-label={m.script_editor_textarea_label()}
         ></textarea>
       </div>

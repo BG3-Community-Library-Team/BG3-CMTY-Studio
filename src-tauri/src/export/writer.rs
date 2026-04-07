@@ -343,8 +343,7 @@ mod tests {
         assert!(
             !good_tmp.exists(),
             "Temp file for the good entry should have been cleaned up after failure, \
-             but {:?} still exists",
-            good_tmp
+             but {good_tmp:?} still exists"
         );
 
         // The bad entry's temp should also not exist (it never got written).

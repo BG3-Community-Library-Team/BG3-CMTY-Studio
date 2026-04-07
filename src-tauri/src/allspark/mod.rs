@@ -216,7 +216,7 @@ impl AllSparkRegistry {
                             in_data = true;
                             data_depth += 1;
                             if data_depth > MAX_DATA_DEPTH {
-                                return Err(format!("XCD data nesting depth exceeds {} limit", MAX_DATA_DEPTH));
+                                return Err(format!("XCD data nesting depth exceeds {MAX_DATA_DEPTH} limit"));
                             }
                         }
                         "datum" if in_data && data_depth == 1 => {
@@ -231,7 +231,7 @@ impl AllSparkRegistry {
                             if in_data {
                                 data_depth += 1;
                                 if data_depth > MAX_DATA_DEPTH {
-                                    return Err(format!("XCD data nesting depth exceeds {} limit", MAX_DATA_DEPTH));
+                                    return Err(format!("XCD data nesting depth exceeds {MAX_DATA_DEPTH} limit"));
                                 }
                             }
                         }

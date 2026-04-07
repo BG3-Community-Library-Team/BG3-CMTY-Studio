@@ -31,7 +31,7 @@ fn test_columns() -> Vec<ColumnDef> {
 fn build_test_schema(n_tables: usize) -> DiscoveredSchema {
     let mut tables = HashMap::new();
     for i in 0..n_tables {
-        let name = format!("lsx__ClassDescriptions__{}", i);
+        let name = format!("lsx__ClassDescriptions__{i}");
         tables.insert(
             name.clone(),
             TableSchema {
@@ -66,7 +66,7 @@ fn test_uuid(i: usize) -> String {
 fn test_row_columns(uuid: &str) -> HashMap<String, String> {
     let mut cols = HashMap::new();
     cols.insert("UUID".into(), uuid.into());
-    cols.insert("Name".into(), format!("TestClass_{}", uuid));
+    cols.insert("Name".into(), format!("TestClass_{uuid}"));
     cols.insert("DisplayName".into(), "h00000000g0000".into());
     cols.insert("Description".into(), "h11111111g1111".into());
     cols.insert("ParentGuid".into(), "00000000-0000-0000-0000-000000000000".into());
@@ -243,7 +243,7 @@ fn test_db_size_500_entries() {
 
     // Insert 500 rows (100 per table × 5 tables)
     for t in 0..5 {
-        let table = format!("lsx__ClassDescriptions__{}", t);
+        let table = format!("lsx__ClassDescriptions__{t}");
         let tx = conn.unchecked_transaction().unwrap();
         for i in 0..100 {
             let uuid = test_uuid(t * 1000 + i);
@@ -263,13 +263,11 @@ fn test_db_size_500_entries() {
     let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
 
     eprintln!(
-        "DB size with 500 entries: {:.2} MB (db={}, wal={})",
-        total_mb, db_size, wal_size
+        "DB size with 500 entries: {total_mb:.2} MB (db={db_size}, wal={wal_size})"
     );
     assert!(
         total_mb < 5.0,
-        "Staging DB with 500 entries is {:.2} MB — exceeds 5 MB budget",
-        total_mb
+        "Staging DB with 500 entries is {total_mb:.2} MB — exceeds 5 MB budget"
     );
 }
 
@@ -301,12 +299,10 @@ fn test_undo_journal_size_1000_ops() {
 
     let journal_mb = journal_bytes as f64 / (1024.0 * 1024.0);
     eprintln!(
-        "Undo journal after 1000 ops: {:.3} MB ({} bytes)",
-        journal_mb, journal_bytes
+        "Undo journal after 1000 ops: {journal_mb:.3} MB ({journal_bytes} bytes)"
     );
     assert!(
         journal_mb < 1.0,
-        "Undo journal is {:.3} MB — exceeds 1 MB budget",
-        journal_mb
+        "Undo journal is {journal_mb:.3} MB — exceeds 1 MB budget"
     );
 }

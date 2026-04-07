@@ -177,7 +177,7 @@ pub fn lsx_to_yaml_doc(xml_content: &str) -> Result<LsxYamlDoc, String> {
 
 /// Serialize an LsxYamlDoc to a YAML string.
 pub fn yaml_doc_to_string(doc: &LsxYamlDoc) -> Result<String, String> {
-    serde_saphyr::to_string(doc).map_err(|e| format!("YAML serialization error: {}", e))
+    serde_saphyr::to_string(doc).map_err(|e| format!("YAML serialization error: {e}"))
 }
 
 /// Parse an LSX XML file content → YAML string.
@@ -190,7 +190,7 @@ pub fn lsx_to_yaml(xml_content: &str) -> Result<String, String> {
 
 /// Deserialize a YAML string back into an LsxYamlDoc.
 pub fn yaml_to_doc(yaml_content: &str) -> Result<LsxYamlDoc, String> {
-    serde_saphyr::from_str(yaml_content).map_err(|e| format!("YAML deserialization error: {}", e))
+    serde_saphyr::from_str(yaml_content).map_err(|e| format!("YAML deserialization error: {e}"))
 }
 
 /// Convert a YAML doc back into `Vec<LsxEntry>` for the scan/diff pipeline.
@@ -390,10 +390,10 @@ pub fn read_consolidated_file(path: &std::path::Path) -> Result<ConsolidatedFile
 /// Write a consolidated YAML file to disk.
 pub fn write_consolidated_file(path: &std::path::Path, file: &ConsolidatedFile) -> Result<(), String> {
     let yaml = serde_saphyr::to_string(file)
-        .map_err(|e| format!("YAML serialization error: {}", e))?;
+        .map_err(|e| format!("YAML serialization error: {e}"))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(|e| format!("Failed to create directory: {e}"))?;
     }
     std::fs::write(path, yaml)
         .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
@@ -525,10 +525,10 @@ pub fn write_uuid_index(dir: &std::path::Path) -> Result<usize, String> {
     let index = build_uuid_index(dir)?;
     let count = index.entries.len();
     let yaml = serde_saphyr::to_string(&index)
-        .map_err(|e| format!("UUID index serialization error: {}", e))?;
+        .map_err(|e| format!("UUID index serialization error: {e}"))?;
     let path = dir.join("uuid_idx.yaml");
     std::fs::write(&path, yaml)
-        .map_err(|e| format!("Failed to write uuid_idx.yaml: {}", e))?;
+        .map_err(|e| format!("Failed to write uuid_idx.yaml: {e}"))?;
     Ok(count)
 }
 

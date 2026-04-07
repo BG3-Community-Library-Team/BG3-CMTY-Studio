@@ -12,6 +12,8 @@
   import CommandPalette from "./CommandPalette.svelte";
   import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
   import { APP_NAME } from "../lib/version.js";
   import Search from "@lucide/svelte/icons/search";
   import Minus from "@lucide/svelte/icons/minus";
@@ -40,6 +42,40 @@
   function handleTitlebarBlur() {
     altKeyHeld = false;
   }
+
+  // ── File menu state ──
+  let fileMenuOpen = $state(false);
+
+  function toggleFileMenu(e: MouseEvent) {
+    e.stopPropagation();
+    fileMenuOpen = !fileMenuOpen;
+  }
+
+  function closeFileMenu() {
+    fileMenuOpen = false;
+  }
+
+  function handleFileMenuKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeFileMenu();
+  }
+
+  // Click-outside listener to close the file menu
+  $effect(() => {
+    if (!fileMenuOpen) return;
+    function onClickOutside() { fileMenuOpen = false; }
+    // Defer to next tick so the opening click doesn't immediately close
+    const timer = setTimeout(() => {
+      window.addEventListener("click", onClickOutside);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("click", onClickOutside);
+    };
+  });
+
+  let saveEnabled = $derived(projectStore.dirty && !!modStore.selectedModPath);
+  let closeEnabled = $derived(!!modStore.scanResult);
+  let packageEnabled = $derived(!!modStore.scanResult);
 
   // Import Tauri window API lazily so the component works in non-Tauri environments
   let tauriWindow: any = null;
@@ -112,6 +148,98 @@
     onmousedown={handleDragMousedown}
   >
     <span class="hidden sm:inline text-[var(--th-text-200)]">{APP_NAME}</span>
+  </div>
+
+  <!-- File menu -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="relative h-full flex items-center" onkeydown={handleFileMenuKeydown}>
+    <button
+      class="px-3 h-full text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-100)]
+             hover:bg-[var(--th-bg-800)] transition-colors cursor-pointer"
+      onclick={toggleFileMenu}
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded={fileMenuOpen}
+    >
+      {m.titlebar_file_menu()}
+    </button>
+    {#if fileMenuOpen}
+      <div
+        class="file-menu-dropdown absolute top-full left-0 mt-px min-w-[220px] z-[100]
+               bg-[var(--th-sidebar-bg,var(--th-bg-800))] border border-[var(--th-border-700)]
+               rounded-md shadow-lg py-1 text-xs"
+        role="menu"
+      >
+        <!-- Open Project -->
+        <button
+          class="file-menu-item w-full flex items-center justify-between px-4 py-1.5
+                 text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-100)]
+                 transition-colors cursor-pointer"
+          role="menuitem"
+          type="button"
+          onclick={() => { closeFileMenu(); commandRegistry.execute("action.openAndScan"); }}
+        >
+          <span>{m.titlebar_file_open_project()}</span>
+        </button>
+        <!-- Save Project -->
+        <button
+          class="file-menu-item w-full flex items-center justify-between px-4 py-1.5
+                 transition-colors {saveEnabled
+                   ? 'text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-100)] cursor-pointer'
+                   : 'text-[var(--th-text-600)] cursor-default'}"
+          role="menuitem"
+          type="button"
+          disabled={!saveEnabled}
+          onclick={() => { if (saveEnabled) { closeFileMenu(); commandRegistry.execute("action.save"); } }}
+        >
+          <span>{m.titlebar_file_save_project()}</span>
+          <span class="text-[var(--th-text-600)] text-[10px] ml-4">Ctrl+S</span>
+        </button>
+        <!-- Close Project -->
+        <button
+          class="file-menu-item w-full flex items-center justify-between px-4 py-1.5
+                 transition-colors {closeEnabled
+                   ? 'text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-100)] cursor-pointer'
+                   : 'text-[var(--th-text-600)] cursor-default'}"
+          role="menuitem"
+          type="button"
+          disabled={!closeEnabled}
+          onclick={() => { if (closeEnabled) { closeFileMenu(); commandRegistry.execute("action.closeProject"); } }}
+        >
+          <span>{m.titlebar_file_close_project()}</span>
+        </button>
+        <!-- Separator -->
+        <div class="my-1 border-t border-[var(--th-border-700)]" role="separator"></div>
+        <!-- Package Project -->
+        <button
+          class="file-menu-item w-full flex items-center justify-between px-4 py-1.5
+                 transition-colors {packageEnabled
+                   ? 'text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-100)] cursor-pointer'
+                   : 'text-[var(--th-text-600)] cursor-default'}"
+          role="menuitem"
+          type="button"
+          disabled={!packageEnabled}
+          onclick={() => { if (packageEnabled) { closeFileMenu(); commandRegistry.execute("action.packageProject"); } }}
+        >
+          <span>{m.titlebar_file_package_project()}</span>
+          <span class="text-[var(--th-text-600)] text-[10px] ml-4">Ctrl+Shift+E</span>
+        </button>
+        <!-- Separator -->
+        <div class="my-1 border-t border-[var(--th-border-700)]" role="separator"></div>
+        <!-- Exit -->
+        <button
+          class="file-menu-item w-full flex items-center justify-between px-4 py-1.5
+                 text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-100)]
+                 transition-colors cursor-pointer"
+          role="menuitem"
+          type="button"
+          onclick={() => { closeFileMenu(); closeWindow(); }}
+        >
+          <span>{m.titlebar_file_exit()}</span>
+          <span class="text-[var(--th-text-600)] text-[10px] ml-4">Alt+F4</span>
+        </button>
+      </div>
+    {/if}
   </div>
 
   <!-- Spacer (draggable) -->

@@ -50,7 +50,7 @@ impl FileTypeHandler for LsxHandler {
             let output_path = std::path::PathBuf::from("Public")
                 .join(&ctx.mod_folder)
                 .join(region_id)
-                .join(format!("{}.lsx", region_id));
+                .join(format!("{region_id}.lsx"));
 
             if all_rows_deleted(&ctx.staging_conn, &table.table_name)? {
                 units.push(ExportUnit {
@@ -100,7 +100,7 @@ impl FileTypeHandler for LsxHandler {
                 |row| row.get(0),
             )
             .map_err(|e| {
-                AppError::internal(format!("No LSX table for region '{}': {}", region_id, e))
+                AppError::internal(format!("No LSX table for region '{region_id}': {e}"))
             })?;
 
         validate_table_name(&table_name)?;
@@ -140,8 +140,7 @@ fn validate_table_name(name: &str) -> Result<(), AppError> {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_')
     {
         return Err(AppError::security(format!(
-            "Invalid table name '{}': only ASCII alphanumeric and underscores allowed",
-            name
+            "Invalid table name '{name}': only ASCII alphanumeric and underscores allowed"
         )));
     }
     Ok(())
@@ -151,12 +150,11 @@ fn validate_table_name(name: &str) -> Result<(), AppError> {
 fn count_active_rows(conn: &Connection, table_name: &str) -> Result<usize, AppError> {
     validate_table_name(table_name)?;
     let sql = format!(
-        "SELECT COUNT(*) FROM \"{}\" WHERE \"_is_deleted\" = 0",
-        table_name
+        "SELECT COUNT(*) FROM \"{table_name}\" WHERE \"_is_deleted\" = 0"
     );
     conn.query_row(&sql, [], |row| row.get::<_, i64>(0))
         .map(|c| c as usize)
-        .map_err(|e| AppError::internal(format!("Count active rows in '{}': {}", table_name, e)))
+        .map_err(|e| AppError::internal(format!("Count active rows in '{table_name}': {e}")))
 }
 
 /// Query `_column_types` for BG3 type mappings for a given table.
@@ -166,18 +164,18 @@ fn query_column_types(
 ) -> Result<HashMap<String, String>, AppError> {
     let mut stmt = conn
         .prepare("SELECT column_name, bg3_type FROM _column_types WHERE table_name = ?1")
-        .map_err(|e| AppError::internal(format!("Prepare column_types query: {}", e)))?;
+        .map_err(|e| AppError::internal(format!("Prepare column_types query: {e}")))?;
 
     let rows = stmt
         .query_map([table_name], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         })
-        .map_err(|e| AppError::internal(format!("Query column_types: {}", e)))?;
+        .map_err(|e| AppError::internal(format!("Query column_types: {e}")))?;
 
     let mut map = HashMap::new();
     for row in rows {
         let (col, bg3_type) =
-            row.map_err(|e| AppError::internal(format!("Read column_types row: {}", e)))?;
+            row.map_err(|e| AppError::internal(format!("Read column_types row: {e}")))?;
         if let Some(t) = bg3_type {
             map.insert(col, t);
         }
@@ -193,21 +191,21 @@ fn find_junction_tables(
     conn: &Connection,
     parent_table: &str,
 ) -> Result<Vec<(String, String)>, AppError> {
-    let prefix = format!("jn__{}__", parent_table);
-    let pattern = format!("{}%", prefix);
+    let prefix = format!("jn__{parent_table}__");
+    let pattern = format!("{prefix}%");
 
     let mut stmt = conn
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ?1")
-        .map_err(|e| AppError::internal(format!("Find junction tables: {}", e)))?;
+        .map_err(|e| AppError::internal(format!("Find junction tables: {e}")))?;
 
     let rows = stmt
         .query_map([&pattern], |row| row.get::<_, String>(0))
-        .map_err(|e| AppError::internal(format!("Query junction tables: {}", e)))?;
+        .map_err(|e| AppError::internal(format!("Query junction tables: {e}")))?;
 
     let mut result = Vec::new();
     for row in rows {
         let jn_name =
-            row.map_err(|e| AppError::internal(format!("Read junction table name: {}", e)))?;
+            row.map_err(|e| AppError::internal(format!("Read junction table name: {e}")))?;
         validate_table_name(&jn_name)?;
         let group_id = jn_name[prefix.len()..].to_string();
         if !group_id.is_empty() {
@@ -227,21 +225,20 @@ fn query_children(
 
     for (jn_table, group_id) in junction_tables {
         let sql = format!(
-            "SELECT child_id FROM \"{}\" WHERE parent_id = ?1",
-            jn_table
+            "SELECT child_id FROM \"{jn_table}\" WHERE parent_id = ?1"
         );
         let mut stmt = conn
             .prepare(&sql)
-            .map_err(|e| AppError::internal(format!("Prepare junction '{}': {}", jn_table, e)))?;
+            .map_err(|e| AppError::internal(format!("Prepare junction '{jn_table}': {e}")))?;
 
         let rows = stmt
             .query_map([parent_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::internal(format!("Query junction '{}': {}", jn_table, e)))?;
+            .map_err(|e| AppError::internal(format!("Query junction '{jn_table}': {e}")))?;
 
         let mut child_ids = Vec::new();
         for row in rows {
             child_ids.push(
-                row.map_err(|e| AppError::internal(format!("Read junction child: {}", e)))?,
+                row.map_err(|e| AppError::internal(format!("Read junction child: {e}")))?,
             );
         }
 
@@ -265,12 +262,11 @@ fn collect_raw_rows(
     table_name: &str,
 ) -> Result<Vec<RawRow>, AppError> {
     let sql = format!(
-        "SELECT * FROM \"{}\" WHERE \"_is_deleted\" = 0",
-        table_name
+        "SELECT * FROM \"{table_name}\" WHERE \"_is_deleted\" = 0"
     );
     let mut stmt = conn
         .prepare(&sql)
-        .map_err(|e| AppError::internal(format!("Prepare query for '{}': {}", table_name, e)))?;
+        .map_err(|e| AppError::internal(format!("Prepare query for '{table_name}': {e}")))?;
 
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
@@ -307,11 +303,11 @@ fn collect_raw_rows(
 
             Ok((pk_value, raw_attributes))
         })
-        .map_err(|e| AppError::internal(format!("Query '{}': {}", table_name, e)))?;
+        .map_err(|e| AppError::internal(format!("Query '{table_name}': {e}")))?;
 
     mapped
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| AppError::internal(format!("Read rows from '{}': {}", table_name, e)))
+        .map_err(|e| AppError::internal(format!("Read rows from '{table_name}': {e}")))
 }
 
 /// Query all non-deleted rows from a staging table and reconstruct `LsxEntry`

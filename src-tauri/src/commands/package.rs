@@ -52,7 +52,7 @@ fn parse_compression(s: &str) -> Result<PakCompression, String> {
         "none" => Ok(PakCompression::None),
         "zlib" => Ok(PakCompression::Zlib),
         "lz4" => Ok(PakCompression::Lz4),
-        other => Err(format!("Unknown compression method: '{}'. Expected 'none', 'zlib', or 'lz4'.", other)),
+        other => Err(format!("Unknown compression method: '{other}'. Expected 'none', 'zlib', or 'lz4'.")),
     }
 }
 
@@ -61,7 +61,7 @@ fn parse_compression_level(s: &str) -> Result<CompressionLevel, String> {
         "fast" => Ok(CompressionLevel::Fast),
         "default" => Ok(CompressionLevel::Default),
         "max" => Ok(CompressionLevel::Max),
-        other => Err(format!("Unknown compression level: '{}'. Expected 'fast', 'default', or 'max'.", other)),
+        other => Err(format!("Unknown compression level: '{other}'. Expected 'fast', 'default', or 'max'.")),
     }
 }
 
@@ -81,7 +81,7 @@ pub async fn cmd_package_mod(
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
                 std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create output directory: {}", e))?;
+                    .map_err(|e| format!("Failed to create output directory: {e}"))?;
             }
         }
 
@@ -103,7 +103,7 @@ pub async fn cmd_package_mod(
         };
 
         let mut writer = PakWriter::new(&output_path, writer_options)
-            .map_err(|e| format!("Failed to create pak writer: {}", e))?;
+            .map_err(|e| format!("Failed to create pak writer: {e}"))?;
 
         // Collect files with pak-internal paths
         let mut file_entries: Vec<(PathBuf, PakPath)> = Vec::new();
@@ -116,17 +116,17 @@ pub async fn cmd_package_mod(
                 !is_excluded(e.path(), &name)
             })
         {
-            let entry = entry.map_err(|e| format!("Failed to walk directory: {}", e))?;
+            let entry = entry.map_err(|e| format!("Failed to walk directory: {e}"))?;
             if !entry.file_type().is_file() {
                 continue;
             }
 
             let relative = entry.path().strip_prefix(&mod_path)
-                .map_err(|e| format!("Failed to compute relative path: {}", e))?;
+                .map_err(|e| format!("Failed to compute relative path: {e}"))?;
 
             let pak_path_str = relative.to_string_lossy().replace('\\', "/");
             let pak_path = PakPath::parse(&pak_path_str)
-                .map_err(|e| format!("Invalid pak path '{}': {}", pak_path_str, e))?;
+                .map_err(|e| format!("Invalid pak path '{pak_path_str}': {e}"))?;
 
             file_entries.push((entry.path().to_path_buf(), pak_path));
         }
@@ -139,17 +139,17 @@ pub async fn cmd_package_mod(
             if should_convert_to_lsf(pak_path) {
                 // LSX → LSF conversion
                 let lsf_path = convert_pak_path_to_lsf(pak_path)
-                    .map_err(|e| format!("Path conversion failed for {}: {}", pak_path, e))?;
+                    .map_err(|e| format!("Path conversion failed for {pak_path}: {e}"))?;
                 let lsf_bytes = convert_lsx_file_to_lsf_bytes(disk_path)?;
                 writer.add_bytes(&lsf_path, &lsf_bytes)
-                    .map_err(|e| format!("Failed to add {} as LSF: {}", pak_path, e))?;
+                    .map_err(|e| format!("Failed to add {pak_path} as LSF: {e}"))?;
             } else {
                 writer.add_file(disk_path, pak_path)
-                    .map_err(|e| format!("Failed to add {}: {}", pak_path, e))?;
+                    .map_err(|e| format!("Failed to add {pak_path}: {e}"))?;
             }
         }
 
         writer.finish()
-            .map_err(|e| format!("Failed to finalize pak: {}", e))
+            .map_err(|e| format!("Failed to finalize pak: {e}"))
     }).await
 }

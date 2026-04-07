@@ -86,11 +86,10 @@ mod tests {
             .expect("expected at least one non-empty .lsfx entry in Effects.pak");
 
         let resource = crate::parsers::lsfx::parse_lsfx(Cursor::new(entry_bytes)).unwrap();
-        assert!(!resource.regions.is_empty(), "expected at least one region in {}", entry_path);
+        assert!(!resource.regions.is_empty(), "expected at least one region in {entry_path}");
         assert!(
             resource.regions.iter().any(|region| !region.nodes.is_empty()),
-            "expected at least one populated region in {}",
-            entry_path,
+            "expected at least one populated region in {entry_path}",
         );
     }
 

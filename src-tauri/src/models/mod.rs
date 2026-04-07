@@ -1018,8 +1018,7 @@ mod tests {
         for variant in &all_variants {
             assert!(
                 ordered.contains(variant),
-                "Section::all_ordered() is missing {:?}",
-                variant
+                "Section::all_ordered() is missing {variant:?}"
             );
         }
         assert_eq!(

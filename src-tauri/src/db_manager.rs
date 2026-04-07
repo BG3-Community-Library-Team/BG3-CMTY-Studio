@@ -37,7 +37,7 @@ pub fn get_db_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("Cannot resolve app data dir: {}", e))?
+        .map_err(|e| format!("Cannot resolve app data dir: {e}"))?
         .join("databases");
     Ok(dir)
 }
@@ -181,7 +181,7 @@ fn copy_bundled_db(
     let resource_path = app
         .path()
         .resource_dir()
-        .map_err(|e| format!("Cannot resolve resource dir: {}", e))?
+        .map_err(|e| format!("Cannot resolve resource dir: {e}"))?
         .join("resources")
         .join(name);
 
@@ -242,7 +242,7 @@ fn dev_resources_dir() -> PathBuf {
 /// index to prevent duplicate entries during authoring.
 fn ensure_staging_uuid_indexes(staging_path: &Path) -> Result<(), String> {
     let conn = rusqlite::Connection::open(staging_path)
-        .map_err(|e| format!("Open staging DB for indexing: {}", e))?;
+        .map_err(|e| format!("Open staging DB for indexing: {e}"))?;
 
     // List all user tables (skip meta/internal tables starting with _)
     let tables: Vec<String> = {
@@ -251,10 +251,10 @@ fn ensure_staging_uuid_indexes(staging_path: &Path) -> Result<(), String> {
                 "SELECT name FROM sqlite_master WHERE type='table' \
                  AND name NOT LIKE '\\_%' ESCAPE '\\'",
             )
-            .map_err(|e| format!("List tables: {}", e))?;
+            .map_err(|e| format!("List tables: {e}"))?;
         let result: Vec<String> = stmt
             .query_map([], |row| row.get(0))
-            .map_err(|e| format!("Query tables: {}", e))?
+            .map_err(|e| format!("Query tables: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
         result
@@ -264,15 +264,15 @@ fn ensure_staging_uuid_indexes(staging_path: &Path) -> Result<(), String> {
         // Check if this table has a UUID column that is NOT already the PK
         let col_info: Vec<(String, bool)> = {
             let mut pstmt = conn
-                .prepare(&format!("PRAGMA table_info(\"{}\")", table))
-                .map_err(|e| format!("PRAGMA table_info({}): {}", table, e))?;
+                .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+                .map_err(|e| format!("PRAGMA table_info({table}): {e}"))?;
             let result: Vec<(String, bool)> = pstmt
                 .query_map([], |row| {
                     let name: String = row.get(1)?;
                     let pk: i32 = row.get(5)?;
                     Ok((name, pk != 0))
                 })
-                .map_err(|e| format!("Read cols for {}: {}", table, e))?
+                .map_err(|e| format!("Read cols for {table}: {e}"))?
                 .filter_map(|r| r.ok())
                 .collect();
             result
@@ -280,13 +280,12 @@ fn ensure_staging_uuid_indexes(staging_path: &Path) -> Result<(), String> {
 
         for (col_name, is_pk) in &col_info {
             if col_name == "UUID" && !is_pk {
-                let idx_name = format!("uq_{}_{}", table, col_name);
+                let idx_name = format!("uq_{table}_{col_name}");
                 let sql = format!(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS \"{}\" ON \"{}\"(\"{}\")",
-                    idx_name, table, col_name
+                    "CREATE UNIQUE INDEX IF NOT EXISTS \"{idx_name}\" ON \"{table}\"(\"{col_name}\")"
                 );
                 conn.execute_batch(&sql).map_err(|e| {
-                    format!("Create unique index {} on {}.{}: {}", idx_name, table, col_name, e)
+                    format!("Create unique index {idx_name} on {table}.{col_name}: {e}")
                 })?;
             }
         }
@@ -312,7 +311,7 @@ pub fn run_integrity_check(db_path: &Path) -> Result<Option<String>, String> {
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(|e| format!("PRAGMA integrity_check on {}: {}", db_path.display(), e))?;
 
-    conn.close().map_err(|(_c, e)| format!("Close DB: {}", e))?;
+    conn.close().map_err(|(_c, e)| format!("Close DB: {e}"))?;
 
     if result == "ok" {
         Ok(None)
@@ -349,7 +348,7 @@ mod tests {
             match std::os::windows::fs::symlink_dir(&real_dir, &link_path) {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Skipping symlink test (needs elevation): {}", e);
+                    eprintln!("Skipping symlink test (needs elevation): {e}");
                     return;
                 }
             }
@@ -358,7 +357,7 @@ mod tests {
         let result = validate_db_dir(&link_path);
         assert!(result.is_err(), "validate_db_dir should reject symlinks");
         let err = result.unwrap_err();
-        assert!(err.contains("symlink"), "Error should mention symlink: {}", err);
+        assert!(err.contains("symlink"), "Error should mention symlink: {err}");
     }
 
     #[test]

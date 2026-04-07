@@ -536,10 +536,10 @@ fn parse_lsx_resource_file(file: &FileEntry) -> Result<LsxResource, String> {
         _ => {
             let content = if let Some(bytes) = file.in_memory_bytes() {
                 String::from_utf8(bytes.to_vec())
-                    .map_err(|e| format!("UTF-8 decode error: {}", e))?
+                    .map_err(|e| format!("UTF-8 decode error: {e}"))?
             } else {
                 std::fs::read_to_string(&file.abs_path)
-                    .map_err(|e| format!("Read error: {}", e))?
+                    .map_err(|e| format!("Read error: {e}"))?
             };
             if content.trim().is_empty() {
                 return Ok(LsxResource { regions: Vec::new() });
@@ -689,7 +689,7 @@ fn discover_stats(file: &FileEntry) -> FileDiscovery {
                     // add a companion version column.
                     if is_stats_loca_column(field) {
                         info.columns
-                            .entry(format!("{}_version", field))
+                            .entry(format!("{field}_version"))
                             .or_insert_with(|| "int32".to_string());
                     }
                 }
@@ -848,7 +848,7 @@ fn discover_nonstandard_stats(
         // Positional params (index 0 = name stored in _entry_name, 1..N = Param1..ParamN)
         for idx in 1..max_csv_params {
             info.columns
-                .entry(format!("Param{}", idx))
+                .entry(format!("Param{idx}"))
                 .or_insert_with(|| "FixedString".to_string());
         }
 

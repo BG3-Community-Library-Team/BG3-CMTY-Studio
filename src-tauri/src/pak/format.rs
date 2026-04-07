@@ -158,8 +158,7 @@ pub fn parse_package(path: &Path) -> PakResult<RawPackageMetadata> {
 fn parse_from_reader<R: Read + Seek>(reader: &mut R, source_len: u64) -> PakResult<RawPackageMetadata> {
     if source_len < CURRENT_BG3_DATA_OFFSET {
         return Err(PakError::invalid_format(format!(
-            "pak is too small to contain a BG3 v18 header: {} bytes",
-            source_len
+            "pak is too small to contain a BG3 v18 header: {source_len} bytes"
         )));
     }
 
@@ -330,7 +329,7 @@ fn parse_current_bg3_file_entry<R: Read>(
     }
 
     let raw_path = std::str::from_utf8(&name_buf[..path_end]).map_err(|err| {
-        PakError::invalid_format(format!("entry path is not valid UTF-8: {}", err))
+        PakError::invalid_format(format!("entry path is not valid UTF-8: {err}"))
     })?;
     let path = PakPath::parse(raw_path)?;
 

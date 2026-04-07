@@ -73,11 +73,11 @@ impl PakError {
 impl fmt::Display for PakError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(err) => write!(f, "I/O error: {}", err),
-            Self::InvalidPath(msg) => write!(f, "Invalid pak path: {}", msg),
-            Self::InvalidFormat(msg) => write!(f, "Invalid pak format: {}", msg),
+            Self::Io(err) => write!(f, "I/O error: {err}"),
+            Self::InvalidPath(msg) => write!(f, "Invalid pak path: {msg}"),
+            Self::InvalidFormat(msg) => write!(f, "Invalid pak format: {msg}"),
             Self::UnsupportedVersion(version) => {
-                write!(f, "Unsupported pak version: {}", version)
+                write!(f, "Unsupported pak version: {version}")
             }
             Self::BoundsViolation {
                 start,
@@ -85,8 +85,7 @@ impl fmt::Display for PakError {
                 source_len,
             } => write!(
                 f,
-                "Pak read exceeds bounds (start={}, len={}, source_len={})",
-                start, len, source_len
+                "Pak read exceeds bounds (start={start}, len={len}, source_len={source_len})"
             ),
             Self::SizeLimitExceeded {
                 context,
@@ -94,13 +93,12 @@ impl fmt::Display for PakError {
                 limit,
             } => write!(
                 f,
-                "Pak size limit exceeded for {} (size={}, limit={})",
-                context, size, limit
+                "Pak size limit exceeded for {context} (size={size}, limit={limit})"
             ),
-            Self::NotFound(msg) => write!(f, "Pak item not found: {}", msg),
-            Self::DeletedEntry(path) => write!(f, "Pak entry is marked deleted: {}", path),
-            Self::Decompression(msg) => write!(f, "Pak decompression error: {}", msg),
-            Self::NotImplemented(msg) => write!(f, "Pak feature not implemented: {}", msg),
+            Self::NotFound(msg) => write!(f, "Pak item not found: {msg}"),
+            Self::DeletedEntry(path) => write!(f, "Pak entry is marked deleted: {path}"),
+            Self::Decompression(msg) => write!(f, "Pak decompression error: {msg}"),
+            Self::NotImplemented(msg) => write!(f, "Pak feature not implemented: {msg}"),
         }
     }
 }

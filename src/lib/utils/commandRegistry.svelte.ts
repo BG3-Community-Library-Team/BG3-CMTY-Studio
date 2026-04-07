@@ -120,6 +120,15 @@ class CommandRegistry {
     return result;
   }
 
+  /** Execute a registered command by ID (if enabled). */
+  execute(id: string): void {
+    const cmd = this.commands.find(c => c.id === id);
+    if (cmd && cmd.enabled()) {
+      cmd.execute();
+      this.recordRecent(id);
+    }
+  }
+
   /** AI-31: Match a keyboard event against registered command shortcuts */
   matchShortcut(e: KeyboardEvent): Command | undefined {
     const parts: string[] = [];

@@ -8,9 +8,12 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { saveConfig, renameDir } from "../lib/utils/tauri.js";
+  import { copyFile, fileExists } from "../lib/tauri/mod-management.js";
   import { modImportService } from "../lib/services/modImportService.svelte.js";
   import { localeSortStrings } from "../lib/utils/localeSort.js";
   import { onMount } from "svelte";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
   import Cog from "@lucide/svelte/icons/cog";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
@@ -18,6 +21,7 @@
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import Save from "@lucide/svelte/icons/save";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Upload from "@lucide/svelte/icons/upload";
   import MultiSelectCombobox from "./MultiSelectCombobox.svelte";
   import SingleSelectCombobox from "./SingleSelectCombobox.svelte";
   import { m } from "../paraglide/messages.js";
@@ -97,6 +101,82 @@
 
   // ── Save state ──
   let isSaving = $state(false);
+
+  // ── Thumbnail state ──
+  let thumbnailUrl = $state<string | null>(null);
+  let isDraggingOver = $state(false);
+
+  let thumbnailPath = $derived.by(() => {
+    const modPath = modStore.selectedModPath;
+    const folder = editFolder || meta?.folder;
+    if (!modPath || !folder) return null;
+    return `${modPath}/Mods/${folder}/mod_publish_logo.png`;
+  });
+
+  /** Check if thumbnail exists and set URL */
+  async function checkThumbnail() {
+    if (!thumbnailPath) {
+      thumbnailUrl = null;
+      return;
+    }
+    const exists = await fileExists(thumbnailPath);
+    if (exists) {
+      thumbnailUrl = convertFileSrc(thumbnailPath) + `?t=${Date.now()}`;
+    } else {
+      thumbnailUrl = null;
+    }
+  }
+
+  // Re-check thumbnail when path changes
+  $effect(() => {
+    if (thumbnailPath) {
+      checkThumbnail();
+    } else {
+      thumbnailUrl = null;
+    }
+  });
+
+  /** Copy an image file to the thumbnail path */
+  async function setThumbnail(sourcePath: string) {
+    if (!thumbnailPath) return;
+    try {
+      await copyFile(sourcePath, thumbnailPath);
+      thumbnailUrl = convertFileSrc(thumbnailPath) + `?t=${Date.now()}`;
+      toastStore.success("Thumbnail updated", "mod_publish_logo.png saved successfully.");
+    } catch (e: unknown) {
+      toastStore.error("Thumbnail failed", getErrorMessage(e));
+    }
+  }
+
+  /** Handle file drop on the thumbnail zone */
+  function handleThumbnailDrop(e: DragEvent) {
+    e.preventDefault();
+    isDraggingOver = false;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!ext || !["png", "jpg", "jpeg"].includes(ext)) {
+      toastStore.error("Invalid file", "Only .png, .jpg, and .jpeg files are accepted.");
+      return;
+    }
+    // Tauri DnD provides the file path via webkitRelativePath or we use the path property
+    // In Tauri, dropped files have a `path` property on the File object
+    const filePath = (file as File & { path?: string }).path;
+    if (filePath) {
+      setThumbnail(filePath);
+    }
+  }
+
+  /** Open file dialog to pick a thumbnail image */
+  async function browseThumbnail() {
+    const selected = await dialogOpen({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }],
+    });
+    if (selected && typeof selected === "string") {
+      await setThumbnail(selected);
+    }
+  }
 
   // ── PublishVersion sync toggle ──
   let syncPublishVersion = $state(true);
@@ -608,8 +688,42 @@
         </div>
       </div>
 
+      <!-- ── Thumbnail + Dependencies column ── -->
+      <div class="flex flex-col sm:flex-row xl:flex-col gap-4 items-start xl:w-[480px] xl:shrink-0">
+
+      <!-- ── Thumbnail ── -->
+      <div class="border border-[var(--th-border-800,var(--th-bg-700))] rounded-lg overflow-hidden w-full sm:w-[200px] sm:shrink-0 xl:w-full">
+        <div class="px-4 py-2.5 bg-[var(--th-bg-900)] text-xs font-semibold text-[var(--th-text-200)]">Thumbnail</div>
+        <div class="p-3 bg-[var(--th-bg-900)]/50 flex justify-center">
+          <button
+            type="button"
+            class="relative w-full aspect-square max-w-[200px] rounded-lg border-2 transition-colors overflow-hidden cursor-pointer
+                   {isDraggingOver
+                     ? 'border-[var(--th-accent-500,#0ea5e9)] bg-[var(--th-accent-500,#0ea5e9)]/10'
+                     : thumbnailUrl
+                       ? 'border-[var(--th-border-700)] hover:border-[var(--th-accent-500,#0ea5e9)]'
+                       : 'border-dashed border-[var(--th-border-600)] hover:border-[var(--th-accent-500,#0ea5e9)] bg-[var(--th-bg-900)]/50'}"
+            ondragover={(e) => { e.preventDefault(); isDraggingOver = true; }}
+            ondragleave={() => { isDraggingOver = false; }}
+            ondrop={handleThumbnailDrop}
+            onclick={browseThumbnail}
+            title="Click or drop an image to set thumbnail"
+          >
+            {#if thumbnailUrl}
+              <img src={thumbnailUrl} alt="Mod thumbnail" class="w-full h-full object-cover" />
+            {:else}
+              <div class="flex flex-col items-center justify-center h-full gap-2 text-[var(--th-text-500)]">
+                <Upload size={24} />
+                <span class="text-xs">Drop image here</span>
+                <span class="text-[10px] text-[var(--th-text-600)]">.png, .jpg, .jpeg</span>
+              </div>
+            {/if}
+          </button>
+        </div>
+      </div>
+
       <!-- ── Dependencies ── -->
-      <div class="border border-[var(--th-border-800,var(--th-bg-700))] rounded-lg overflow-hidden xl:w-[480px] xl:shrink-0">
+      <div class="border border-[var(--th-border-800,var(--th-bg-700))] rounded-lg overflow-hidden flex-1 min-w-0 w-full">
         <div class="px-4 py-2.5 bg-[var(--th-bg-900)] text-xs font-semibold text-[var(--th-text-200)] flex items-center gap-2">
           <span>{m.meta_lsx_dependencies()}</span>
           {#if dependencies.length > 0}
@@ -737,6 +851,7 @@
           </div>
         </div>
       </div>
+      </div><!-- ── end Thumbnail + Dependencies column ── -->
       </div>
     {/if}
   </div>

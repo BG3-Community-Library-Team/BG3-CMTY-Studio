@@ -200,7 +200,7 @@ fn decompile_component(node: &LsxNode, registry: &AllSparkRegistry) -> EffectCom
     comp.properties.push(EffectProperty {
         guid: IMPLICIT_POSITION_GUID.to_string(),
         data: vec![Datum {
-            value: Some(format!("{},{}", start_time, end_time)),
+            value: Some(format!("{start_time},{end_time}")),
             ..Datum::default()
         }],
         platform_metadata: Vec::new(),
@@ -677,7 +677,7 @@ fn format_float(val: f64) -> String {
     if val == val.floor() && val.abs() < 1e15 {
         format!("{}", val as i64)
     } else {
-        format!("{}", val)
+        format!("{val}")
     }
 }
 

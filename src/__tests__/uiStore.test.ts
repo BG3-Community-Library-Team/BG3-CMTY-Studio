@@ -299,9 +299,9 @@ describe("UiStore", () => {
   // ── activityBarOrder (FT-01) ──────────────────────────────────────
 
   describe("activityBarOrder", () => {
-    it("defaults to all five views", () => {
+    it("defaults to all six views", () => {
       expect(uiStore.activityBarOrder).toEqual([
-        "explorer", "search", "loaded-data", "settings", "help",
+        "project", "explorer", "search", "loaded-data", "settings", "help",
       ]);
     });
 
@@ -330,6 +330,311 @@ describe("UiStore", () => {
       // Create a new store instance would test this, but since it's a singleton,
       // we verify the stored data doesn't corrupt the current order
       expect(uiStore.activityBarOrder.length).toBe(5);
+    });
+  });
+
+  // ── summaryDrawer ─────────────────────────────────────────────────
+
+  describe("summaryDrawer", () => {
+    const makeSummary = (overrides?: Partial<import("../lib/stores/uiStore.svelte.js").SummaryDrawerState>): import("../lib/stores/uiStore.svelte.js").SummaryDrawerState => ({
+      section: "Races",
+      displayName: "TestRace",
+      uuids: ["uuid-1"],
+      validationErrors: [],
+      fields: {},
+      booleans: [],
+      strings: [],
+      rawAttributes: null,
+      rawChildren: null,
+      vanillaAttributes: null,
+      autoEntryId: null,
+      nodeId: null,
+      rawAttributeTypes: null,
+      ...overrides,
+    });
+
+    it("starts as null", () => {
+      expect(uiStore.summaryDrawer).toBeNull();
+    });
+
+    it("openSummaryDrawer sets the data", () => {
+      const data = makeSummary();
+      uiStore.openSummaryDrawer(data);
+      expect(uiStore.summaryDrawer).toEqual(data);
+    });
+
+    it("closeSummaryDrawer sets to null", () => {
+      uiStore.openSummaryDrawer(makeSummary());
+      uiStore.closeSummaryDrawer();
+      expect(uiStore.summaryDrawer).toBeNull();
+    });
+
+    it("updateSummaryDrawer merges partial fields", () => {
+      uiStore.openSummaryDrawer(makeSummary());
+      uiStore.updateSummaryDrawer({ displayName: "Updated" });
+      expect(uiStore.summaryDrawer!.displayName).toBe("Updated");
+      expect(uiStore.summaryDrawer!.section).toBe("Races");
+    });
+
+    it("updateSummaryDrawer is no-op when drawer is closed", () => {
+      uiStore.closeSummaryDrawer();
+      uiStore.updateSummaryDrawer({ displayName: "Ghost" });
+      expect(uiStore.summaryDrawer).toBeNull();
+    });
+  });
+
+  // ── previewCollapsed ──────────────────────────────────────────────
+
+  describe("previewCollapsed", () => {
+    it("defaults to true", () => {
+      expect(uiStore.previewCollapsed).toBe(true);
+    });
+
+    it("can be toggled", () => {
+      uiStore.previewCollapsed = false;
+      expect(uiStore.previewCollapsed).toBe(false);
+      uiStore.previewCollapsed = true;
+      expect(uiStore.previewCollapsed).toBe(true);
+    });
+  });
+
+  // ── formNavSections ───────────────────────────────────────────────
+
+  describe("formNavSections", () => {
+    it("defaults to empty array", () => {
+      expect(uiStore.formNavSections).toEqual([]);
+    });
+
+    it("can be populated with navigation sections", () => {
+      uiStore.formNavSections = [
+        { id: "basics", label: "Basics", children: [{ id: "name", label: "Name" }] },
+        { id: "advanced", label: "Advanced" },
+      ];
+      expect(uiStore.formNavSections).toHaveLength(2);
+      expect(uiStore.formNavSections[0].children).toHaveLength(1);
+    });
+
+    it("reset clears formNavSections", () => {
+      uiStore.formNavSections = [{ id: "x", label: "X" }];
+      uiStore.reset();
+      expect(uiStore.formNavSections).toEqual([]);
+    });
+  });
+
+  // ── detectScriptLanguage ──────────────────────────────────────────
+
+  describe("detectScriptLanguage", () => {
+    it("detects lua files", () => {
+      expect(uiStore.detectScriptLanguage("mods/MyMod/Scripts/main.lua")).toBe("lua");
+    });
+
+    it("detects osiris goal .txt files", () => {
+      expect(uiStore.detectScriptLanguage("Story/RawFiles/Goals/MyGoal.txt")).toBe("osiris");
+    });
+
+    it("detects khn files", () => {
+      expect(uiStore.detectScriptLanguage("scripts/test.khn")).toBe("khn");
+    });
+
+    it("detects anubis files (.anc, .ann, .anm)", () => {
+      expect(uiStore.detectScriptLanguage("scripts/test.anc")).toBe("anubis");
+      expect(uiStore.detectScriptLanguage("scripts/test.ann")).toBe("anubis");
+      expect(uiStore.detectScriptLanguage("scripts/test.anm")).toBe("anubis");
+    });
+
+    it("detects constellations files (.clc, .cln, .clm)", () => {
+      expect(uiStore.detectScriptLanguage("scripts/test.clc")).toBe("constellations");
+      expect(uiStore.detectScriptLanguage("scripts/test.cln")).toBe("constellations");
+      expect(uiStore.detectScriptLanguage("scripts/test.clm")).toBe("constellations");
+    });
+
+    it("detects json files", () => {
+      expect(uiStore.detectScriptLanguage("data/config.json")).toBe("json");
+    });
+
+    it("detects yaml/yml files", () => {
+      expect(uiStore.detectScriptLanguage("data/config.yaml")).toBe("yaml");
+      expect(uiStore.detectScriptLanguage("data/config.yml")).toBe("yaml");
+    });
+
+    it("defaults to lua for unknown extensions", () => {
+      expect(uiStore.detectScriptLanguage("file.xyz")).toBe("lua");
+    });
+
+    it("defaults to lua for files with no extension", () => {
+      expect(uiStore.detectScriptLanguage("Makefile")).toBe("lua");
+    });
+
+    it("non-goal .txt files default to lua", () => {
+      expect(uiStore.detectScriptLanguage("notes/readme.txt")).toBe("lua");
+    });
+  });
+
+  // ── openScriptTab ─────────────────────────────────────────────────
+
+  describe("openScriptTab", () => {
+    it("opens a script-editor tab with auto-detected language", () => {
+      uiStore.openScriptTab("Story/RawFiles/Goals/MyGoal.txt");
+      const tab = uiStore.openTabs.find(t => t.id === "script:Story/RawFiles/Goals/MyGoal.txt");
+      expect(tab).toBeTruthy();
+      expect(tab!.type).toBe("script-editor");
+      expect(tab!.language).toBe("osiris");
+      expect(tab!.preview).toBe(false);
+    });
+
+    it("opens a script-editor tab with explicit language override", () => {
+      uiStore.openScriptTab("scripts/test.lua", "custom-lang");
+      const tab = uiStore.openTabs.find(t => t.id === "script:scripts/test.lua");
+      expect(tab!.language).toBe("custom-lang");
+    });
+
+    it("uses filename as label", () => {
+      uiStore.openScriptTab("path/to/deep/script.lua");
+      const tab = uiStore.openTabs.find(t => t.id === "script:path/to/deep/script.lua");
+      expect(tab!.label).toBe("script.lua");
+    });
+  });
+
+  // ── openTab extra branches ────────────────────────────────────────
+
+  describe("openTab — extra branch coverage", () => {
+    it("adds preview tab when no existing preview tab present", () => {
+      const countBefore = uiStore.openTabs.length;
+      uiStore.openTab({ id: "new-preview", label: "Preview", type: "file-preview", preview: true });
+      expect(uiStore.openTabs.length).toBe(countBefore + 1);
+      expect(uiStore.activeTabId).toBe("new-preview");
+    });
+
+    it("does not promote a non-preview existing tab", () => {
+      uiStore.openTab({ id: "perm", label: "Perm", type: "section", preview: false });
+      // Re-open same tab — it's already permanent, nothing to promote
+      uiStore.openTab({ id: "perm", label: "Perm", type: "section", preview: false });
+      expect(uiStore.openTabs.find(t => t.id === "perm")!.preview).toBeFalsy();
+    });
+  });
+
+  // ── closeTab extra branches ───────────────────────────────────────
+
+  describe("closeTab — extra branch coverage", () => {
+    it("resets settings view when settings tab is closed", () => {
+      uiStore.openTab({ id: "settings", label: "Settings", type: "settings" });
+      uiStore.activeView = "settings";
+      uiStore.settingsSection = "display";
+      uiStore.closeTab("settings");
+      expect(uiStore.activeView).toBe("explorer");
+      expect(uiStore.settingsSection).toBe("");
+    });
+
+    it("does not reset settings view when a non-settings tab is closed from settings view", () => {
+      uiStore.openTab({ id: "other", label: "Other", type: "section" });
+      uiStore.activeView = "settings";
+      uiStore.settingsSection = "theme";
+      uiStore.closeTab("other");
+      expect(uiStore.activeView).toBe("settings");
+      expect(uiStore.settingsSection).toBe("theme");
+    });
+
+    it("activates first tab when closing the only non-welcome active tab", () => {
+      uiStore.openTab({ id: "only", label: "Only", type: "section" });
+      uiStore.activeTabId = "only";
+      uiStore.closeTab("only");
+      // Should fall back to welcome
+      expect(uiStore.activeTabId).toBe("welcome");
+    });
+  });
+
+  // ── moveTab extra branches ────────────────────────────────────────
+
+  describe("moveTab — extra branch coverage", () => {
+    it("no-ops when fromIndex is negative and toIndex valid", () => {
+      uiStore.openTab({ id: "a", label: "A", type: "section" });
+      const before = uiStore.openTabs.map(t => t.id);
+      uiStore.moveTab(-1, 1);
+      expect(uiStore.openTabs.map(t => t.id)).toEqual(before);
+    });
+
+    it("no-ops when toIndex is negative", () => {
+      uiStore.openTab({ id: "a", label: "A", type: "section" });
+      const before = uiStore.openTabs.map(t => t.id);
+      uiStore.moveTab(0, -1);
+      expect(uiStore.openTabs.map(t => t.id)).toEqual(before);
+    });
+
+    it("no-ops when fromIndex exceeds tab count", () => {
+      const before = uiStore.openTabs.map(t => t.id);
+      uiStore.moveTab(100, 0);
+      expect(uiStore.openTabs.map(t => t.id)).toEqual(before);
+    });
+
+    it("moves tab forward correctly", () => {
+      uiStore.openTab({ id: "a", label: "A", type: "section" });
+      uiStore.openTab({ id: "b", label: "B", type: "section" });
+      // welcome=0, a=1, b=2 → move welcome to 2
+      uiStore.moveTab(0, 2);
+      expect(uiStore.openTabs[0].id).toBe("a");
+      expect(uiStore.openTabs[2].id).toBe("welcome");
+    });
+  });
+
+  // ── toggleSidebar extra branches ──────────────────────────────────
+
+  describe("toggleSidebar — extra branch coverage", () => {
+    it("shows sidebar when calling with no argument while hidden", () => {
+      uiStore.sidebarVisible = false;
+      uiStore.toggleSidebar();
+      expect(uiStore.sidebarVisible).toBe(true);
+    });
+
+    it("changes view AND ensures sidebar is visible", () => {
+      uiStore.activeView = "explorer";
+      uiStore.sidebarVisible = true;
+      uiStore.toggleSidebar("settings");
+      expect(uiStore.activeView).toBe("settings");
+      expect(uiStore.sidebarVisible).toBe(true);
+    });
+  });
+
+  // ── reset clears summaryDrawer ────────────────────────────────────
+
+  describe("reset — additional state", () => {
+    it("clears summaryDrawer on reset", () => {
+      uiStore.openSummaryDrawer({
+        section: "X", displayName: "X", uuids: [], validationErrors: [],
+        fields: {}, booleans: [], strings: [], rawAttributes: null,
+        rawChildren: null, vanillaAttributes: null, autoEntryId: null,
+        nodeId: null, rawAttributeTypes: null,
+      });
+      uiStore.reset();
+      expect(uiStore.summaryDrawer).toBeNull();
+    });
+
+    it("resets settingsSection on reset", () => {
+      uiStore.settingsSection = "display";
+      uiStore.reset();
+      expect(uiStore.settingsSection).toBe("");
+    });
+
+    it("resets sidebarVisible to true on reset", () => {
+      uiStore.sidebarVisible = false;
+      uiStore.reset();
+      expect(uiStore.sidebarVisible).toBe(true);
+    });
+  });
+
+  // ── activeTab derived getter ──────────────────────────────────────
+
+  describe("activeTab — edge cases", () => {
+    it("returns undefined when activeTabId references a non-existent tab", () => {
+      uiStore.activeTabId = "does-not-exist";
+      expect(uiStore.activeTab).toBeUndefined();
+    });
+
+    it("tracks the right tab after multiple open/close cycles", () => {
+      uiStore.openTab({ id: "t1", label: "T1", type: "section" });
+      uiStore.openTab({ id: "t2", label: "T2", type: "section" });
+      uiStore.closeTab("t1");
+      uiStore.openTab({ id: "t3", label: "T3", type: "section" });
+      expect(uiStore.activeTab?.id).toBe("t3");
     });
   });
 });

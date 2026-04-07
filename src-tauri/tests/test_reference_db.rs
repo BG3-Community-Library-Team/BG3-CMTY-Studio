@@ -68,7 +68,7 @@ fn build_reference_db_small_real_lsf_fixture() {
         )
         .expect("find populated tags table");
     let tags_rows: i64 = conn
-        .query_row(&format!("SELECT COUNT(*) FROM \"{}\"", tags_table), [], |row| row.get(0))
+        .query_row(&format!("SELECT COUNT(*) FROM \"{tags_table}\""), [], |row| row.get(0))
         .expect("count tags rows");
     assert!(tags_rows > 0, "expected native LSF fixture to populate at least one Tags row");
 
@@ -125,7 +125,7 @@ fn cross_db_honor_fk_validation() {
         .collect()
     };
     let standalone_count = standalone_violations.len();
-    println!("  Standalone violations: {}", standalone_count);
+    println!("  Standalone violations: {standalone_count}");
 
     // Step 2: Cross-DB validation with ref_base attached
     println!("\n=== Cross-DB FK check (honor + base attached) ===");
@@ -185,7 +185,7 @@ fn create_staging_db_from_base() {
     let _ = std::fs::remove_file(&staging_db);
     let staging_str = staging_db.to_string_lossy();
     for sfx in &["-wal", "-shm"] {
-        let _ = std::fs::remove_file(&format!("{}{}", staging_str, sfx));
+        let _ = std::fs::remove_file(format!("{staging_str}{sfx}"));
     }
 
     // Step 1: Create empty staging DB
@@ -221,11 +221,11 @@ fn create_staging_db_from_base() {
     };
     assert!(!tables.is_empty(), "No data tables found in staging DB");
     let sample_table = &tables[0];
-    println!("  Checking columns on sample table: {}", sample_table);
+    println!("  Checking columns on sample table: {sample_table}");
 
     let cols: Vec<String> = {
         let mut stmt = conn
-            .prepare(&format!("PRAGMA table_info(\"{}\")", sample_table))
+            .prepare(&format!("PRAGMA table_info(\"{sample_table}\")"))
             .unwrap();
         stmt.query_map([], |row| row.get::<_, String>(1))
             .unwrap()
@@ -234,18 +234,15 @@ fn create_staging_db_from_base() {
     };
     assert!(
         cols.contains(&"_is_modified".to_string()),
-        "Missing _is_modified on {}. Columns: {:?}",
-        sample_table, cols
+        "Missing _is_modified on {sample_table}. Columns: {cols:?}"
     );
     assert!(
         cols.contains(&"_is_new".to_string()),
-        "Missing _is_new on {}",
-        sample_table
+        "Missing _is_new on {sample_table}"
     );
     assert!(
         cols.contains(&"_is_deleted".to_string()),
-        "Missing _is_deleted on {}",
-        sample_table
+        "Missing _is_deleted on {sample_table}"
     );
     println!("  Tracking columns present: _is_modified, _is_new, _is_deleted");
 
@@ -253,7 +250,7 @@ fn create_staging_db_from_base() {
     let journal: String = conn
         .query_row("PRAGMA journal_mode", [], |row| row.get(0))
         .unwrap();
-    println!("  Journal mode: {}", journal);
+    println!("  Journal mode: {journal}");
     assert_eq!(journal, "wal", "Expected WAL mode for staging DB");
 
     // Step 4: Verify no FK constraints exist
@@ -270,7 +267,7 @@ fn create_staging_db_from_base() {
         let mut total = 0i64;
         for t in &table_names {
             let mut stmt = conn
-                .prepare(&format!("PRAGMA foreign_key_list(\"{}\")", t))
+                .prepare(&format!("PRAGMA foreign_key_list(\"{t}\")"))
                 .unwrap();
             total += stmt
                 .query_map([], |_| Ok(()))
@@ -279,7 +276,7 @@ fn create_staging_db_from_base() {
         }
         total
     };
-    println!("  FK constraints: {} (expected 0)", fk_count);
+    println!("  FK constraints: {fk_count} (expected 0)");
     assert_eq!(fk_count, 0, "Staging DB should have no FK constraints");
 
     // Step 5: Verify embedded schema blob exists
@@ -308,21 +305,20 @@ fn create_staging_db_from_base() {
     // Verify we can query across DBs (base should have rows)
     let base_row_count: i64 = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM base.\"{}\"", sample_table),
+            &format!("SELECT COUNT(*) FROM base.\"{sample_table}\""),
             [],
             |row| row.get(0),
         )
         .unwrap_or(0);
     println!(
-        "  base.{} row count: {} (cross-DB query OK)",
-        sample_table, base_row_count
+        "  base.{sample_table} row count: {base_row_count} (cross-DB query OK)"
     );
 
     // Clean up
     drop(conn);
     let _ = std::fs::remove_file(&staging_db);
     for sfx in &["-wal", "-shm"] {
-        let _ = std::fs::remove_file(&format!("{}{}", staging_str, sfx));
+        let _ = std::fs::remove_file(format!("{staging_str}{sfx}"));
     }
 
     println!("\n  STAGING DB TEST PASSED");
@@ -351,7 +347,7 @@ fn audit_populated_db() {
         Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, i64>(3).unwrap_or(0)))
     }).unwrap().filter_map(|r| r.ok()).collect();
     for (mod_name, ftype, count, total_rows) in &rows {
-        println!("  {:<20} {:<6} {:>6} files  {:>8} rows", mod_name, ftype, count, total_rows);
+        println!("  {mod_name:<20} {ftype:<6} {count:>6} files  {total_rows:>8} rows");
     }
 
     // 2. Tables with most rows
@@ -364,13 +360,13 @@ fn audit_populated_db() {
     };
     let mut table_counts: Vec<(String, i64)> = Vec::new();
     for tn in &table_names {
-        let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{}\"", tn), [], |r| r.get(0)).unwrap_or(0);
+        let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{tn}\""), [], |r| r.get(0)).unwrap_or(0);
         table_counts.push((tn.clone(), count));
     }
     table_counts.sort_by(|a, b| b.1.cmp(&a.1));
     let mut total_db_rows: i64 = 0;
     for (tn, count) in table_counts.iter().take(30) {
-        println!("  {:>10}  {}", count, tn);
+        println!("  {count:>10}  {tn}");
         total_db_rows += count;
     }
     for (_, count) in table_counts.iter().skip(30) {
@@ -384,7 +380,7 @@ fn audit_populated_db() {
     if !empty_tables.is_empty() {
         println!("\n=== Empty Tables ({}) ===", empty_tables.len());
         for (tn, _) in &empty_tables {
-            println!("  {}", tn);
+            println!("  {tn}");
         }
     }
 
@@ -400,12 +396,12 @@ fn audit_populated_db() {
     // Group by table → parent
     let mut viol_groups: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (table, _, parent, _) in &violations {
-        *viol_groups.entry(format!("{} → {}", table, parent)).or_insert(0) += 1;
+        *viol_groups.entry(format!("{table} → {parent}")).or_insert(0) += 1;
     }
     let mut viol_sorted: Vec<_> = viol_groups.into_iter().collect();
     viol_sorted.sort_by(|a, b| b.1.cmp(&a.1));
     for (key, count) in &viol_sorted {
-        println!("  {:>5}  {}", count, key);
+        println!("  {count:>5}  {key}");
     }
 
     // Show sample of each violation type
@@ -417,9 +413,9 @@ fn audit_populated_db() {
                 .take(3)
                 .collect::<Vec<_>>();
             if !sample.is_empty() {
-                println!("\n  Samples for '{}': ", key);
+                println!("\n  Samples for '{key}': ");
                 for (table, rowid, parent, fk_idx) in sample {
-                    println!("    rowid={} in {} → {} (fk_idx={})", rowid, table, parent, fk_idx);
+                    println!("    rowid={rowid} in {table} → {parent} (fk_idx={fk_idx})");
                 }
             }
         }
@@ -435,7 +431,7 @@ fn audit_populated_db() {
 /// Helper: print a build summary with full phase timing.
 fn print_build_summary(label: &str, summary: &bg3_cmty_studio_lib::reference_db::BuildSummary) {
     let pt = &summary.phase_times;
-    println!("\n=== {} ===", label);
+    println!("\n=== {label} ===");
     println!("  Files:       {}", summary.total_files);
     println!("  Tables:      {}", summary.total_tables);
     println!("  Rows:        {}", summary.total_rows);
@@ -477,7 +473,7 @@ fn assert_has_embedded_schema(conn: &rusqlite::Connection, label: &str) {
         )
         .map(|n| n > 0)
         .unwrap_or(false);
-    assert!(has, "{}: missing embedded schema blob", label);
+    assert!(has, "{label}: missing embedded schema blob");
 }
 
 /// Create all four empty embedded schema databases from pak-streamed discovery:
@@ -502,14 +498,14 @@ fn create_all_empty_schema_dbs() {
     if env_path.is_file() {
         match dotenvy::from_path(&env_path) {
             Ok(_) => println!("  Loaded .env"),
-            Err(e) => println!("  WARNING: failed to load .env: {}", e),
+            Err(e) => println!("  WARNING: failed to load .env: {e}"),
         }
     }
     let game_data_path = std::env::var("BG3_GAME_DATA")
         .expect("BG3_GAME_DATA not set — add it to .env or set the env var");
     let data_dir = std::path::Path::new(&game_data_path);
-    assert!(data_dir.is_dir(), "Game data directory not found at: {}", game_data_path);
-    println!("  Game data: {}", game_data_path);
+    assert!(data_dir.is_dir(), "Game data directory not found at: {game_data_path}");
+    println!("  Game data: {game_data_path}");
 
     let total_start = Instant::now();
     let mut phase_times: Vec<(&str, f64)> = Vec::new();
@@ -522,7 +518,7 @@ fn create_all_empty_schema_dbs() {
     phase_times.push(("stream_paks", collect_secs));
     println!("  stream_paks:   {:.2}s  ({} files)", collect_secs, files.len());
     for d in &pak_diag {
-        println!("    {}", d);
+        println!("    {d}");
     }
 
     // --- Phase 2: Schema discovery ---
@@ -601,10 +597,10 @@ fn create_all_empty_schema_dbs() {
             "discovery"        => format!("{} tables", schema.tables.len()),
             _ => String::new(),
         };
-        println!("  │ {:<18} │ {:>6.2}s  │ {:>8} │", name, secs, size_str);
+        println!("  │ {name:<18} │ {secs:>6.2}s  │ {size_str:>8} │");
     }
     println!("  ├────────────────────┼──────────┼──────────┤");
-    println!("  │ TOTAL              │ {:>6.2}s  │          │", total_secs);
+    println!("  │ TOTAL              │ {total_secs:>6.2}s  │          │");
     println!("  └────────────────────┴──────────┴──────────┘");
 
     // --- Validation: ref_base ---
@@ -612,7 +608,7 @@ fn create_all_empty_schema_dbs() {
         let conn = rusqlite::Connection::open(&base_db).expect("open ref_base");
         let table_count = count_db_tables(&conn);
         assert_has_embedded_schema(&conn, "ref_base");
-        assert!(table_count > 100, "ref_base: expected 100+ tables, got {}", table_count);
+        assert!(table_count > 100, "ref_base: expected 100+ tables, got {table_count}");
 
         // Should have FK constraints
         let fk_total: i64 = {
@@ -622,7 +618,7 @@ fn create_all_empty_schema_dbs() {
             };
             let mut total = 0i64;
             for t in &tables {
-                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", t)).unwrap();
+                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{t}\")")).unwrap();
                 total += stmt.query_map([], |_| Ok(())).unwrap().count() as i64;
             }
             total
@@ -635,9 +631,8 @@ fn create_all_empty_schema_dbs() {
             let mut stmt = conn.prepare("PRAGMA foreign_key_check").unwrap();
             stmt.query_map([], |_| Ok(())).unwrap().count() as i64
         };
-        assert_eq!(fk_violations, 0, "ref_base: expected 0 FK violations, got {}", fk_violations);
-        println!("\n  ref_base:  {} tables, {} FK constraint defs, {} FK violations — OK",
-            table_count, fk_total, fk_violations);
+        assert_eq!(fk_violations, 0, "ref_base: expected 0 FK violations, got {fk_violations}");
+        println!("\n  ref_base:  {table_count} tables, {fk_total} FK constraint defs, {fk_violations} FK violations — OK");
     }
 
     // --- Validation: ref_honor (same structure as base) ---
@@ -645,8 +640,8 @@ fn create_all_empty_schema_dbs() {
         let conn = rusqlite::Connection::open(&honor_db).expect("open ref_honor");
         let table_count = count_db_tables(&conn);
         assert_has_embedded_schema(&conn, "ref_honor");
-        assert!(table_count > 100, "ref_honor: expected 100+ tables, got {}", table_count);
-        println!("  ref_honor: {} tables — OK", table_count);
+        assert!(table_count > 100, "ref_honor: expected 100+ tables, got {table_count}");
+        println!("  ref_honor: {table_count} tables — OK");
     }
 
     // --- Validation: ref_mods (composite PKs, no FKs) ---
@@ -654,7 +649,7 @@ fn create_all_empty_schema_dbs() {
         let conn = rusqlite::Connection::open(&mods_db).expect("open ref_mods");
         let table_count = count_db_tables(&conn);
         assert_has_embedded_schema(&conn, "ref_mods");
-        assert!(table_count > 100, "ref_mods: expected 100+ tables, got {}", table_count);
+        assert!(table_count > 100, "ref_mods: expected 100+ tables, got {table_count}");
 
         // Mods DB should have zero FK constraints
         let fk_total: i64 = {
@@ -664,12 +659,12 @@ fn create_all_empty_schema_dbs() {
             };
             let mut total = 0i64;
             for t in &tables {
-                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", t)).unwrap();
+                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{t}\")")).unwrap();
                 total += stmt.query_map([], |_| Ok(())).unwrap().count() as i64;
             }
             total
         };
-        assert_eq!(fk_total, 0, "ref_mods: expected 0 FK constraints, got {}", fk_total);
+        assert_eq!(fk_total, 0, "ref_mods: expected 0 FK constraints, got {fk_total}");
 
         // Verify a sample data table has _SourceID in PK (composite PK check)
         let sample_table: Option<String> = conn
@@ -683,17 +678,17 @@ fn create_all_empty_schema_dbs() {
             .ok();
         if let Some(ref t) = sample_table {
             let cols: Vec<String> = {
-                let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{}\")", t)).unwrap();
+                let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{t}\")")).unwrap();
                 stmt.query_map([], |row| row.get::<_, String>(1))
                     .unwrap()
                     .filter_map(|r| r.ok())
                     .collect()
             };
             assert!(cols.contains(&"_SourceID".to_string()),
-                "ref_mods: sample table {} missing _SourceID column", t);
+                "ref_mods: sample table {t} missing _SourceID column");
         }
 
-        println!("  ref_mods:  {} tables, 0 FK constraints, _SourceID in PK — OK", table_count);
+        println!("  ref_mods:  {table_count} tables, 0 FK constraints, _SourceID in PK — OK");
     }
 
     // --- Validation: staging (tracking columns, WAL, no FKs) ---
@@ -701,7 +696,7 @@ fn create_all_empty_schema_dbs() {
         let conn = rusqlite::Connection::open(&staging_db).expect("open staging");
         let table_count = count_db_tables(&conn);
         assert_has_embedded_schema(&conn, "staging");
-        assert!(table_count > 100, "staging: expected 100+ tables, got {}", table_count);
+        assert!(table_count > 100, "staging: expected 100+ tables, got {table_count}");
 
         // WAL mode
         let journal: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
@@ -717,15 +712,15 @@ fn create_all_empty_schema_dbs() {
         ).ok();
         if let Some(ref t) = sample {
             let cols: Vec<String> = {
-                let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{}\")", t)).unwrap();
+                let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{t}\")")).unwrap();
                 stmt.query_map([], |row| row.get::<_, String>(1))
                     .unwrap()
                     .filter_map(|r| r.ok())
                     .collect()
             };
-            assert!(cols.contains(&"_is_modified".to_string()), "staging: missing _is_modified on {}", t);
-            assert!(cols.contains(&"_is_new".to_string()), "staging: missing _is_new on {}", t);
-            assert!(cols.contains(&"_is_deleted".to_string()), "staging: missing _is_deleted on {}", t);
+            assert!(cols.contains(&"_is_modified".to_string()), "staging: missing _is_modified on {t}");
+            assert!(cols.contains(&"_is_new".to_string()), "staging: missing _is_new on {t}");
+            assert!(cols.contains(&"_is_deleted".to_string()), "staging: missing _is_deleted on {t}");
         }
 
         // Zero FK constraints
@@ -736,17 +731,17 @@ fn create_all_empty_schema_dbs() {
             };
             let mut total = 0i64;
             for t in &tables {
-                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{}\")", t)).unwrap();
+                let mut stmt = conn.prepare(&format!("PRAGMA foreign_key_list(\"{t}\")")).unwrap();
                 total += stmt.query_map([], |_| Ok(())).unwrap().count() as i64;
             }
             total
         };
-        assert_eq!(fk_total, 0, "staging: expected 0 FK constraints, got {}", fk_total);
+        assert_eq!(fk_total, 0, "staging: expected 0 FK constraints, got {fk_total}");
 
-        println!("  staging:   {} tables, WAL, tracking columns, 0 FKs — OK", table_count);
+        println!("  staging:   {table_count} tables, WAL, tracking columns, 0 FKs — OK");
     }
 
-    println!("\n  ALL SCHEMA DBS CREATED SUCCESSFULLY ({:.2}s total)", total_secs);
+    println!("\n  ALL SCHEMA DBS CREATED SUCCESSFULLY ({total_secs:.2}s total)");
 }
 
 /// Populate ref_base and ref_honor from pak-streamed game data.
@@ -767,7 +762,7 @@ fn populate_all_schema_dbs() {
     if env_path.is_file() {
         match dotenvy::from_path(&env_path) {
             Ok(_) => println!("  Loaded .env"),
-            Err(e) => println!("  WARNING: failed to load .env: {}", e),
+            Err(e) => println!("  WARNING: failed to load .env: {e}"),
         }
     }
     let game_data_path = std::env::var("BG3_GAME_DATA")
@@ -808,7 +803,7 @@ fn populate_all_schema_dbs() {
 
     // Print diagnostics
     for d in &pipeline.diagnostics {
-        println!("  {}", d);
+        println!("  {d}");
     }
 
     let base_summary = pipeline.base_summary.expect("base_summary missing from pipeline");
@@ -854,8 +849,7 @@ fn populate_all_schema_dbs() {
         base_summary.total_rows + honor_summary.total_rows);
     println!("  │ FK constraints       │ {:>8} │ {:>8} │          │         │",
         base_summary.fk_constraints, honor_summary.fk_constraints);
-    println!("  │ FK violations        │ {:>8} │ {:>8} │          │         │",
-        base_fk_violations, honor_fk_violations);
+    println!("  │ FK violations        │ {base_fk_violations:>8} │ {honor_fk_violations:>8} │          │         │");
     println!("  │ File errors          │ {:>8} │ {:>8} │ {:>8} │         │",
         base_summary.file_errors, honor_summary.file_errors,
         base_summary.file_errors + honor_summary.file_errors);
@@ -866,8 +860,7 @@ fn populate_all_schema_dbs() {
         base_summary.db_size_mb, honor_summary.db_size_mb,
         base_summary.db_size_mb + honor_summary.db_size_mb);
     println!("  ├──────────────────────┼──────────┼──────────┼──────────┼─────────┤");
-    println!("  │ stream_paks (s)      │          │          │          │ {:>7.2} │",
-        stream_secs);
+    println!("  │ stream_paks (s)      │          │          │          │ {stream_secs:>7.2} │");
     println!("  │ data_insert (s)      │ {:>8.2} │ {:>8.2} │ {:>8.2} │         │",
         base_summary.phase_times.data_insert, honor_summary.phase_times.data_insert,
         base_summary.phase_times.data_insert + honor_summary.phase_times.data_insert);
@@ -884,7 +877,7 @@ fn populate_all_schema_dbs() {
         base_summary.elapsed_secs, honor_summary.elapsed_secs,
         base_summary.elapsed_secs + honor_summary.elapsed_secs);
     println!("  ├──────────────────────┼──────────┼──────────┼──────────┼─────────┤");
-    println!("  │ GRAND TOTAL (s)      │          │          │ {:>8.2} │         │", total_secs);
+    println!("  │ GRAND TOTAL (s)      │          │          │ {total_secs:>8.2} │         │");
     println!("  └──────────────────────┴──────────┴──────────┴──────────┴─────────┘");
 
     // --- Assertions ---
@@ -936,8 +929,8 @@ fn populate_all_schema_dbs() {
     // FK violations are expected with pak-based ingestion (some referenced
     // parent rows live in paks/regions not yet fully resolved). Report but
     // don't hard-fail — track the count for regression monitoring.
-    println!("\n  ref_base FK violations:  {}", base_fk_violations);
-    println!("  ref_honor FK violations: {}", honor_fk_violations);
+    println!("\n  ref_base FK violations:  {base_fk_violations}");
+    println!("  ref_honor FK violations: {honor_fk_violations}");
 
-    println!("\n  ALL POPULATION TESTS PASSED ({:.2}s total)", total_secs);
+    println!("\n  ALL POPULATION TESTS PASSED ({total_secs:.2}s total)");
 }

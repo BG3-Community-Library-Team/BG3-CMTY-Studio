@@ -12,6 +12,7 @@
   import LocalizationPanel from "./LocalizationPanel.svelte";
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
+  import ReadmeEditor from "./ReadmeEditor.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
@@ -482,6 +483,8 @@
           readonly={false}
         />
       {/if}
+    {:else if activeTab.type === "readme"}
+      <ReadmeEditor />
     {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
       <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />
     {/if}

@@ -43,16 +43,16 @@ pub async fn cmd_populate_game_data(
         for (label, path) in [("ref_base", &db_paths.base), ("ref_honor", &db_paths.honor)] {
             match db_manager::run_integrity_check(path) {
                 Ok(None) => {
-                    diagnostics.push(format!("Integrity check {}: ok", label));
+                    diagnostics.push(format!("Integrity check {label}: ok"));
                 }
                 Ok(Some(details)) => {
-                    let msg = format!("Integrity check {} WARNING: {}", label, details);
-                    eprintln!("  {}", msg);
+                    let msg = format!("Integrity check {label} WARNING: {details}");
+                    eprintln!("  {msg}");
                     errors.push(msg);
                 }
                 Err(e) => {
-                    let msg = format!("Integrity check {} FAILED: {}", label, e);
-                    eprintln!("  {}", msg);
+                    let msg = format!("Integrity check {label} FAILED: {e}");
+                    eprintln!("  {msg}");
                     errors.push(msg);
                 }
             }
@@ -99,10 +99,10 @@ pub async fn cmd_populate_reference_db(
         let unpacked = std::path::PathBuf::from(&unpacked_path);
         let db = std::path::PathBuf::from(&db_path);
         if !unpacked.is_dir() {
-            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
+            return Err(format!("UnpackedData directory not found: {unpacked_path}"));
         }
         if !db.is_file() {
-            return Err(format!("Schema database not found: {}. Run the schema generator first.", db_path));
+            return Err(format!("Schema database not found: {db_path}. Run the schema generator first."));
         }
         let options = reference_db::BuildOptions { vacuum, ..Default::default() };
         reference_db::populate_reference_db(&unpacked, &db, reference_db::TargetDb::Base, &options)
@@ -121,10 +121,10 @@ pub async fn cmd_populate_honor_db(
         let unpacked = std::path::PathBuf::from(&unpacked_path);
         let db = std::path::PathBuf::from(&db_path);
         if !unpacked.is_dir() {
-            return Err(format!("UnpackedData directory not found: {}", unpacked_path));
+            return Err(format!("UnpackedData directory not found: {unpacked_path}"));
         }
         if !db.is_file() {
-            return Err(format!("Honor schema database not found: {}. Run the schema generator first.", db_path));
+            return Err(format!("Honor schema database not found: {db_path}. Run the schema generator first."));
         }
         let options = reference_db::BuildOptions {
             vacuum,
@@ -149,10 +149,10 @@ pub async fn cmd_populate_mods_db(
         let mod_dir = std::path::PathBuf::from(&mod_path);
         let db = std::path::PathBuf::from(&db_path);
         if !mod_dir.is_dir() {
-            return Err(format!("Mod directory not found: {}", mod_path));
+            return Err(format!("Mod directory not found: {mod_path}"));
         }
         if !db.is_file() {
-            return Err(format!("Mods schema database not found: {}. Run the schema generator first.", db_path));
+            return Err(format!("Mods schema database not found: {db_path}. Run the schema generator first."));
         }
         let options = reference_db::BuildOptions { vacuum, ..Default::default() };
         reference_db::populate_mods_db(&mod_dir, &mod_name, &db, &options)
@@ -168,16 +168,16 @@ pub async fn cmd_validate_cross_db_fks(
     blocking_with_timeout(std::time::Duration::from_secs(300), move || {
         let db = std::path::PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Database not found: {}", db_path));
+            return Err(format!("Database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open DB: {}", e))?;
+            .map_err(|e| format!("Open DB: {e}"))?;
 
         let mut aliases = Vec::new();
         for (alias, path) in &attach_paths {
             let p = std::path::PathBuf::from(path);
             if !p.is_file() {
-                return Err(format!("Attached DB not found: {} ({})", alias, path));
+                return Err(format!("Attached DB not found: {alias} ({path})"));
             }
             reference_db::cross_db::attach_readonly(&conn, &p, alias)?;
             aliases.push(alias.as_str());
@@ -377,10 +377,10 @@ pub async fn cmd_remove_mod_from_mods_db(
     blocking_with_timeout(std::time::Duration::from_secs(120), move || {
         let db = std::path::PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Mods database not found: {}", db_path));
+            return Err(format!("Mods database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open mods DB: {}", e))?;
+            .map_err(|e| format!("Open mods DB: {e}"))?;
 
         // Look up the _SourceID for this mod name
         let source_id: i64 = conn
@@ -389,7 +389,7 @@ pub async fn cmd_remove_mod_from_mods_db(
                 [&mod_name],
                 |row| row.get(0),
             )
-            .map_err(|e| format!("Mod '{}' not found in _sources: {}", mod_name, e))?;
+            .map_err(|e| format!("Mod '{mod_name}' not found in _sources: {e}"))?;
 
         // Get all user tables (skip internal/meta tables starting with _)
         let tables: Vec<String> = {
@@ -398,9 +398,9 @@ pub async fn cmd_remove_mod_from_mods_db(
                     "SELECT name FROM sqlite_master WHERE type='table' \
                      AND name NOT LIKE '\\_%' ESCAPE '\\'",
                 )
-                .map_err(|e| format!("List tables: {}", e))?;
+                .map_err(|e| format!("List tables: {e}"))?;
             let result = stmt.query_map([], |row| row.get(0))
-                .map_err(|e| format!("Query tables: {}", e))?
+                .map_err(|e| format!("Query tables: {e}"))?
                 .filter_map(|r| r.ok())
                 .collect();
             result
@@ -411,10 +411,10 @@ pub async fn cmd_remove_mod_from_mods_db(
             // Check if this table has a _SourceID column
             let has_source_id: bool = {
                 let mut stmt = conn
-                    .prepare(&format!("PRAGMA table_info(\"{}\")", table))
-                    .map_err(|e| format!("PRAGMA table_info: {}", e))?;
+                    .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+                    .map_err(|e| format!("PRAGMA table_info: {e}"))?;
                 let result = stmt.query_map([], |row| row.get::<_, String>(1))
-                    .map_err(|e| format!("table_info query: {}", e))?
+                    .map_err(|e| format!("table_info query: {e}"))?
                     .filter_map(|r| r.ok())
                     .any(|col| col == "_SourceID");
                 result
@@ -422,17 +422,17 @@ pub async fn cmd_remove_mod_from_mods_db(
             if has_source_id {
                 let deleted = conn
                     .execute(
-                        &format!("DELETE FROM \"{}\" WHERE \"_SourceID\" = ?1", table),
+                        &format!("DELETE FROM \"{table}\" WHERE \"_SourceID\" = ?1"),
                         [source_id],
                     )
-                    .map_err(|e| format!("Delete from {}: {}", table, e))?;
+                    .map_err(|e| format!("Delete from {table}: {e}"))?;
                 total_deleted += deleted as u64;
             }
         }
 
         // Remove from _sources
         conn.execute("DELETE FROM _sources WHERE id = ?1", [source_id])
-            .map_err(|e| format!("Delete from _sources: {}", e))?;
+            .map_err(|e| format!("Delete from _sources: {e}"))?;
 
         // Also clean up _source_files and _table_meta row counts
         let _ = conn.execute("DELETE FROM _source_files WHERE source_id = ?1", [source_id]);
@@ -440,8 +440,7 @@ pub async fn cmd_remove_mod_from_mods_db(
         for table in &tables {
             let _ = conn.execute(
                 &format!(
-                    "UPDATE _table_meta SET row_count = (SELECT COUNT(*) FROM \"{}\") WHERE table_name = ?1",
-                    table
+                    "UPDATE _table_meta SET row_count = (SELECT COUNT(*) FROM \"{table}\") WHERE table_name = ?1"
                 ),
                 [table.as_str()],
             );
@@ -463,10 +462,10 @@ pub async fn cmd_clear_mods_db(
     blocking_with_timeout(std::time::Duration::from_secs(120), move || {
         let db = std::path::PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Mods database not found: {}", db_path));
+            return Err(format!("Mods database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open mods DB: {}", e))?;
+            .map_err(|e| format!("Open mods DB: {e}"))?;
 
         let tables: Vec<String> = {
             let mut stmt = conn
@@ -474,9 +473,9 @@ pub async fn cmd_clear_mods_db(
                     "SELECT name FROM sqlite_master WHERE type='table' \
                      AND name NOT LIKE '\\_%' ESCAPE '\\'",
                 )
-                .map_err(|e| format!("List tables: {}", e))?;
+                .map_err(|e| format!("List tables: {e}"))?;
             let result = stmt.query_map([], |row| row.get(0))
-                .map_err(|e| format!("Query tables: {}", e))?
+                .map_err(|e| format!("Query tables: {e}"))?
                 .filter_map(|r| r.ok())
                 .collect();
             result
@@ -485,8 +484,8 @@ pub async fn cmd_clear_mods_db(
         let mut total_deleted: u64 = 0;
         for table in &tables {
             let deleted = conn
-                .execute(&format!("DELETE FROM \"{}\"", table), [])
-                .map_err(|e| format!("Clear {}: {}", table, e))?;
+                .execute(&format!("DELETE FROM \"{table}\""), [])
+                .map_err(|e| format!("Clear {table}: {e}"))?;
             total_deleted += deleted as u64;
         }
 
@@ -520,10 +519,10 @@ pub async fn cmd_staging_upsert_row(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_upsert_row(&conn, &table, &columns, is_new)
     })
     .await
@@ -539,10 +538,10 @@ pub async fn cmd_staging_mark_deleted(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_mark_deleted(&conn, &table, &pk)
     })
     .await
@@ -558,10 +557,10 @@ pub async fn cmd_staging_unmark_deleted(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_unmark_deleted(&conn, &table, &pk)
     })
     .await
@@ -576,10 +575,10 @@ pub async fn cmd_staging_batch_write(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_batch_write(&conn, &operations)
     })
     .await
@@ -594,10 +593,10 @@ pub async fn cmd_staging_query_changes(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_query_changes(&conn, table.as_deref())
     })
     .await
@@ -611,10 +610,10 @@ pub async fn cmd_staging_list_sections(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_list_sections(&conn)
     })
     .await
@@ -630,10 +629,10 @@ pub async fn cmd_staging_query_section(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_query_section(
             &conn,
             &table,
@@ -653,10 +652,10 @@ pub async fn cmd_staging_get_row(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_get_row(&conn, &table, &pk)
     })
     .await
@@ -671,10 +670,10 @@ pub async fn cmd_staging_get_meta(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::ensure_staging_authoring_table(&conn)?;
         reference_db::staging::staging_get_meta(&conn, &key)
     })
@@ -691,10 +690,10 @@ pub async fn cmd_staging_set_meta(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::ensure_staging_authoring_table(&conn)?;
         reference_db::staging::staging_set_meta(&conn, &key, &value)
     })
@@ -710,10 +709,10 @@ pub async fn cmd_staging_snapshot(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_snapshot(&conn, &label)
     })
     .await
@@ -727,10 +726,10 @@ pub async fn cmd_staging_undo(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_undo(&conn)
     })
     .await
@@ -744,10 +743,10 @@ pub async fn cmd_staging_redo(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         reference_db::staging::staging_redo(&conn)
     })
     .await
@@ -761,12 +760,12 @@ pub async fn cmd_staging_wal_checkpoint(
     blocking(move || {
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
-            .map_err(|e| format!("WAL checkpoint: {}", e))?;
+            .map_err(|e| format!("WAL checkpoint: {e}"))?;
         Ok(())
     })
     .await
@@ -784,10 +783,10 @@ pub async fn cmd_staging_compact_undo(
         let limit = max_entries.unwrap_or(500);
         let db = std::path::PathBuf::from(&staging_db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
 
         // Check if the undo journal table exists
         let exists: bool = conn
@@ -803,7 +802,7 @@ pub async fn cmd_staging_compact_undo(
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM _staging_undo_journal", [], |r| r.get(0))
-            .map_err(|e| format!("Count undo journal: {}", e))?;
+            .map_err(|e| format!("Count undo journal: {e}"))?;
 
         if count <= limit {
             return Ok(0);
@@ -815,9 +814,29 @@ pub async fn cmd_staging_compact_undo(
              (SELECT rowid FROM _staging_undo_journal ORDER BY rowid ASC LIMIT ?1)",
             [to_delete],
         )
-        .map_err(|e| format!("Compact undo journal: {}", e))?;
+        .map_err(|e| format!("Compact undo journal: {e}"))?;
 
         Ok(to_delete)
+    })
+    .await
+}
+
+/// Replace all rows in a staging table with baseline data and clear its undo history.
+/// Used by "Reset Section" to restore a section to its state when the project was opened.
+#[tauri::command]
+pub async fn cmd_staging_replace_section(
+    staging_db_path: String,
+    table: String,
+    rows: Vec<std::collections::HashMap<String, serde_json::Value>>,
+) -> Result<usize, AppError> {
+    blocking(move || {
+        let db = std::path::PathBuf::from(&staging_db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {staging_db_path}"));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {e}"))?;
+        reference_db::staging::staging_replace_section(&conn, &table, &rows)
     })
     .await
 }
@@ -834,10 +853,10 @@ pub async fn cmd_validate_handlers(
     blocking(move || {
         let staging_db = std::path::PathBuf::from(&staging_db_path);
         if !staging_db.is_file() {
-            return Err(format!("Staging database not found: {}", staging_db_path));
+            return Err(format!("Staging database not found: {staging_db_path}"));
         }
         let conn = rusqlite::Connection::open(&staging_db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
 
         let ctx = crate::export::ExportContext {
             staging_conn: conn,
@@ -1030,7 +1049,7 @@ mod tests {
         assert!(!path.is_dir(), "A regular file should not be a directory");
 
         // This is the exact error the command would produce
-        let err = format!("Mod path is neither a .pak file nor a directory: {}", mod_path);
+        let err = format!("Mod path is neither a .pak file nor a directory: {mod_path}");
         assert!(err.contains("neither a .pak file nor a directory"));
     }
 

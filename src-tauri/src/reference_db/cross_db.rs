@@ -96,10 +96,10 @@ pub struct CrossDbFkReport {
 pub fn attach_readonly(conn: &Connection, db_path: &Path, alias: &str) -> Result<(), String> {
     // Validate alias is alphanumeric to prevent SQL injection
     if !alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(format!("Invalid alias: {}", alias));
+        return Err(format!("Invalid alias: {alias}"));
     }
     let path_str = db_path.to_string_lossy().replace('\\', "/");
-    let sql = format!("ATTACH DATABASE '{}' AS \"{}\"", path_str, alias);
+    let sql = format!("ATTACH DATABASE '{path_str}' AS \"{alias}\"");
     conn.execute_batch(&sql)
         .map_err(|e| format!("ATTACH {} ({}): {}", alias, db_path.display(), e))
 }
@@ -107,22 +107,22 @@ pub fn attach_readonly(conn: &Connection, db_path: &Path, alias: &str) -> Result
 /// Detach a previously attached database.
 pub fn detach(conn: &Connection, alias: &str) -> Result<(), String> {
     if !alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(format!("Invalid alias: {}", alias));
+        return Err(format!("Invalid alias: {alias}"));
     }
-    let sql = format!("DETACH DATABASE \"{}\"", alias);
+    let sql = format!("DETACH DATABASE \"{alias}\"");
     conn.execute_batch(&sql)
-        .map_err(|e| format!("DETACH {}: {}", alias, e))
+        .map_err(|e| format!("DETACH {alias}: {e}"))
 }
 
 /// List all currently attached database aliases (excluding "main" and "temp").
 pub fn list_attached(conn: &Connection) -> Result<Vec<(String, String)>, String> {
     let mut stmt = conn.prepare("PRAGMA database_list")
-        .map_err(|e| format!("database_list: {}", e))?;
+        .map_err(|e| format!("database_list: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
             Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
         })
-        .map_err(|e| format!("database_list query: {}", e))?
+        .map_err(|e| format!("database_list query: {e}"))?
         .filter_map(|r| r.ok())
         .filter(|(name, _)| name != "main" && name != "temp")
         .collect();
@@ -154,9 +154,9 @@ pub fn validate_cross_db_fks(
     let table_names: Vec<String> = {
         let mut stmt = conn
             .prepare("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE '\\_%' ESCAPE '\\'")
-            .map_err(|e| format!("List tables: {}", e))?;
+            .map_err(|e| format!("List tables: {e}"))?;
         let rows = stmt.query_map([], |row| row.get(0))
-            .map_err(|e| format!("Query tables: {}", e))?
+            .map_err(|e| format!("Query tables: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
         rows
@@ -164,10 +164,10 @@ pub fn validate_cross_db_fks(
 
     for table_name in &table_names {
         // Get FK constraints for this table
-        let fk_sql = format!("PRAGMA main.foreign_key_list(\"{}\")", table_name);
+        let fk_sql = format!("PRAGMA main.foreign_key_list(\"{table_name}\")");
         let fks: Vec<(String, String, String)> = {
             let mut stmt = conn.prepare(&fk_sql)
-                .map_err(|e| format!("FK list {}: {}", table_name, e))?;
+                .map_err(|e| format!("FK list {table_name}: {e}"))?;
             // foreign_key_list columns: id, seq, table, from, to, on_update, on_delete, match
             let rows = stmt.query_map([], |row| {
                 Ok((
@@ -176,7 +176,7 @@ pub fn validate_cross_db_fks(
                     row.get::<_, String>(4)?, // target column
                 ))
             })
-            .map_err(|e| format!("FK list query {}: {}", table_name, e))?
+            .map_err(|e| format!("FK list query {table_name}: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
             rows
@@ -213,7 +213,7 @@ pub fn validate_cross_db_fks(
                     stmt.query_map([], |row| {
                         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
                     })
-                    .map_err(|e| format!("FK check {}.{}: {}", table_name, from_col, e))?
+                    .map_err(|e| format!("FK check {table_name}.{from_col}: {e}"))?
                     .filter_map(|r| r.ok())
                     .collect()
                 }
@@ -233,8 +233,7 @@ pub fn validate_cross_db_fks(
                 for alias in attached_aliases {
                     // Check if target table exists in this attached schema
                     let exists_sql = format!(
-                        "SELECT COUNT(*) FROM \"{}\".sqlite_master WHERE type='table' AND name=?1",
-                        alias
+                        "SELECT COUNT(*) FROM \"{alias}\".sqlite_master WHERE type='table' AND name=?1"
                     );
                     let has_table = conn
                         .query_row(&exists_sql, params![target_table], |row| row.get::<_, i64>(0))
@@ -246,8 +245,7 @@ pub fn validate_cross_db_fks(
                     }
 
                     let lookup_sql = format!(
-                        "SELECT 1 FROM \"{}\".\"{target_table}\" WHERE \"{to_col}\" = ?1 LIMIT 1",
-                        alias
+                        "SELECT 1 FROM \"{alias}\".\"{target_table}\" WHERE \"{to_col}\" = ?1 LIMIT 1"
                     );
                     let found = conn
                         .query_row(&lookup_sql, params![value], |_| Ok(()))
@@ -299,8 +297,7 @@ pub fn cross_db_exists_sql(
     )];
     for alias in attached_aliases {
         parts.push(format!(
-            "SELECT \"{}\" FROM \"{}\".\"{}\" WHERE \"{}\" = ?1",
-            pk_column, alias, table, pk_column
+            "SELECT \"{pk_column}\" FROM \"{alias}\".\"{table}\" WHERE \"{pk_column}\" = ?1"
         ));
     }
     format!("{} LIMIT 1", parts.join(" UNION ALL "))
@@ -327,8 +324,7 @@ pub fn cross_db_union_sql(
     )];
     for alias in attached_aliases {
         parts.push(format!(
-            "SELECT *, '{}' AS _db FROM \"{}\".\"{}\"",
-            alias, alias, table
+            "SELECT *, '{alias}' AS _db FROM \"{alias}\".\"{table}\""
         ));
     }
     parts.join(" UNION ALL ")

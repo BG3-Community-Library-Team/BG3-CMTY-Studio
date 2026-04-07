@@ -47,8 +47,7 @@ fn validate_identifier(name: &str) -> Result<(), AppError> {
         .all(|b| b.is_ascii_alphanumeric() || b == b'_')
     {
         return Err(AppError::security(format!(
-            "Invalid identifier '{}': only ASCII alphanumeric + underscore allowed",
-            name
+            "Invalid identifier '{name}': only ASCII alphanumeric + underscore allowed"
         )));
     }
     Ok(())
@@ -85,8 +84,7 @@ fn resolve_output_path(
         }
     }
     PathBuf::from(format!(
-        "Public/{}/Stats/Generated/Data/{}.txt",
-        mod_folder, entry_type
+        "Public/{mod_folder}/Stats/Generated/Data/{entry_type}.txt"
     ))
 }
 
@@ -95,12 +93,12 @@ fn data_columns(conn: &rusqlite::Connection, table_name: &str) -> Result<Vec<Str
     validate_identifier(table_name)?;
 
     let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info(\"{}\")", table_name))
-        .map_err(|e| AppError::internal(format!("PRAGMA table_info: {}", e)))?;
+        .prepare(&format!("PRAGMA table_info(\"{table_name}\")"))
+        .map_err(|e| AppError::internal(format!("PRAGMA table_info: {e}")))?;
 
     let cols: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|e| AppError::internal(format!("column query: {}", e)))?
+        .map_err(|e| AppError::internal(format!("column query: {e}")))?
         .filter_map(|r| r.ok())
         .filter(|name| !META_COLUMNS.contains(&name.as_str()))
         .collect();
@@ -129,8 +127,8 @@ fn strip_inherited_fields(
     let ref_path = ctx.ref_base_path.to_string_lossy().replace('\'', "''");
 
     ctx.staging_conn
-        .execute_batch(&format!("ATTACH DATABASE '{}' AS ref_base", ref_path))
-        .map_err(|e| AppError::internal(format!("ATTACH ref_base: {}", e)))?;
+        .execute_batch(&format!("ATTACH DATABASE '{ref_path}' AS ref_base"))
+        .map_err(|e| AppError::internal(format!("ATTACH ref_base: {e}")))?;
 
     let ref_table_exists: bool = ctx
         .staging_conn
@@ -155,8 +153,7 @@ fn strip_inherited_fields(
 
     for parent_name in &parent_names {
         let sql = format!(
-            "SELECT * FROM ref_base.\"{}\" WHERE _entry_name = ?1",
-            table_name
+            "SELECT * FROM ref_base.\"{table_name}\" WHERE _entry_name = ?1"
         );
         let mut stmt = match ctx.staging_conn.prepare(&sql) {
             Ok(s) => s,
@@ -187,7 +184,7 @@ fn strip_inherited_fields(
 
     ctx.staging_conn
         .execute_batch("DETACH DATABASE ref_base")
-        .map_err(|e| AppError::internal(format!("DETACH ref_base: {}", e)))?;
+        .map_err(|e| AppError::internal(format!("DETACH ref_base: {e}")))?;
 
     for entry in entries.iter_mut() {
         if let Some(ref parent_name) = entry.parent {
@@ -260,11 +257,11 @@ impl FileTypeHandler for StatsHandler {
             let mut stmt = ctx
                 .staging_conn
                 .prepare(&sql)
-                .map_err(|e| AppError::internal(format!("plan prepare: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("plan prepare: {e}")))?;
 
             let file_ids: Vec<Option<i64>> = stmt
                 .query_map([], |row| row.get::<_, Option<i64>>(0))
-                .map_err(|e| AppError::internal(format!("plan query: {}", e)))?
+                .map_err(|e| AppError::internal(format!("plan query: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
@@ -350,11 +347,11 @@ impl FileTypeHandler for StatsHandler {
             let mut stmt = ctx
                 .staging_conn
                 .prepare(&sql)
-                .map_err(|e| AppError::internal(format!("render prepare: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("render prepare: {e}")))?;
 
             let file_ids: Vec<Option<i64>> = stmt
                 .query_map([], |row| row.get::<_, Option<i64>>(0))
-                .map_err(|e| AppError::internal(format!("render query: {}", e)))?
+                .map_err(|e| AppError::internal(format!("render query: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
 
@@ -392,7 +389,7 @@ impl FileTypeHandler for StatsHandler {
                 let mut row_stmt = ctx
                     .staging_conn
                     .prepare(&row_sql)
-                    .map_err(|e| AppError::internal(format!("render row prepare: {}", e)))?;
+                    .map_err(|e| AppError::internal(format!("render row prepare: {e}")))?;
 
                 let col_count = row_stmt.column_count();
                 let col_names: Vec<String> = (0..col_count)
@@ -442,17 +439,17 @@ impl FileTypeHandler for StatsHandler {
                 let rows_iter = if has_param {
                     row_stmt
                         .query_map(params![file_id], map_row)
-                        .map_err(|e| AppError::internal(format!("render rows: {}", e)))?
+                        .map_err(|e| AppError::internal(format!("render rows: {e}")))?
                 } else {
                     row_stmt
                         .query_map([], map_row)
-                        .map_err(|e| AppError::internal(format!("render rows: {}", e)))?
+                        .map_err(|e| AppError::internal(format!("render rows: {e}")))?
                 };
 
                 let mut entries: Vec<StatsEntry> = Vec::new();
                 for r in rows_iter {
                     entries.push(
-                        r.map_err(|e| AppError::internal(format!("render row: {}", e)))?,
+                        r.map_err(|e| AppError::internal(format!("render row: {e}")))?,
                     );
                 }
 

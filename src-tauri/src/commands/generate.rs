@@ -349,7 +349,7 @@ pub fn detect_anchors(entries: &[SelectedEntry], threshold: usize) -> Vec<Anchor
 /// E.g., fields with keys "Selector:0:Function", "Selector:1:Action" → [0, 1]
 fn get_field_indices(fields: &HashMap<String, String>, prefix: &str) -> Vec<usize> {
     let mut indices: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
-    let prefix_colon = format!("{}:", prefix);
+    let prefix_colon = format!("{prefix}:");
     for key in fields.keys() {
         if let Some(rest) = key.strip_prefix(&prefix_colon) {
             if let Some(num_str) = rest.split(':').next() {
@@ -471,16 +471,16 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
             let sel_indices = get_field_indices(fields, "Selector");
             if !sel_indices.is_empty() {
                 let selectors: Vec<serde_json::Value> = sel_indices.iter().map(|i| {
-                    let action = fields.get(&format!("Selector:{}:Action", i)).map(|s| s.as_str()).unwrap_or("Insert");
+                    let action = fields.get(&format!("Selector:{i}:Action")).map(|s| s.as_str()).unwrap_or("Insert");
                     let mut entry = serde_json::Map::new();
                     entry.insert("Action".into(), serde_json::json!(action));
                     entry.insert("Function".into(), serde_json::json!(
-                        fields.get(&format!("Selector:{}:Function", i)).map(|s| s.as_str()).unwrap_or("")
+                        fields.get(&format!("Selector:{i}:Function")).map(|s| s.as_str()).unwrap_or("")
                     ));
-                    let overwrite = fields.get(&format!("Selector:{}:Overwrite", i)).map(|s| s == "true").unwrap_or(false);
+                    let overwrite = fields.get(&format!("Selector:{i}:Overwrite")).map(|s| s == "true").unwrap_or(false);
                     if overwrite { entry.insert("Overwrite".into(), serde_json::json!(true)); }
                     if action == "Remove" {
-                        if let Some(uuid) = fields.get(&format!("Selector:{}:UUID", i)) {
+                        if let Some(uuid) = fields.get(&format!("Selector:{i}:UUID")) {
                             if !uuid.is_empty() { entry.insert("UUID".into(), serde_json::json!(uuid)); }
                         }
                     } else {
@@ -488,7 +488,7 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
                             "ActionResource", "PrepareType", "CooldownType", "BonusType", "Amounts", "LimitToProficiency"];
                         let mut params = serde_json::Map::new();
                         for pk in &param_keys {
-                            if let Some(pv) = fields.get(&format!("Selector:{}:Param:{}", i, pk)) {
+                            if let Some(pv) = fields.get(&format!("Selector:{i}:Param:{pk}")) {
                                 if !pv.is_empty() {
                                     if *pk == "Amounts" {
                                         let amounts: Vec<&str> = pv.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -501,7 +501,7 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
                         }
                         entry.insert("Params".into(), serde_json::Value::Object(params));
                     }
-                    if let Some(mg) = fields.get(&format!("Selector:{}:modGuid", i)) {
+                    if let Some(mg) = fields.get(&format!("Selector:{i}:modGuid")) {
                         if !mg.is_empty() { entry.insert("modGuid".into(), serde_json::json!(mg)); }
                     }
                     serde_json::Value::Object(entry)
@@ -515,14 +515,14 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
                 let strings: Vec<serde_json::Value> = str_indices.iter().map(|i| {
                     let mut entry = serde_json::Map::new();
                     entry.insert("Action".into(), serde_json::json!(
-                        fields.get(&format!("String:{}:Action", i)).map(|s| s.as_str()).unwrap_or("Insert")
+                        fields.get(&format!("String:{i}:Action")).map(|s| s.as_str()).unwrap_or("Insert")
                     ));
                     entry.insert("Type".into(), serde_json::json!(
-                        fields.get(&format!("String:{}:Type", i)).map(|s| s.as_str()).unwrap_or("Boosts")
+                        fields.get(&format!("String:{i}:Type")).map(|s| s.as_str()).unwrap_or("Boosts")
                     ));
-                    let values = fields.get(&format!("String:{}:Values", i)).map(|s| s.as_str()).unwrap_or("");
+                    let values = fields.get(&format!("String:{i}:Values")).map(|s| s.as_str()).unwrap_or("");
                     entry.insert("Strings".into(), serde_json::json!(split_semicolons(values)));
-                    if let Some(mg) = fields.get(&format!("String:{}:modGuid", i)) {
+                    if let Some(mg) = fields.get(&format!("String:{i}:modGuid")) {
                         if !mg.is_empty() { entry.insert("modGuid".into(), serde_json::json!(mg)); }
                     }
                     serde_json::Value::Object(entry)
@@ -535,11 +535,11 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
                 let child_indices = get_field_indices(fields, "Child");
                 if !child_indices.is_empty() {
                     let children: Vec<serde_json::Value> = child_indices.iter().map(|i| {
-                        let values_str = fields.get(&format!("Child:{}:Values", i)).map(|s| s.as_str()).unwrap_or("");
+                        let values_str = fields.get(&format!("Child:{i}:Values")).map(|s| s.as_str()).unwrap_or("");
                         serde_json::json!({
-                            "Type": fields.get(&format!("Child:{}:Type", i)).map(|s| s.as_str()).unwrap_or("EyeColors"),
+                            "Type": fields.get(&format!("Child:{i}:Type")).map(|s| s.as_str()).unwrap_or("EyeColors"),
                             "Values": split_semicolons(values_str),
-                            "Action": fields.get(&format!("Child:{}:Action", i)).map(|s| s.as_str()).unwrap_or("Insert"),
+                            "Action": fields.get(&format!("Child:{i}:Action")).map(|s| s.as_str()).unwrap_or("Insert"),
                         })
                     }).collect();
                     obj.insert("Children".into(), serde_json::json!(children));
@@ -550,16 +550,16 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
             let tag_indices = get_field_indices(fields, "Tag");
             if !tag_indices.is_empty() {
                 let tags: Vec<serde_json::Value> = tag_indices.iter().map(|i| {
-                    let uuids_str = fields.get(&format!("Tag:{}:UUIDs", i)).map(|s| s.as_str()).unwrap_or("");
+                    let uuids_str = fields.get(&format!("Tag:{i}:UUIDs")).map(|s| s.as_str()).unwrap_or("");
                     let mut entry = serde_json::Map::new();
                     entry.insert("UUIDs".into(), serde_json::json!(split_semicolons(uuids_str)));
                     entry.insert("Action".into(), serde_json::json!(
-                        fields.get(&format!("Tag:{}:Action", i)).map(|s| s.as_str()).unwrap_or("Insert")
+                        fields.get(&format!("Tag:{i}:Action")).map(|s| s.as_str()).unwrap_or("Insert")
                     ));
                     entry.insert("Type".into(), serde_json::json!(
-                        fields.get(&format!("Tag:{}:Type", i)).map(|s| s.as_str()).unwrap_or("Tags")
+                        fields.get(&format!("Tag:{i}:Type")).map(|s| s.as_str()).unwrap_or("Tags")
                     ));
-                    if let Some(mg) = fields.get(&format!("Tag:{}:modGuid", i)) {
+                    if let Some(mg) = fields.get(&format!("Tag:{i}:modGuid")) {
                         if !mg.is_empty() { entry.insert("modGuid".into(), serde_json::json!(mg)); }
                     }
                     serde_json::Value::Object(entry)
@@ -573,12 +573,12 @@ fn build_obj_from_fields(section: &Section, fields: &HashMap<String, String>) ->
                 let subs: Vec<serde_json::Value> = sub_indices.iter().map(|i| {
                     let mut entry = serde_json::Map::new();
                     entry.insert("Action".into(), serde_json::json!(
-                        fields.get(&format!("Subclass:{}:Action", i)).map(|s| s.as_str()).unwrap_or("Remove")
+                        fields.get(&format!("Subclass:{i}:Action")).map(|s| s.as_str()).unwrap_or("Remove")
                     ));
                     entry.insert("UUID".into(), serde_json::json!(
-                        fields.get(&format!("Subclass:{}:UUID", i)).map(|s| s.as_str()).unwrap_or("")
+                        fields.get(&format!("Subclass:{i}:UUID")).map(|s| s.as_str()).unwrap_or("")
                     ));
-                    if let Some(mg) = fields.get(&format!("Subclass:{}:modGuid", i)) {
+                    if let Some(mg) = fields.get(&format!("Subclass:{i}:modGuid")) {
                         if !mg.is_empty() { entry.insert("modGuid".into(), serde_json::json!(mg)); }
                     }
                     serde_json::Value::Object(entry)
@@ -637,9 +637,9 @@ fn render_entry_yaml(entry: &serde_json::Value) -> String {
     let mut out = String::new();
     for (i, line) in yaml_str.lines().enumerate() {
         if i == 0 {
-            out.push_str(&format!("  - {}\n", line));
+            out.push_str(&format!("  - {line}\n"));
         } else {
-            out.push_str(&format!("    {}\n", line));
+            out.push_str(&format!("    {line}\n"));
         }
     }
     out
@@ -827,7 +827,7 @@ pub fn generate_yaml_preview(
             if enable_entry_comments {
                 if let Some(comment) = &entry_ir.comment {
                     if !comment.is_empty() {
-                        output.push_str(&format!("  # {}\n", comment));
+                        output.push_str(&format!("  # {comment}\n"));
                     }
                 }
             }
@@ -998,7 +998,7 @@ mod tests {
     fn test_detect_anchors_below_threshold() {
         let entries: Vec<SelectedEntry> = (0..2)
             .map(|i| make_progression_entry(
-                &format!("uuid-{}", i),
+                &format!("uuid-{i}"),
                 vec![Change {
                     change_type: ChangeType::SelectorAdded,
                     field: "Selectors".to_string(),
@@ -1018,7 +1018,7 @@ mod tests {
     fn test_detect_anchors_above_threshold() {
         let entries: Vec<SelectedEntry> = (0..5)
             .map(|i| make_progression_entry(
-                &format!("uuid-{}", i),
+                &format!("uuid-{i}"),
                 vec![Change {
                     change_type: ChangeType::SelectorAdded,
                     field: "Selectors".to_string(),

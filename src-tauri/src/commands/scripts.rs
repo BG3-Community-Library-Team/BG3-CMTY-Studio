@@ -33,13 +33,13 @@ pub async fn cmd_script_read(
     blocking(move || {
         let db = PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", db_path));
+            return Err(format!("Staging database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         let mut stmt = conn
             .prepare("SELECT value FROM _staging_authoring WHERE key = ?1 AND _is_deleted = 0")
-            .map_err(|e| format!("Prepare read: {}", e))?;
+            .map_err(|e| format!("Prepare read: {e}"))?;
         let result: Option<String> = stmt
             .query_row(rusqlite::params![file_path], |row| row.get(0))
             .ok();
@@ -59,15 +59,15 @@ pub async fn cmd_script_write(
     blocking(move || {
         let db = PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", db_path));
+            return Err(format!("Staging database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
 
         // Check if row exists and what its current state is
         let existing: Option<(bool, Option<String>)> = conn
             .prepare("SELECT _is_new, _original_hash FROM _staging_authoring WHERE key = ?1")
-            .map_err(|e| format!("Prepare check: {}", e))?
+            .map_err(|e| format!("Prepare check: {e}"))?
             .query_row(rusqlite::params![file_path], |row| {
                 Ok((row.get::<_, bool>(0)?, row.get::<_, Option<String>>(1)?))
             })
@@ -78,7 +78,7 @@ pub async fn cmd_script_write(
             conn.execute(
                 "UPDATE _staging_authoring SET value = ?1, _is_modified = CASE WHEN _is_new = 1 THEN 0 ELSE 1 END, _is_deleted = 0 WHERE key = ?2",
                 rusqlite::params![content, file_path],
-            ).map_err(|e| format!("Update script: {}", e))?;
+            ).map_err(|e| format!("Update script: {e}"))?;
         } else {
             // Compute hash for new content
             use std::collections::hash_map::DefaultHasher;
@@ -91,7 +91,7 @@ pub async fn cmd_script_write(
             conn.execute(
                 "INSERT INTO _staging_authoring (key, value, _is_new, _is_modified, _is_deleted, _original_hash) VALUES (?1, ?2, 0, 1, 0, ?3)",
                 rusqlite::params![file_path, content, hash],
-            ).map_err(|e| format!("Insert script: {}", e))?;
+            ).map_err(|e| format!("Insert script: {e}"))?;
         }
 
         Ok(true)
@@ -109,16 +109,16 @@ pub async fn cmd_script_delete(
     blocking(move || {
         let db = PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", db_path));
+            return Err(format!("Staging database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
         let affected = conn
             .execute(
                 "UPDATE _staging_authoring SET _is_deleted = 1 WHERE key = ?1",
                 rusqlite::params![file_path],
             )
-            .map_err(|e| format!("Delete script: {}", e))?;
+            .map_err(|e| format!("Delete script: {e}"))?;
         Ok(affected > 0)
     })
     .await
@@ -133,10 +133,10 @@ pub async fn cmd_script_list(
     blocking(move || {
         let db = PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", db_path));
+            return Err(format!("Staging database not found: {db_path}"));
         }
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
 
         let collect_rows = |stmt: &mut rusqlite::Statement, params: &[&dyn rusqlite::types::ToSql]| -> Result<Vec<ScriptFileInfo>, String> {
             stmt
@@ -148,23 +148,23 @@ pub async fn cmd_script_list(
                         is_modified: row.get(3)?,
                     })
                 })
-                .map_err(|e| format!("Query list: {}", e))?
+                .map_err(|e| format!("Query list: {e}"))?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Collect list: {}", e))
+                .map_err(|e| format!("Collect list: {e}"))
         };
 
         if let Some(ref pfx) = prefix {
             // Escape LIKE special characters in the prefix
             let escaped = pfx.replace('%', "\\%").replace('_', "\\_");
-            let pattern = format!("{}%", escaped);
+            let pattern = format!("{escaped}%");
             let mut stmt = conn.prepare(
                 "SELECT key, length(value), _is_new, _is_modified FROM _staging_authoring WHERE key LIKE ?1 ESCAPE '\\' AND _is_deleted = 0"
-            ).map_err(|e| format!("Prepare list: {}", e))?;
+            ).map_err(|e| format!("Prepare list: {e}"))?;
             collect_rows(&mut stmt, &[&pattern])
         } else {
             let mut stmt = conn.prepare(
                 "SELECT key, length(value), _is_new, _is_modified FROM _staging_authoring WHERE _is_deleted = 0"
-            ).map_err(|e| format!("Prepare list: {}", e))?;
+            ).map_err(|e| format!("Prepare list: {e}"))?;
             collect_rows(&mut stmt, &[])
         }
     })
@@ -182,31 +182,31 @@ pub async fn cmd_script_create_from_template(
     blocking(move || {
         let db = PathBuf::from(&db_path);
         if !db.is_file() {
-            return Err(format!("Staging database not found: {}", db_path));
+            return Err(format!("Staging database not found: {db_path}"));
         }
 
         // Get template content from the built-in templates
         let template = get_script_template(&template_id)
-            .ok_or_else(|| format!("Unknown template: {}", template_id))?;
+            .ok_or_else(|| format!("Unknown template: {template_id}"))?;
 
         // Replace {{VAR_NAME}} placeholders
         let mut content = template.to_string();
         for (key, value) in &variables {
-            content = content.replace(&format!("{{{{{}}}}}", key), value);
+            content = content.replace(&format!("{{{{{key}}}}}"), value);
         }
 
         let conn = rusqlite::Connection::open(&db)
-            .map_err(|e| format!("Open staging DB: {}", e))?;
+            .map_err(|e| format!("Open staging DB: {e}"))?;
 
         // Check if file already exists
         let exists: bool = conn
             .prepare("SELECT COUNT(*) FROM _staging_authoring WHERE key = ?1")
-            .map_err(|e| format!("Prepare check: {}", e))?
+            .map_err(|e| format!("Prepare check: {e}"))?
             .query_row(rusqlite::params![file_path], |row| row.get::<_, i64>(0))
-            .map_err(|e| format!("Check existing: {}", e))? > 0;
+            .map_err(|e| format!("Check existing: {e}"))? > 0;
 
         if exists {
-            return Err(format!("Script file already exists: {}", file_path));
+            return Err(format!("Script file already exists: {file_path}"));
         }
 
         // Compute hash
@@ -219,7 +219,7 @@ pub async fn cmd_script_create_from_template(
         conn.execute(
             "INSERT INTO _staging_authoring (key, value, _is_new, _is_modified, _is_deleted, _original_hash) VALUES (?1, ?2, 1, 0, 0, ?3)",
             rusqlite::params![file_path, content, hash],
-        ).map_err(|e| format!("Insert from template: {}", e))?;
+        ).map_err(|e| format!("Insert from template: {e}"))?;
 
         Ok(true)
     })

@@ -196,7 +196,7 @@ pub(crate) fn parse_bgra_color(value: &str) -> Option<String> {
         let rr = &v[3..5];
         let gg = &v[5..7];
         let bb = &v[7..9];
-        Some(format!("#{}{}{}{}", rr, gg, bb, aa))
+        Some(format!("#{rr}{gg}{bb}{aa}"))
     } else {
         None
     }
@@ -242,7 +242,7 @@ async fn cmd_scan_mod(app: tauri::AppHandle, mod_path: String, extra_scan_paths:
 async fn cmd_list_available_sections(app: tauri::AppHandle) -> Result<Vec<SectionInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_available_sections(&db_paths.base)
     }).await
 }
@@ -258,7 +258,7 @@ async fn cmd_query_section_entries(
 ) -> Result<PaginatedResponse<VanillaEntryInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let entries = reference_db::queries::query_section_entries(
             &db_paths.base, &region_id, limit, offset,
         )?;
@@ -270,9 +270,9 @@ async fn cmd_query_section_entries(
 async fn cmd_get_vanilla_entries(app: tauri::AppHandle, section: String, limit: Option<usize>, offset: Option<usize>) -> Result<PaginatedResponse<VanillaEntryInfo>, AppError> {
     blocking(move || {
         let cf_section = Section::parse_name(&section)
-            .ok_or_else(|| format!("Unknown section: {}", section))?;
+            .ok_or_else(|| format!("Unknown section: {section}"))?;
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let entries = reference_db::queries::query_vanilla_entries(
             &db_paths.base, &cf_section, limit, offset,
         )?;
@@ -299,7 +299,7 @@ pub struct ListItemsInfo {
 async fn cmd_get_list_items(app: tauri::AppHandle, uuids: Vec<String>) -> Result<Vec<ListItemsInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_list_items(&db_paths.base, &uuids)
     }).await
 }
@@ -370,18 +370,18 @@ async fn cmd_save_config(content: String, output_path: String, backup: bool) -> 
 
     // Create parent directories
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {e}"))?;
     }
 
     // Backup existing file
     if backup && path.exists() {
         let bak_path = path.with_extension("bak");
         fs::copy(&path, &bak_path)
-            .map_err(|e| format!("Failed to create backup: {}", e))?;
+            .map_err(|e| format!("Failed to create backup: {e}"))?;
     }
 
     // Write new config
-    fs::write(&path, content).map_err(|e| format!("Failed to write config: {}", e))?;
+    fs::write(&path, content).map_err(|e| format!("Failed to write config: {e}"))?;
     Ok(())
 }
 
@@ -390,16 +390,59 @@ async fn cmd_rename_dir(from_path: String, to_path: String) -> Result<(), AppErr
     let from = PathBuf::from(&from_path);
     let to = PathBuf::from(&to_path);
     if !from.is_dir() {
-        return Err(AppError::not_found(format!("Source directory does not exist: {}", from_path)));
+        return Err(AppError::not_found(format!("Source directory does not exist: {from_path}")));
     }
     if to.exists() {
-        return Err(AppError::invalid_input(format!("Target already exists: {}", to_path)));
+        return Err(AppError::invalid_input(format!("Target already exists: {to_path}")));
     }
     if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dirs: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dirs: {e}"))?;
     }
-    fs::rename(&from, &to).map_err(|e| format!("Failed to rename directory: {}", e))?;
+    fs::rename(&from, &to).map_err(|e| format!("Failed to rename directory: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+async fn cmd_copy_file(source: String, destination: String) -> Result<(), AppError> {
+    let src = PathBuf::from(&source);
+    let dst = PathBuf::from(&destination);
+    if !src.is_file() {
+        return Err(AppError::not_found(format!("Source file does not exist: {source}")));
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| AppError::io_error(format!("Create parent dirs: {e}")))?;
+    }
+    fs::copy(&src, &dst)
+        .map_err(|e| AppError::io_error(format!("Copy file: {e}")))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn cmd_file_exists(path: String) -> bool {
+    PathBuf::from(&path).is_file()
+}
+
+#[tauri::command]
+async fn cmd_read_text_file(path: String) -> Result<String, AppError> {
+    let p = PathBuf::from(&path);
+    if !p.is_file() {
+        return Err(AppError::not_found(format!("File not found: {path}")));
+    }
+    check_file_size(&p, MAX_MOD_FILE_SIZE)?;
+    fs::read_to_string(&p)
+        .map_err(|e| AppError::io_error(format!("Read file: {e}")))
+}
+
+#[tauri::command]
+async fn cmd_write_text_file(path: String, content: String) -> Result<(), AppError> {
+    let p = PathBuf::from(&path);
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| AppError::io_error(format!("Create dirs: {e}")))?;
+    }
+    fs::write(&p, content.as_bytes())
+        .map_err(|e| AppError::io_error(format!("Write file: {e}")))
 }
 
 #[tauri::command]
@@ -415,9 +458,9 @@ async fn cmd_read_existing_config(config_path: String) -> Result<String, AppErro
         _ => return Err(AppError::invalid_input("Config path must have a .yaml or .json extension")),
     }
     check_file_size(&path, MAX_CONFIG_FILE_SIZE)
-        .map_err(|e| format!("Config too large: {}", e))?;
+        .map_err(|e| format!("Config too large: {e}"))?;
     Ok(fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?)
+        .map_err(|e| format!("Failed to read config: {e}"))?)
 }
 
 /// A text file entry discovered within a mod directory.
@@ -449,7 +492,7 @@ async fn cmd_list_mod_files(
     blocking(move || {
         let root = PathBuf::from(&mod_path);
         if !root.is_dir() {
-            return Err(format!("Not a directory: {}", mod_path));
+            return Err(format!("Not a directory: {mod_path}"));
         }
         let depth_limit = max_depth.unwrap_or(10);
         let file_limit = max_files.unwrap_or(2_000);
@@ -527,7 +570,7 @@ async fn cmd_get_entries_by_folder(app: tauri::AppHandle, folder_name: String) -
     validate_folder_name(&folder_name)?;
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let section = Section::parse_name(&folder_name)
             .or_else(|| match folder_name.as_str() {
                 "ActionResourceDefinitions" => Some(Section::ActionResources),
@@ -536,7 +579,7 @@ async fn cmd_get_entries_by_folder(app: tauri::AppHandle, folder_name: String) -
                 "Status" => Some(Section::StatusMetadata),
                 _ => Section::parse_name(&folder_name),
             })
-            .ok_or_else(|| format!("Unknown folder/section: {}", folder_name))?;
+            .ok_or_else(|| format!("Unknown folder/section: {folder_name}"))?;
         reference_db::queries::query_entries_by_folder(&db_paths.base, &section)
     }).await
 }
@@ -692,7 +735,7 @@ fn write_loca_xml(entries: &[(String, u32, String)]) -> Result<String, AppError>
 async fn cmd_get_localization_map(app: tauri::AppHandle, limit: Option<usize>, offset: Option<usize>) -> Result<ParseResultWithWarnings<LocaEntry>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let entries = reference_db::queries::query_localization_map(&db_paths.base)?;
         Ok(ParseResultWithWarnings {
             data: PaginatedResponse::from_vec(entries, offset, limit),
@@ -811,8 +854,7 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
                             Ok(Event::Eof) => break,
                             Err(e) => {
                                 warnings.push(format!(
-                                    "XML parse error in {}: {} — entries after this point may be missing",
-                                    file_path_display, e
+                                    "XML parse error in {file_path_display}: {e} — entries after this point may be missing"
                                 ));
                                 break;
                             }
@@ -836,7 +878,7 @@ async fn cmd_get_mod_localization(mod_path: String) -> Result<ModLocaResult, App
 async fn cmd_get_stat_entries(app: tauri::AppHandle, entry_type: String, limit: Option<usize>, offset: Option<usize>) -> Result<PaginatedResponse<StatEntryInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let entries = reference_db::queries::query_stat_entries(&db_paths.base, &entry_type)?;
         Ok(PaginatedResponse::from_vec(entries, offset, limit))
     }).await
@@ -859,7 +901,7 @@ async fn cmd_get_mod_stat_entries(mod_path: String) -> Result<Vec<StatEntryInfo>
 async fn cmd_get_stat_field_names(app: tauri::AppHandle, entry_type: String) -> Result<Vec<String>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_stat_field_names(&db_paths.base, &entry_type)
     }).await
 }
@@ -877,7 +919,7 @@ async fn cmd_write_stats(entries: Vec<StatsEntry>) -> String {
 async fn cmd_get_progression_table_uuids(app: tauri::AppHandle) -> Result<Vec<VanillaEntryInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_progression_table_uuids(&db_paths.base)
     }).await
 }
@@ -889,7 +931,7 @@ async fn cmd_get_progression_table_uuids(app: tauri::AppHandle) -> Result<Vec<Va
 async fn cmd_get_voice_table_uuids(app: tauri::AppHandle) -> Result<Vec<VanillaEntryInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_voice_table_uuids(&db_paths.base)
     }).await
 }
@@ -918,7 +960,7 @@ async fn cmd_get_selector_ids(
 
         // DB path: query vanilla SelectorIds from ref_base.sqlite
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         if let Ok(pairs) = reference_db::queries::query_selector_ids(&db_paths.base) {
             for (id, source) in pairs {
                 id_sources.entry(id).or_insert(source);
@@ -979,17 +1021,16 @@ async fn cmd_get_selector_ids(
 
                 // SEC-03: Canonicalize to resolve any .. or relative components
                 let mod_base = mod_base.canonicalize().map_err(|e| {
-                    format!("Failed to canonicalize extra path '{}': {}", p, e)
+                    format!("Failed to canonicalize extra path '{p}': {e}")
                 })?;
 
                 // SEC-03: Reject symlinks
                 let meta = fs::symlink_metadata(&mod_base).map_err(|e| {
-                    format!("Failed to read metadata for extra path '{}': {}", p, e)
+                    format!("Failed to read metadata for extra path '{p}': {e}")
                 })?;
                 if meta.file_type().is_symlink() {
                     return Err(format!(
-                        "Extra path '{}' is a symlink, which is not allowed for security reasons",
-                        p
+                        "Extra path '{p}' is a symlink, which is not allowed for security reasons"
                     ));
                 }
 
@@ -1027,7 +1068,7 @@ async fn cmd_get_selector_ids(
 async fn cmd_get_equipment_names(app: tauri::AppHandle) -> Result<Vec<String>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_equipment_names(&db_paths.base)
     }).await
 }
@@ -1038,7 +1079,7 @@ async fn cmd_get_equipment_names(app: tauri::AppHandle) -> Result<Vec<String>, A
 async fn cmd_get_value_lists(app: tauri::AppHandle, list_key: String) -> Result<Vec<ValueListInfo>, AppError> {
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
-            .map_err(|e| format!("DB paths: {}", e))?;
+            .map_err(|e| format!("DB paths: {e}"))?;
         let pairs = reference_db::queries::query_value_lists(&db_paths.base, &list_key)?;
         Ok(pairs.into_iter()
             .map(|(key, values)| ValueListInfo { key, values })
@@ -1058,7 +1099,7 @@ async fn cmd_process_mod_folder(
         let mod_dir = std::path::Path::new(&mod_path);
 
         if !mod_dir.exists() {
-            return Err(format!("Mod path does not exist: {}", mod_path));
+            return Err(format!("Mod path does not exist: {mod_path}"));
         }
 
         let is_pak = mod_dir.is_file()
@@ -1100,7 +1141,7 @@ async fn cmd_process_mod_folder(
             has_public_folder = mod_dir.join("Public").is_dir();
             mod_meta = paths::read_mod_meta(&mod_path).ok();
         } else {
-            return Err(format!("Mod path is neither a .pak file nor a directory: {}", mod_path));
+            return Err(format!("Mod path is neither a .pak file nor a directory: {mod_path}"));
         }
 
         Ok(ModProcessResult {
@@ -1162,7 +1203,7 @@ async fn cmd_list_load_order_paks() -> Result<Vec<String>, AppError> {
             return Ok(Vec::new());
         }
         let mut paks: Vec<String> = std::fs::read_dir(&mods_dir)
-            .map_err(|e| format!("Failed to read BG3 Mods directory: {}", e))?
+            .map_err(|e| format!("Failed to read BG3 Mods directory: {e}"))?
             .filter_map(|e| e.ok())
             .filter(|e| {
                 e.path()
@@ -1216,9 +1257,9 @@ async fn cmd_get_active_mod_folders() -> Result<Vec<String>, AppError> {
             .ok_or_else(|| "No modsettings.lsx found in any BG3 player profile".to_string())?;
 
         check_file_size(&modsettings_path, MAX_CONFIG_FILE_SIZE)
-            .map_err(|e| format!("modsettings.lsx too large: {}", e))?;
+            .map_err(|e| format!("modsettings.lsx too large: {e}"))?;
         let content = std::fs::read_to_string(&modsettings_path)
-            .map_err(|e| format!("Failed to read modsettings.lsx: {}", e))?;
+            .map_err(|e| format!("Failed to read modsettings.lsx: {e}"))?;
 
         // Parse the XML to extract Folder attributes from active mod entries
         let mut folders: Vec<String> = Vec::new();
@@ -1296,7 +1337,7 @@ async fn cmd_validate_game_data_path(game_data_path: String) -> Result<bool, App
 async fn cmd_open_path(path: String) -> Result<(), AppError> {
     let p = std::path::Path::new(&path);
     if !p.exists() {
-        return Err(AppError::not_found(format!("Path does not exist: {}", path)));
+        return Err(AppError::not_found(format!("Path does not exist: {path}")));
     }
 
     #[cfg(target_os = "windows")]
@@ -1305,7 +1346,7 @@ async fn cmd_open_path(path: String) -> Result<(), AppError> {
         let win_path = path.replace('/', "\\");
         let mut cmd = std::process::Command::new("explorer.exe");
         cmd.arg(&win_path);
-        cmd.spawn().map_err(|e| format!("Failed to open path: {}", e))?;
+        cmd.spawn().map_err(|e| format!("Failed to open path: {e}"))?;
     }
     #[cfg(target_os = "macos")]
     {
@@ -1422,7 +1463,7 @@ async fn cmd_save_lsx(entries: Vec<LsxPreviewEntry>, region_id: String, output_p
 
     // Create parent directories
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {e}"))?;
     }
 
     blocking(move || {
@@ -1439,7 +1480,7 @@ async fn cmd_save_lsx(entries: Vec<LsxPreviewEntry>, region_id: String, output_p
             })
             .collect();
         let xml = lsx_writer::entries_to_lsx(&lsx_entries, &region_id);
-        fs::write(&path, xml).map_err(|e| format!("Failed to write LSX file: {}", e))
+        fs::write(&path, xml).map_err(|e| format!("Failed to write LSX file: {e}"))
     })
     .await
 }
@@ -1515,7 +1556,7 @@ async fn cmd_export_mod(
             if let Some(parent) = path.parent() {
                 if let Err(e) = fs::create_dir_all(parent) {
                     result.file_errors.entry(spec.output_path.clone()).or_default()
-                        .push(format!("Failed to create directory: {}", e));
+                        .push(format!("Failed to create directory: {e}"));
                     continue;
                 }
             }
@@ -1527,7 +1568,7 @@ async fn cmd_export_mod(
                     Ok(_) => true,
                     Err(e) => {
                         result.file_errors.entry(spec.output_path.clone()).or_default()
-                            .push(format!("Backup failed: {}", e));
+                            .push(format!("Backup failed: {e}"));
                         continue;
                     }
                 }
@@ -1562,7 +1603,7 @@ async fn cmd_export_mod(
                 if let Some(parent) = path.parent() {
                     if let Err(e) = fs::create_dir_all(parent) {
                         result.file_errors.entry(cfg_path.clone()).or_default()
-                            .push(format!("Failed to create directory: {}", e));
+                            .push(format!("Failed to create directory: {e}"));
                         skip_config = true;
                     }
                 }
@@ -1574,7 +1615,7 @@ async fn cmd_export_mod(
                             Ok(_) => true,
                             Err(e) => {
                                 result.file_errors.entry(cfg_path.clone()).or_default()
-                                    .push(format!("Backup failed: {}", e));
+                                    .push(format!("Backup failed: {e}"));
                                 skip_config = true;
                                 false
                             }
@@ -1585,7 +1626,7 @@ async fn cmd_export_mod(
 
                     if !skip_config {
                         let ext_str = path.extension().and_then(|e| e.to_str()).unwrap_or("tmp");
-                        let tmp_ext = format!("{}.cmty_tmp", ext_str);
+                        let tmp_ext = format!("{ext_str}.cmty_tmp");
                         let tmp_path = path.with_extension(&tmp_ext);
                         pending.push((path, tmp_path, content, cfg_path, 0, backed_up));
                     }
@@ -1604,7 +1645,7 @@ async fn cmd_export_mod(
                 }
                 Err(e) => {
                     result.file_errors.entry(key.clone()).or_default()
-                        .push(format!("Write failed: {}", e));
+                        .push(format!("Write failed: {e}"));
                     write_failed = true;
                     break;
                 }
@@ -1647,7 +1688,7 @@ async fn cmd_export_mod(
 async fn cmd_region_id_for_section(section: String) -> Result<String, AppError> {
     Ok(Section::parse_name(&section)
         .map(|s| s.region_id().to_string())
-        .ok_or_else(|| format!("Unknown section: {}", section))?)
+        .ok_or_else(|| format!("Unknown section: {section}"))?)
 }
 
 #[tauri::command]
@@ -1755,9 +1796,9 @@ async fn cmd_create_mod_scaffold(
         let public_dir = root.join("Public").join(&folder_name);
 
         fs::create_dir_all(&mods_dir)
-            .map_err(|e| format!("Failed to create Mods dir: {}", e))?;
+            .map_err(|e| format!("Failed to create Mods dir: {e}"))?;
         fs::create_dir_all(&public_dir)
-            .map_err(|e| format!("Failed to create Public dir: {}", e))?;
+            .map_err(|e| format!("Failed to create Public dir: {e}"))?;
 
         // Generate meta.lsx
         let meta_path = mods_dir.join("meta.lsx");
@@ -1807,23 +1848,17 @@ r#"<?xml version="1.0" encoding="utf-8"?>
     </node>
   </region>
 </save>"#,
-            author = author,
-            description = description,
-            mod_name = mod_name,
-            folder_name = folder_name,
-            uuid = uuid,
-            version64 = version64,
         );
 
         fs::write(&meta_path, meta_content)
-            .map_err(|e| format!("Failed to write meta.lsx: {}", e))?;
+            .map_err(|e| format!("Failed to write meta.lsx: {e}"))?;
 
         // Optional: Script Extender folder
         if use_script_extender {
             let se_dir = root.join("Mods").join(&folder_name).join("ScriptExtender");
             let lua_dir = se_dir.join("Lua");
             fs::create_dir_all(&lua_dir)
-                .map_err(|e| format!("Failed to create ScriptExtender dir: {}", e))?;
+                .map_err(|e| format!("Failed to create ScriptExtender dir: {e}"))?;
         }
 
         Ok(CreateModResult {
@@ -1889,6 +1924,10 @@ pub fn run() {
             cmd_detect_game_data_path,
             cmd_validate_game_data_path,
             cmd_open_path,
+            cmd_copy_file,
+            cmd_file_exists,
+            cmd_read_text_file,
+            cmd_write_text_file,
             cmd_preview_lsx,
             cmd_save_lsx,
             cmd_export_mod,
@@ -1933,8 +1972,10 @@ pub fn run() {
             commands::db::cmd_staging_redo,
             commands::db::cmd_staging_wal_checkpoint,
             commands::db::cmd_staging_compact_undo,
+            commands::db::cmd_staging_replace_section,
             commands::db::cmd_validate_handlers,
             commands::export::cmd_save_project,
+            commands::export::cmd_save_section,
             commands::package::cmd_package_mod,
             commands::scripts::cmd_script_read,
             commands::scripts::cmd_script_write,

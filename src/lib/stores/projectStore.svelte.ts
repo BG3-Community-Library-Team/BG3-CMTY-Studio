@@ -18,8 +18,11 @@ import {
   stagingRedo,
   stagingGetRow,
   stagingCompactUndo,
+  stagingReplaceSection,
 } from "../tauri/staging.js";
 import { getDbPaths, checkStagingIntegrity, recreateStaging } from "../tauri/db-management.js";
+import { saveSection } from "../tauri/save.js";
+import { modStore } from "./modStore.svelte.js";
 import { toastStore } from "./toastStore.svelte.js";
 import { getErrorMessage, type OutputFormat } from "../types/index.js";
 import { CF_SECTION_TO_FOLDER } from "../data/bg3FolderStructure.js";
@@ -168,6 +171,8 @@ class ProjectStore {
 
   // === Private State ===
   #entryCache: Map<string, EntryRow[]> = $state(new Map());
+  /** Raw DB rows captured at first load — used by resetSection to restore original state. */
+  #baselineCache = new Map<string, Record<string, unknown>[]>();
   /** Bumped on every cache mutation to guarantee reactive propagation. */
   #cacheVersion: number = $state(0);
   #stagingDbPath: string = "";
@@ -225,6 +230,7 @@ class ProjectStore {
     if (formatMeta) this.format = formatMeta as OutputFormat;
 
     this.#entryCache.clear();
+    this.#baselineCache.clear();
     this.#cacheVersion++;
     this.#writeGeneration = 0;
     this.#savedGeneration = 0;
@@ -243,6 +249,12 @@ class ProjectStore {
 
     const rows = await stagingQuerySection(this.#stagingDbPath, table, true);
     if (!rows) return [];
+
+    // Capture baseline snapshot on first load (before any user edits)
+    if (!this.#baselineCache.has(table)) {
+      this.#baselineCache.set(table, structuredClone(rows));
+    }
+
     const sourceType = this.#sourceTypeForTable(table);
     const entries: EntryRow[] = rows.map(row => rowToEntryRow(row, table, sourceType));
     this.#entryCache.set(table, entries);
@@ -277,6 +289,7 @@ class ProjectStore {
         await stagingMarkDeleted(this.#stagingDbPath, table, pk);
       }
       this.#markDirty();
+      this.#scheduleAutoSave(table);
     } catch (err) {
       entry._is_deleted = wasDeleted;
       this.#cacheVersion++;
@@ -310,6 +323,7 @@ class ProjectStore {
 
     const key = `${table}::${pk}`;
     this.#debouncedWriter.enqueue(key, { table, columns });
+    this.#scheduleAutoSave(table);
     return true;
   }
 
@@ -325,6 +339,7 @@ class ProjectStore {
       this.invalidateSection(table);
       await this.loadSection(table);
       this.#markDirty();
+      this.#scheduleAutoSave(table);
       // Refresh section list so sectionToTable lookups stay current
       this.sections = await stagingListSections(this.#stagingDbPath);
       return true;
@@ -362,6 +377,7 @@ class ProjectStore {
         this.#cacheVersion++;
       }
       this.#markDirty();
+      this.#scheduleAutoSave(table);
     } catch (err) {
       if (entry && !wasNew) {
         entry._is_deleted = false;
@@ -402,6 +418,7 @@ class ProjectStore {
     try {
       await stagingBatchWrite(this.#stagingDbPath, ops);
       this.#markDirty();
+      this.#scheduleAutoSave(table);
     } catch (err) {
       if (entries) {
         for (const entry of entries) {
@@ -422,12 +439,20 @@ class ProjectStore {
     }
   }
 
-  /** Discard cached entries for a section and reload from the staging DB. */
+  /** Reset a section to its original state when the project was opened. */
   async resetSection(table: string): Promise<void> {
-    this.#entryCache.delete(table);
-    this.#cacheVersion++;
+    await this.#debouncedWriter.flush();
+    const baseline = this.#baselineCache.get(table);
     try {
+      if (baseline && this.#stagingDbPath) {
+        // Restore the staging DB table to baseline and clear its undo history
+        await stagingReplaceSection(this.#stagingDbPath, table, baseline);
+      }
+      // Invalidate cache and reload from DB
+      this.#entryCache.delete(table);
+      this.#cacheVersion++;
       await this.loadSection(table);
+      this.sections = await stagingListSections(this.#stagingDbPath);
     } catch (err) {
       toastStore.warning("Failed to reset section", getErrorMessage(err));
     }
@@ -437,6 +462,16 @@ class ProjectStore {
   async refreshSection(table: string): Promise<void> {
     this.invalidateSection(table);
     await this.loadSection(table);
+    this.sections = await stagingListSections(this.#stagingDbPath);
+  }
+
+  /** Refresh all currently loaded sections. */
+  async refreshAllSections(): Promise<void> {
+    const tables = [...this.#entryCache.keys()];
+    for (const table of tables) {
+      this.invalidateSection(table);
+      await this.loadSection(table);
+    }
     this.sections = await stagingListSections(this.#stagingDbPath);
   }
 
@@ -475,6 +510,9 @@ class ProjectStore {
       this.#invalidateReplayedTables(replayed);
       this.sections = await stagingListSections(this.#stagingDbPath);
       this.#markDirty();
+      for (const table of new Set(replayed.map(e => e.table_name))) {
+        this.#scheduleAutoSave(table);
+      }
     } catch (err) {
       toastStore.warning("Undo failed", getErrorMessage(err));
     }
@@ -489,6 +527,9 @@ class ProjectStore {
       this.#invalidateReplayedTables(replayed);
       this.sections = await stagingListSections(this.#stagingDbPath);
       this.#markDirty();
+      for (const table of new Set(replayed.map(e => e.table_name))) {
+        this.#scheduleAutoSave(table);
+      }
     } catch (err) {
       toastStore.warning("Redo failed", getErrorMessage(err));
     }
@@ -527,6 +568,8 @@ class ProjectStore {
   /** Reset all state to initial values. */
   reset(): void {
     this.#debouncedWriter.cancel();
+    for (const timer of this.#autoSaveTimers.values()) clearTimeout(timer);
+    this.#autoSaveTimers.clear();
     this.sections = [];
     this.format = "Yaml";
     this.dirty = false;
@@ -535,6 +578,7 @@ class ProjectStore {
     this.dbCorrupted = false;
     this.#retryQueue = [];
     this.#entryCache.clear();
+    this.#baselineCache.clear();
     this.#cacheVersion++;
     this.#stagingDbPath = "";
     this.#writeGeneration = 0;
@@ -667,6 +711,38 @@ class ProjectStore {
     const tables = new Set(replayed.map(e => e.table_name));
     for (const table of tables) {
       this.invalidateSection(table);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Auto-Save (incremental section save after mutations)
+  // ────────────────────────────────────────────────────────────────────
+
+  #autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  #scheduleAutoSave(table: string): void {
+    const existing = this.#autoSaveTimers.get(table);
+    if (existing) clearTimeout(existing);
+    this.#autoSaveTimers.set(table, setTimeout(() => {
+      this.#autoSaveTimers.delete(table);
+      this.#autoSaveSection(table);
+    }, 2000));
+  }
+
+  async #autoSaveSection(table: string): Promise<void> {
+    if (!modStore.selectedModPath) return;
+    try {
+      const { staging, base } = await getDbPaths();
+      await saveSection(
+        staging,
+        base,
+        modStore.selectedModPath,
+        modStore.modName,
+        modStore.modFolder,
+        table,
+      );
+    } catch (err) {
+      console.warn("[auto-save] section save failed for", table, err);
     }
   }
 }

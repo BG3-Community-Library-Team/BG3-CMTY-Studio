@@ -42,13 +42,12 @@ pub fn query_vanilla_entries(
         .query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [region_id],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No table for region '{}': {}", region_id, e))?;
+        .map_err(|e| format!("No table for region '{region_id}': {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -78,16 +77,16 @@ pub fn query_vanilla_entries(
     // Rowid-strategy columns are INTEGER; cast to TEXT for uniform handling
     let pk_is_integer = pk_col == "_row_id" || pk_col == "rowid";
     let pk_select_expr = if pk_is_integer {
-        format!("CAST(\"{}\" AS TEXT)", pk_col)
+        format!("CAST(\"{pk_col}\" AS TEXT)")
     } else {
-        format!("\"{}\"", pk_col)
+        format!("\"{pk_col}\"")
     };
 
     // Build the query — select PK + display-relevant columns
     let mut select_cols = vec![pk_select_expr];
     for col in &["Name", "Level", "Comment", "DisplayName", "ParentGuid", "Color"] {
         if has(col) {
-            select_cols.push(format!("\"{}\"", col));
+            select_cols.push(format!("\"{col}\""));
         }
     }
 
@@ -102,7 +101,7 @@ pub fn query_vanilla_entries(
     let off = offset.unwrap_or(0) as i64;
     let effective_limit = if lim == 0 { -1i64 } else { lim }; // -1 = unlimited in SQLite
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map([effective_limit, off], |row| {
             let uuid: String = row.get(0)?;
@@ -111,7 +110,7 @@ pub fn query_vanilla_entries(
             let get_opt = |name: &str| -> Option<String> {
                 let idx = select_cols
                     .iter()
-                    .position(|c| c == &format!("\"{}\"", name))?;
+                    .position(|c| c == &format!("\"{name}\""))?;
                 row.get::<_, Option<String>>(idx).ok().flatten()
             };
 
@@ -124,12 +123,12 @@ pub fn query_vanilla_entries(
 
             Ok((uuid, name_val, level_val, comment_val, display_name_val, parent_guid_val, color_val))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
         let (uuid, name, level, comment, display_name_attr, parent_guid, color) =
-            row.map_err(|e| format!("Row: {}", e))?;
+            row.map_err(|e| format!("Row: {e}"))?;
 
         let display_name = format_display_name(
             section,
@@ -179,15 +178,15 @@ struct ColInfo {
 fn table_columns(conn: &Connection, table_name: &str) -> Result<Vec<ColInfo>, String> {
     validate_table_name(table_name)?;
     let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info(\"{}\")", table_name))
-        .map_err(|e| format!("table_info: {}", e))?;
+        .prepare(&format!("PRAGMA table_info(\"{table_name}\")"))
+        .map_err(|e| format!("table_info: {e}"))?;
     let cols = stmt
         .query_map([], |row| {
             Ok(ColInfo {
                 name: row.get::<_, String>(1)?,
             })
         })
-        .map_err(|e| format!("table_info query: {}", e))?
+        .map_err(|e| format!("table_info query: {e}"))?
         .filter_map(|r| r.ok())
         .collect();
     Ok(cols)
@@ -204,7 +203,7 @@ fn format_display_name(
     match section {
         Section::Progressions => {
             let lvl = level.unwrap_or("?");
-            format!("{} Lv{}", name, lvl)
+            format!("{name} Lv{lvl}")
         }
         Section::Lists => comment.unwrap_or("").to_string(),
         Section::Backgrounds | Section::Origins => display_name_attr
@@ -222,7 +221,7 @@ fn open_ro(db_path: &Path) -> Result<Connection, String> {
         db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
-    .map_err(|e| format!("Open ref DB: {}", e))
+    .map_err(|e| format!("Open ref DB: {e}"))
 }
 
 /// Validate that a table name contains only safe characters for SQL interpolation.
@@ -237,8 +236,7 @@ fn validate_table_name(table_name: &str) -> Result<(), String> {
     }
     if !table_name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
         return Err(format!(
-            "Invalid table name '{}': only ASCII alphanumeric characters and underscores are allowed",
-            table_name
+            "Invalid table name '{table_name}': only ASCII alphanumeric characters and underscores are allowed"
         ));
     }
     Ok(())
@@ -295,18 +293,18 @@ pub fn query_stat_entries(
                  WHERE source_type = 'stats' AND row_count > 0 \
                  ORDER BY table_name",
             )
-            .map_err(|e| format!("Prepare: {}", e))?;
+            .map_err(|e| format!("Prepare: {e}"))?;
         let rows: Vec<(String, String)> = stmt.query_map([], |row| {
             let tn: String = row.get(0)?;
             let etype = tn.strip_prefix("stats__").unwrap_or(&tn).to_string();
             Ok((tn, etype))
         })
-        .map_err(|e| format!("Query: {}", e))?
+        .map_err(|e| format!("Query: {e}"))?
         .filter_map(|r| r.ok())
         .collect();
         rows
     } else {
-        let tn = format!("stats__{}", entry_type);
+        let tn = format!("stats__{entry_type}");
         vec![(tn, entry_type.to_string())]
     };
 
@@ -317,8 +315,7 @@ pub fn query_stat_entries(
     let mut results = Vec::new();
     for (table_name, etype) in &tables {
         let sql = format!(
-            "SELECT \"_entry_name\" FROM \"{}\" ORDER BY \"_entry_name\"",
-            table_name
+            "SELECT \"_entry_name\" FROM \"{table_name}\" ORDER BY \"_entry_name\""
         );
         let mut stmt = match conn.prepare(&sql) {
             Ok(s) => s,
@@ -332,7 +329,7 @@ pub fn query_stat_entries(
                     entry_type: etype.clone(),
                 })
             })
-            .map_err(|e| format!("Query {}: {}", table_name, e))?;
+            .map_err(|e| format!("Query {table_name}: {e}"))?;
         for entry in rows.flatten() {
             results.push(entry);
         }
@@ -357,9 +354,9 @@ pub fn query_stat_field_names(
                 "SELECT table_name FROM _table_meta \
                  WHERE source_type = 'stats' AND row_count > 0",
             )
-            .map_err(|e| format!("Prepare: {}", e))?;
+            .map_err(|e| format!("Prepare: {e}"))?;
         let rows: Vec<String> = stmt.query_map([], |row| row.get(0))
-            .map_err(|e| format!("Query: {}", e))?
+            .map_err(|e| format!("Query: {e}"))?
             .filter_map(|r| r.ok())
             .collect();
         rows
@@ -404,13 +401,12 @@ pub fn query_list_items(
         .query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = 'Lists' AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = 'Lists' AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No Lists table: {}", e))?;
+        .map_err(|e| format!("No Lists table: {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -437,11 +433,11 @@ pub fn query_list_items(
         select_cols.push("\"Comment\"".to_string());
     }
     for f in &item_fields {
-        select_cols.push(format!("\"{}\"", f));
+        select_cols.push(format!("\"{f}\""));
     }
 
     // Build WHERE IN clause with positional params
-    let placeholders: Vec<String> = (1..=uuids.len()).map(|i| format!("?{}", i)).collect();
+    let placeholders: Vec<String> = (1..=uuids.len()).map(|i| format!("?{i}")).collect();
     let sql = format!(
         "SELECT {} FROM \"{}\" WHERE \"UUID\" IN ({})",
         select_cols.join(", "),
@@ -452,7 +448,7 @@ pub fn query_list_items(
     let params: Vec<&dyn rusqlite::types::ToSql> =
         uuids.iter().map(|u| u as &dyn rusqlite::types::ToSql).collect();
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map(params.as_slice(), |row| {
             let uuid: String = row.get(0)?;
@@ -460,7 +456,7 @@ pub fn query_list_items(
             let get_opt = |col_name: &str| -> Option<String> {
                 let idx = select_cols
                     .iter()
-                    .position(|c| c == &format!("\"{}\"", col_name))?;
+                    .position(|c| c == &format!("\"{col_name}\""))?;
                 row.get::<_, Option<String>>(idx).ok().flatten()
             };
 
@@ -491,11 +487,11 @@ pub fn query_list_items(
                 item_key,
             })
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut results = Vec::new();
     for row in rows {
-        results.push(row.map_err(|e| format!("Row: {}", e))?);
+        results.push(row.map_err(|e| format!("Row: {e}"))?);
     }
     Ok(results)
 }
@@ -522,8 +518,7 @@ pub fn query_progression_table_uuids(
         let table_name: String = match conn.query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [region_id],
             |row| row.get(0),
@@ -543,17 +538,15 @@ pub fn query_progression_table_uuids(
         let has_name = has("Name");
         let sql = if has_name {
             format!(
-                "SELECT \"{}\", \"Name\" FROM \"{}\" WHERE \"{}\" IS NOT NULL AND \"{}\" != ''",
-                attr_key, table_name, attr_key, attr_key
+                "SELECT \"{attr_key}\", \"Name\" FROM \"{table_name}\" WHERE \"{attr_key}\" IS NOT NULL AND \"{attr_key}\" != ''"
             )
         } else {
             format!(
-                "SELECT \"{}\" FROM \"{}\" WHERE \"{}\" IS NOT NULL AND \"{}\" != ''",
-                attr_key, table_name, attr_key, attr_key
+                "SELECT \"{attr_key}\" FROM \"{table_name}\" WHERE \"{attr_key}\" IS NOT NULL AND \"{attr_key}\" != ''"
             )
         };
 
-        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
         let rows = stmt
             .query_map([], |row| {
                 let uuid: String = row.get(0)?;
@@ -564,17 +557,17 @@ pub fn query_progression_table_uuids(
                 };
                 Ok((uuid, name))
             })
-            .map_err(|e| format!("Query: {}", e))?;
+            .map_err(|e| format!("Query: {e}"))?;
 
         for row in rows {
-            let (uuid, name) = row.map_err(|e| format!("Row: {}", e))?;
+            let (uuid, name) = row.map_err(|e| format!("Row: {e}"))?;
             if !uuid.is_empty() && seen.insert(uuid.clone()) {
                 let display_name = if name.is_empty() {
                     uuid.clone()
                 } else if suffix.is_empty() {
                     name
                 } else {
-                    format!("{}{}", name, suffix)
+                    format!("{name}{suffix}")
                 };
                 results.push(VanillaEntryInfo {
                     uuid,
@@ -603,13 +596,12 @@ pub fn query_voice_table_uuids(
         .query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = 'Voices' AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = 'Voices' AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No Voices table: {}", e))?;
+        .map_err(|e| format!("No Voices table: {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -637,7 +629,7 @@ pub fn query_voice_table_uuids(
         table_name,
     );
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
 
@@ -647,7 +639,7 @@ pub fn query_voice_table_uuids(
             let get_opt = |col_name: &str| -> Option<String> {
                 let idx = select_cols
                     .iter()
-                    .position(|c| c == &format!("\"{}\"", col_name))?;
+                    .position(|c| c == &format!("\"{col_name}\""))?;
                 row.get::<_, Option<String>>(idx).ok().flatten()
             };
 
@@ -660,10 +652,10 @@ pub fn query_voice_table_uuids(
 
             Ok((table_uuid, name))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     for row in rows {
-        let (table_uuid, name) = row.map_err(|e| format!("Row: {}", e))?;
+        let (table_uuid, name) = row.map_err(|e| format!("Row: {e}"))?;
         if !table_uuid.is_empty() && seen.insert(table_uuid.clone()) {
             results.push(VanillaEntryInfo {
                 uuid: table_uuid,
@@ -694,13 +686,12 @@ pub fn query_entries_by_folder(
         .query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [region_id],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No table for region '{}': {}", region_id, e))?;
+        .map_err(|e| format!("No table for region '{region_id}': {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -726,15 +717,15 @@ pub fn query_entries_by_folder(
     // Rowid-strategy columns are INTEGER; cast to TEXT for uniform handling
     let pk_is_integer = pk_col == "_row_id" || pk_col == "rowid";
     let pk_select_expr = if pk_is_integer {
-        format!("CAST(\"{}\" AS TEXT)", pk_col)
+        format!("CAST(\"{pk_col}\" AS TEXT)")
     } else {
-        format!("\"{}\"", pk_col)
+        format!("\"{pk_col}\"")
     };
 
     let mut select_cols = vec![pk_select_expr];
     for col in &["Name", "DisplayName", "UIColor", "Color"] {
         if has(col) {
-            select_cols.push(format!("\"{}\"", col));
+            select_cols.push(format!("\"{col}\""));
         }
     }
 
@@ -745,7 +736,7 @@ pub fn query_entries_by_folder(
         pk_col,
     );
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
 
@@ -755,7 +746,7 @@ pub fn query_entries_by_folder(
             let get_opt = |col_name: &str| -> Option<String> {
                 let idx = select_cols
                     .iter()
-                    .position(|c| c == &format!("\"{}\"", col_name))?;
+                    .position(|c| c == &format!("\"{col_name}\""))?;
                 row.get::<_, Option<String>>(idx).ok().flatten()
             };
 
@@ -767,10 +758,10 @@ pub fn query_entries_by_folder(
 
             Ok((uuid, name, color))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     for row in rows {
-        let (uuid, name, color_raw) = row.map_err(|e| format!("Row: {}", e))?;
+        let (uuid, name, color_raw) = row.map_err(|e| format!("Row: {e}"))?;
         if !uuid.is_empty() && seen.insert(uuid.clone()) {
             let color = color_raw.and_then(|v| crate::parse_bgra_color(&v));
             results.push(VanillaEntryInfo {
@@ -803,16 +794,15 @@ pub fn query_localization_map(
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No loca table: {}", e))?;
+        .map_err(|e| format!("No loca table: {e}"))?;
 
     validate_table_name(&table_name)?;
 
     let sql = format!(
-        "SELECT \"contentuid\", \"text\" FROM \"{}\" ORDER BY \"contentuid\"",
-        table_name,
+        "SELECT \"contentuid\", \"text\" FROM \"{table_name}\" ORDER BY \"contentuid\"",
     );
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
             Ok(LocaEntry {
@@ -820,11 +810,11 @@ pub fn query_localization_map(
                 text: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             })
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
-        entries.push(row.map_err(|e| format!("Row: {}", e))?);
+        entries.push(row.map_err(|e| format!("Row: {e}"))?);
     }
     Ok(entries)
 }
@@ -842,13 +832,12 @@ pub fn query_selector_ids(
         .query_row(
             &format!(
                 "SELECT table_name FROM _table_meta \
-                 WHERE region_id = 'Progressions' AND source_type = 'lsx' AND row_count > 0 {}",
-                ROOT_TABLE_ORDER
+                 WHERE region_id = 'Progressions' AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
             ),
             [],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No Progressions table: {}", e))?;
+        .map_err(|e| format!("No Progressions table: {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -858,23 +847,22 @@ pub fn query_selector_ids(
     }
 
     let sql = format!(
-        "SELECT DISTINCT \"SelectorId\" FROM \"{}\" \
+        "SELECT DISTINCT \"SelectorId\" FROM \"{table_name}\" \
          WHERE \"SelectorId\" IS NOT NULL AND \"SelectorId\" != '' \
          ORDER BY \"SelectorId\"",
-        table_name,
     );
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
             let id: String = row.get(0)?;
             Ok((id, "Vanilla".to_string()))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut results = Vec::new();
     for row in rows {
-        results.push(row.map_err(|e| format!("Row: {}", e))?);
+        results.push(row.map_err(|e| format!("Row: {e}"))?);
     }
     Ok(results)
 }
@@ -900,11 +888,11 @@ pub fn query_equipment_names(db_path: &Path) -> Result<Vec<String>, String> {
 
     let mut stmt = conn
         .prepare("SELECT \"_entry_name\" FROM \"stats__equipment\" ORDER BY \"_entry_name\"")
-        .map_err(|e| format!("Prepare equipment query: {}", e))?;
+        .map_err(|e| format!("Prepare equipment query: {e}"))?;
 
     let rows: Vec<String> = stmt
         .query_map([], |row| row.get(0))
-        .map_err(|e| format!("Query equipment: {}", e))?
+        .map_err(|e| format!("Query equipment: {e}"))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -950,7 +938,7 @@ pub fn query_value_lists(
         )
     };
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         params_vec.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
 
@@ -958,7 +946,7 @@ pub fn query_value_lists(
         .query_map(params_refs.as_slice(), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
-        .map_err(|e| format!("Query: {}", e))?
+        .map_err(|e| format!("Query: {e}"))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -994,7 +982,7 @@ pub fn query_available_sections(db_path: &Path) -> Result<Vec<SectionInfo>, Stri
              WHERE source_type != 'junction' AND row_count > 0 \
              ORDER BY source_type, region_id, table_name",
         )
-        .map_err(|e| format!("Prepare sections: {}", e))?;
+        .map_err(|e| format!("Prepare sections: {e}"))?;
 
     struct RawRow {
         table_name: String,
@@ -1014,7 +1002,7 @@ pub fn query_available_sections(db_path: &Path) -> Result<Vec<SectionInfo>, Stri
                 row_count: row.get(4)?,
             })
         })
-        .map_err(|e| format!("Query sections: {}", e))?
+        .map_err(|e| format!("Query sections: {e}"))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -1025,7 +1013,7 @@ pub fn query_available_sections(db_path: &Path) -> Result<Vec<SectionInfo>, Stri
              FROM _table_meta \
              WHERE source_type = 'junction' AND row_count > 0",
         )
-        .map_err(|e| format!("Prepare junctions: {}", e))?;
+        .map_err(|e| format!("Prepare junctions: {e}"))?;
 
     struct JctRow {
         junction_table: String,
@@ -1041,7 +1029,7 @@ pub fn query_available_sections(db_path: &Path) -> Result<Vec<SectionInfo>, Stri
             let row_count: i64 = row.get(2)?;
             Ok((table_name, parent_tables, row_count))
         })
-        .map_err(|e| format!("Query junctions: {}", e))?
+        .map_err(|e| format!("Query junctions: {e}"))?
         .filter_map(|r| r.ok())
         .filter_map(|(jt_name, parent_tables, rc)| {
             // Junction parent_tables format: "parent_table,child_table"
@@ -1129,7 +1117,7 @@ fn region_to_section_name() -> HashMap<&'static str, String> {
     for section in Section::all_ordered() {
         // region_id() → Section variant Debug name (= parse_name key = ts-rs string)
         for rid in section.region_ids() {
-            map.insert(*rid, format!("{:?}", section));
+            map.insert(*rid, format!("{section:?}"));
         }
     }
     map
@@ -1415,7 +1403,7 @@ pub fn query_db_schemas(db_path: &Path) -> Result<Vec<NodeSchema>, String> {
 
         schemas.push(NodeSchema {
             node_id: entry_type.to_string(),
-            section: format!("stats:{}", entry_type),
+            section: format!("stats:{entry_type}"),
             sample_count: *row_count as usize,
             attributes,
             children: vec![],
@@ -1456,7 +1444,7 @@ pub fn query_section_entries(
             [region_id],
             |row| row.get(0),
         )
-        .map_err(|e| format!("No table for region '{}': {}", region_id, e))?;
+        .map_err(|e| format!("No table for region '{region_id}': {e}"))?;
 
     validate_table_name(&table_name)?;
 
@@ -1482,16 +1470,16 @@ pub fn query_section_entries(
     // Rowid-strategy columns are INTEGER; cast to TEXT for uniform handling
     let pk_is_integer = pk_col == "_row_id" || pk_col == "rowid";
     let pk_select_expr = if pk_is_integer {
-        format!("CAST(\"{}\" AS TEXT)", pk_col)
+        format!("CAST(\"{pk_col}\" AS TEXT)")
     } else {
-        format!("\"{}\"", pk_col)
+        format!("\"{pk_col}\"")
     };
 
     // Select PK + all display-relevant columns
     let mut select_cols = vec![pk_select_expr];
     for col in &["Name", "Level", "Comment", "DisplayName", "ParentGuid", "Color", "UIColor"] {
         if has(col) {
-            select_cols.push(format!("\"{}\"", col));
+            select_cols.push(format!("\"{col}\""));
         }
     }
 
@@ -1506,7 +1494,7 @@ pub fn query_section_entries(
     let off = offset.unwrap_or(0) as i64;
     let effective_limit = if lim == 0 { -1i64 } else { lim };
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map([effective_limit, off], |row| {
             let uuid: String = row.get(0)?;
@@ -1514,7 +1502,7 @@ pub fn query_section_entries(
             let get_opt = |name: &str| -> Option<String> {
                 let idx = select_cols
                     .iter()
-                    .position(|c| c == &format!("\"{}\"", name))?;
+                    .position(|c| c == &format!("\"{name}\""))?;
                 row.get::<_, Option<String>>(idx).ok().flatten()
             };
 
@@ -1527,12 +1515,12 @@ pub fn query_section_entries(
 
             Ok((uuid, name_val, level_val, comment_val, display_name_val, parent_guid_val, color_raw))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
         let (uuid, name, level, comment, display_name_attr, parent_guid, color_raw) =
-            row.map_err(|e| format!("Row: {}", e))?;
+            row.map_err(|e| format!("Row: {e}"))?;
 
         // Intelligent display name: prefer DisplayName, then "Name LvN", then Comment, then Name, then UUID
         let display_name = display_name_attr
@@ -1542,7 +1530,7 @@ pub fn query_section_entries(
             .or_else(|| {
                 if !name.is_empty() {
                     if let Some(lvl) = level.as_deref().filter(|v| !v.is_empty()) {
-                        Some(format!("{} Lv{}", name, lvl))
+                        Some(format!("{name} Lv{lvl}"))
                     } else {
                         Some(name.clone())
                     }
@@ -1577,8 +1565,7 @@ fn detect_pk_column(conn: &Connection, table_name: &str) -> String {
     let result: Option<String> = conn
         .query_row(
             &format!(
-                "SELECT name FROM pragma_table_info('{}') WHERE pk = 1",
-                table_name
+                "SELECT name FROM pragma_table_info('{table_name}') WHERE pk = 1"
             ),
             [],
             |row| row.get(0),
@@ -1645,8 +1632,7 @@ pub fn query_vanilla_lsx_by_region(
     let table_name: String = match conn.query_row(
         &format!(
             "SELECT table_name FROM _table_meta \
-             WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {}",
-            ROOT_TABLE_ORDER
+             WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
         ),
         [region_id],
         |row| row.get(0),
@@ -1687,12 +1673,12 @@ pub fn query_vanilla_lsx_by_region(
     let col_names: Vec<&str> = data_cols.iter().map(|c| c.name.as_str()).collect();
     let select_expr = col_names
         .iter()
-        .map(|n| format!("\"{}\"", n))
+        .map(|n| format!("\"{n}\""))
         .collect::<Vec<_>>()
         .join(", ");
-    let sql = format!("SELECT {} FROM \"{}\"", select_expr, table_name);
+    let sql = format!("SELECT {select_expr} FROM \"{table_name}\"");
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
             let mut attributes = HashMap::new();
@@ -1734,12 +1720,12 @@ pub fn query_vanilla_lsx_by_region(
 
             Ok((uuid_val, attributes))
         })
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     // Collect all entries
     let mut entries: HashMap<String, LsxEntry> = HashMap::new();
     for row in rows {
-        let (uuid, attributes) = row.map_err(|e| format!("Row: {}", e))?;
+        let (uuid, attributes) = row.map_err(|e| format!("Row: {e}"))?;
         if uuid.is_empty() {
             continue;
         }
@@ -1763,15 +1749,15 @@ pub fn query_vanilla_lsx_by_region(
     // junction tables don't have source_type='junction' — they're stored differently.
     // Instead, scan _table_meta for tables whose name matches the pattern:
     //   <parent_table>__to__<child_node>
-    let jt_prefix = format!("{}__to__", table_name);
+    let jt_prefix = format!("{table_name}__to__");
     let mut jt_stmt = conn
         .prepare("SELECT table_name, node_id FROM _table_meta WHERE table_name LIKE ?1")
-        .map_err(|e| format!("JT prepare: {}", e))?;
+        .map_err(|e| format!("JT prepare: {e}"))?;
     let jt_rows = jt_stmt
-        .query_map([format!("{}%", jt_prefix)], |row| {
+        .query_map([format!("{jt_prefix}%")], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         })
-        .map_err(|e| format!("JT query: {}", e))?;
+        .map_err(|e| format!("JT query: {e}"))?;
 
     for jt_row in jt_rows.flatten() {
         let (jt_name, child_node_id) = jt_row;
@@ -1786,8 +1772,7 @@ pub fn query_vanilla_lsx_by_region(
 
         // Read (parent_id, child_id) pairs from the junction table
         let child_sql = format!(
-            "SELECT parent_id, child_id FROM \"{}\" ORDER BY parent_id",
-            jt_name
+            "SELECT parent_id, child_id FROM \"{jt_name}\" ORDER BY parent_id"
         );
         let Ok(mut child_stmt) = conn.prepare(&child_sql) else {
             continue;
@@ -1843,10 +1828,10 @@ pub fn query_vanilla_stats_for_scan(
              WHERE source_type = 'stats' AND row_count > 0 \
              ORDER BY table_name",
         )
-        .map_err(|e| format!("Prepare: {}", e))?;
+        .map_err(|e| format!("Prepare: {e}"))?;
     let table_rows = meta_stmt
         .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| format!("Query: {}", e))?;
+        .map_err(|e| format!("Query: {e}"))?;
 
     let mut all_entries: HashMap<String, StatsEntry> = HashMap::new();
 
@@ -1874,9 +1859,9 @@ pub fn query_vanilla_stats_for_scan(
             .map(|c| format!("\"{}\"", c.name))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!("SELECT {} FROM \"{}\"", select_expr, table_name);
+        let sql = format!("SELECT {select_expr} FROM \"{table_name}\"");
 
-        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {}", e))?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
         let rows = stmt
             .query_map([], |row| {
                 let mut name = String::new();
@@ -1919,10 +1904,10 @@ pub fn query_vanilla_stats_for_scan(
                     data,
                 })
             })
-            .map_err(|e| format!("Query: {}", e))?;
+            .map_err(|e| format!("Query: {e}"))?;
 
         for row in rows {
-            let entry = row.map_err(|e| format!("Row: {}", e))?;
+            let entry = row.map_err(|e| format!("Row: {e}"))?;
             if !entry.name.is_empty() {
                 all_entries.insert(entry.name.clone(), entry);
             }

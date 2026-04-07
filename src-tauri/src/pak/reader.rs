@@ -170,7 +170,7 @@ fn make_part_filename(source_path: &Path, part: u16) -> PathBuf {
         .extension()
         .map(|ext| format!(".{}", ext.to_string_lossy()))
         .unwrap_or_default();
-    dir.join(format!("{}_{}{}", stem, part, ext))
+    dir.join(format!("{stem}_{part}{ext}"))
 }
 
 #[cfg(test)]

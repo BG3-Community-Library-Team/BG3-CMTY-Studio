@@ -25,6 +25,7 @@ import {
   normalizeUuids,
   cssToBg3Color,
   bg3ToCssColor,
+  formStateToDbColumns,
 } from "../lib/utils/fieldCodec.js";
 
 // ── Simple fields ───────────────────────────────────────────────────
@@ -731,5 +732,209 @@ describe("bg3ToCssColor", () => {
 
   it("handles hex without hash", () => {
     expect(bg3ToCssColor("80aabbcc")).toBe("#aabbcc");
+  });
+});
+
+// ── formStateToDbColumns ────────────────────────────────────────────
+
+describe("formStateToDbColumns", () => {
+  it("maps Field: prefixed keys to raw column names", () => {
+    const result = formStateToDbColumns({ "Field:Name": "Elf", "Field:Level": "5" });
+    expect(result["Name"]).toBe("Elf");
+    expect(result["Level"]).toBe("5");
+  });
+
+  it("maps Boolean: prefixed keys to raw column names", () => {
+    const result = formStateToDbColumns({ "Boolean:Hidden": "true", "Boolean:AllowImprovement": "false" });
+    expect(result["Hidden"]).toBe("true");
+    expect(result["AllowImprovement"]).toBe("false");
+  });
+
+  it("maps SpellField: prefixed keys to raw column names", () => {
+    const result = formStateToDbColumns({ "SpellField:CastingAbility": "Intelligence" });
+    expect(result["CastingAbility"]).toBe("Intelligence");
+  });
+
+  it("strips META_KEYS from output", () => {
+    const result = formStateToDbColumns({
+      "_entryLabel": "My Entry",
+      "_nodeType": "some-node",
+      "_uuidIsArray": "true",
+      "modGuid": "some-guid",
+      "Action": "Insert",
+      "Blacklist": "x",
+      "Field:Name": "Elf",
+    });
+    expect(result["_entryLabel"]).toBeUndefined();
+    expect(result["_nodeType"]).toBeUndefined();
+    expect(result["_uuidIsArray"]).toBeUndefined();
+    expect(result["modGuid"]).toBeUndefined();
+    expect(result["Action"]).toBeUndefined();
+    expect(result["Blacklist"]).toBeUndefined();
+    expect(result["Name"]).toBe("Elf");
+  });
+
+  it("passes through direct keys (UUID, EntryName, etc.)", () => {
+    const result = formStateToDbColumns({ "UUID": "abc-123", "EntryName": "MyEntry", "Type": "ClassDescription" });
+    expect(result["UUID"]).toBe("abc-123");
+    expect(result["EntryName"]).toBe("MyEntry");
+    expect(result["Type"]).toBe("ClassDescription");
+  });
+
+  it("serializes String:N:Type + Values into typed columns", () => {
+    const result = formStateToDbColumns({
+      "String:0:Action": "Insert",
+      "String:0:Type": "Boosts",
+      "String:0:Values": "ProficiencyBonus(SavingThrow,Constitution)",
+    });
+    expect(result["Boosts"]).toBe("ProficiencyBonus(SavingThrow,Constitution)");
+  });
+
+  it("serializes multiple String entries into separate columns", () => {
+    const result = formStateToDbColumns({
+      "String:0:Action": "Insert",
+      "String:0:Type": "Boosts",
+      "String:0:Values": "BoostA",
+      "String:1:Action": "Insert",
+      "String:1:Type": "Passives",
+      "String:1:Values": "PassiveB",
+    });
+    expect(result["Boosts"]).toBe("BoostA");
+    expect(result["Passives"]).toBe("PassiveB");
+  });
+
+  it("skips String entries with empty type or values", () => {
+    const result = formStateToDbColumns({
+      "String:0:Action": "Insert",
+      "String:0:Type": "",
+      "String:0:Values": "val",
+      "String:1:Action": "Insert",
+      "String:1:Type": "Boosts",
+      "String:1:Values": "",
+    });
+    expect(result["Boosts"]).toBeUndefined();
+    expect(result[""]).toBeUndefined();
+  });
+
+  it("serializes Selector entries to LSX format Selectors column", () => {
+    const result = formStateToDbColumns({
+      "Selector:0:Action": "Insert",
+      "Selector:0:Function": "SelectSpells",
+      "Selector:0:Param:Guid": "spell-list-uuid",
+      "Selector:0:Param:Amount": "3",
+    });
+    expect(result["Selectors"]).toBe("SelectSpells(spell-list-uuid,3)");
+  });
+
+  it("serializes multiple selectors joined by semicolons", () => {
+    const result = formStateToDbColumns({
+      "Selector:0:Action": "Insert",
+      "Selector:0:Function": "SelectSkills",
+      "Selector:0:Param:Guid": "g1",
+      "Selector:0:Param:Amount": "2",
+      "Selector:1:Action": "Insert",
+      "Selector:1:Function": "AddSpells",
+      "Selector:1:Param:Guid": "g2",
+    });
+    expect(result["Selectors"]).toBe("SelectSkills(g1,2);AddSpells(g2)");
+  });
+
+  it("maps IsReplace selectors to ReplacePassives in Selectors column", () => {
+    const result = formStateToDbColumns({
+      "Selector:0:Action": "Insert",
+      "Selector:0:Function": "SelectPassives",
+      "Selector:0:IsReplace": "true",
+      "Selector:0:Param:Guid": "g1",
+    });
+    expect(result["Selectors"]).toBe("ReplacePassives(g1)");
+  });
+
+  it("skips selectors without a Function key", () => {
+    const result = formStateToDbColumns({
+      "Selector:0:Action": "Insert",
+      "Selector:0:Param:Guid": "g1",
+    });
+    expect(result["Selectors"]).toBeUndefined();
+  });
+
+  it("trims trailing empty positional args in selectors", () => {
+    const result = formStateToDbColumns({
+      "Selector:0:Action": "Insert",
+      "Selector:0:Function": "SelectSpells",
+      "Selector:0:Param:Guid": "g1",
+      "Selector:0:Param:Amount": "",
+      "Selector:0:Param:SwapAmount": "",
+      "Selector:0:Param:SelectorId": "",
+    });
+    expect(result["Selectors"]).toBe("SelectSpells(g1)");
+  });
+
+  it("skips Child:, Tag:, Subclass: prefixed keys", () => {
+    const result = formStateToDbColumns({
+      "Child:0:Type": "EyeColors",
+      "Child:0:Values": "uuid1",
+      "Tag:0:Action": "Insert",
+      "Tag:0:UUIDs": "tag1",
+      "Subclass:0:UUID": "sub1",
+      "Field:Name": "Elf",
+    });
+    expect(result["Name"]).toBe("Elf");
+    expect(Object.keys(result)).toEqual(["Name"]);
+  });
+
+  it("skips indexed String sub-keys missing colon separator", () => {
+    const result = formStateToDbColumns({
+      "String:0Type": "Boosts",
+      "Field:Name": "Elf",
+    });
+    // The malformed key has no colon after the index, so it's not an indexed String
+    // It's also not a recognized prefix, so falls through to direct key
+    expect(result["Name"]).toBe("Elf");
+  });
+
+  it("handles mixed prefixed and direct keys", () => {
+    const result = formStateToDbColumns({
+      "UUID": "my-uuid",
+      "Field:DisplayName": "Cool Race",
+      "Boolean:AllowImprovement": "true",
+      "SpellField:CastAbility": "Wisdom",
+      "String:0:Type": "Boosts",
+      "String:0:Values": "ActionSurge",
+      "String:0:Action": "Insert",
+      "_entryLabel": "label",
+      "modGuid": "guid",
+    });
+    expect(result["UUID"]).toBe("my-uuid");
+    expect(result["DisplayName"]).toBe("Cool Race");
+    expect(result["AllowImprovement"]).toBe("true");
+    expect(result["CastAbility"]).toBe("Wisdom");
+    expect(result["Boosts"]).toBe("ActionSurge");
+    expect(result["_entryLabel"]).toBeUndefined();
+    expect(result["modGuid"]).toBeUndefined();
+  });
+
+  it("sorts selector indices numerically", () => {
+    const result = formStateToDbColumns({
+      "Selector:2:Action": "Insert",
+      "Selector:2:Function": "AddSpells",
+      "Selector:2:Param:Guid": "g2",
+      "Selector:0:Action": "Insert",
+      "Selector:0:Function": "SelectSkills",
+      "Selector:0:Param:Guid": "g0",
+    });
+    expect(result["Selectors"]).toBe("SelectSkills(g0);AddSpells(g2)");
+  });
+
+  it("returns empty object for empty input", () => {
+    expect(formStateToDbColumns({})).toEqual({});
+  });
+
+  it("returns empty object when only meta keys provided", () => {
+    const result = formStateToDbColumns({
+      "_entryLabel": "label",
+      "modGuid": "g",
+      "Action": "Insert",
+    });
+    expect(result).toEqual({});
   });
 });

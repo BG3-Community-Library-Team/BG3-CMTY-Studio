@@ -558,7 +558,20 @@
       </span>
     {/if}
 
-    <span class="ml-auto text-xs text-[var(--th-text-400)]">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span
+      class="ml-auto p-0.5 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] transition-colors cursor-pointer"
+      onclick={async (e) => { e.stopPropagation(); refreshing = true; await projectStore.refreshSection(table); refreshing = false; }}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); e.currentTarget.click(); } }}
+      role="button"
+      tabindex={0}
+      title="Refresh section"
+      aria-label="Refresh section"
+      aria-disabled={refreshing}
+    >
+      <RefreshCw size={11} class={refreshing ? 'animate-spin' : ''} />
+    </span>
+    <span class="text-xs text-[var(--th-text-400)]">
       {#if disabledCount > 0}
         <span class="text-zinc-400">{disabledCount} disabled</span>
         <span class="text-[var(--th-text-500)]">/</span>
@@ -593,16 +606,6 @@
 
 
           <span class="flex-1"></span>
-
-          <button
-            class="text-xs p-1 rounded border border-[var(--th-border-700)]/50 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
-            onclick={async () => { refreshing = true; await projectStore.refreshSection(table); refreshing = false; }}
-            disabled={refreshing}
-            use:tooltip={"Refresh"}
-            aria-label="Refresh section"
-          >
-            <RefreshCw size={13} class={refreshing ? 'animate-spin' : ''} />
-          </button>
 
           <button
             class="text-xs font-medium px-3 py-1 rounded border border-sky-500/40 bg-sky-700/20 text-sky-300 hover:bg-sky-700/40 transition-colors whitespace-nowrap"

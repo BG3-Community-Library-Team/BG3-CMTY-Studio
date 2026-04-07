@@ -52,7 +52,7 @@
 {/if}
 
 <!-- IA-01: Inline prerequisite banner when vanilla data path is not set and mod is loaded -->
-{#if !settingsStore.vanillaPath && modStore.scanResult}
+{#if !settingsStore.gameDataPath && modStore.scanResult}
   <div class="flex items-center gap-2 px-4 py-2 bg-[var(--th-warn-bg,rgba(120,53,15,0.3))] border-b border-[var(--th-warn-border,rgba(180,83,9,0.5))] text-[var(--th-warn-text,#fcd34d)] text-xs">
     <Info class="w-4 h-4 shrink-0" aria-hidden="true" />
     <span class="flex-1">{m.header_vanilla_not_configured()}</span>

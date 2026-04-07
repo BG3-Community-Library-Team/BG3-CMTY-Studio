@@ -11,6 +11,7 @@
   import FileText from "@lucide/svelte/icons/file-text";
 
   import Palette from "@lucide/svelte/icons/palette";
+  import BookOpen from "@lucide/svelte/icons/book-open";
 
   const TAB_ICONS: Record<EditorTab["type"], typeof FileCode> = {
     section: FileCode,
@@ -24,6 +25,7 @@
     settings: Cog,
     "theme-gallery": Palette,
     "script-editor": FileCode2,
+    readme: BookOpen,
   };
 
   let tabs = $derived(uiStore.openTabs);

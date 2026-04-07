@@ -102,7 +102,7 @@ pub fn read_mod_meta(mod_path: &str) -> Result<crate::models::ModMeta, String> {
         })
     {
         let content = fs::read_to_string(entry.path())
-            .map_err(|e| format!("Failed to read meta.lsx: {}", e))?;
+            .map_err(|e| format!("Failed to read meta.lsx: {e}"))?;
         return crate::parsers::meta::parse_meta_lsx(&content);
     }
     // Fall back to meta.yaml (converted format)
@@ -117,7 +117,7 @@ pub fn read_mod_meta(mod_path: &str) -> Result<crate::models::ModMeta, String> {
         })
     {
         let content = fs::read_to_string(entry.path())
-            .map_err(|e| format!("Failed to read meta.yaml: {}", e))?;
+            .map_err(|e| format!("Failed to read meta.yaml: {e}"))?;
         return crate::parsers::meta::parse_meta_yaml(&content);
     }
     Err("meta.lsx not found".to_string())

@@ -313,7 +313,7 @@ pub struct TableInfo {
 
 /// List staging tables whose name starts with `prefix` (e.g. `"lsx__"`).
 pub fn list_staging_tables(conn: &Connection, prefix: &str) -> Result<Vec<TableInfo>, AppError> {
-    let pattern = format!("{}%", prefix);
+    let pattern = format!("{prefix}%");
     let mut stmt = conn
         .prepare(
             "SELECT table_name, source_type, region_id, node_id \
@@ -349,7 +349,7 @@ pub fn has_tracked_changes(conn: &Connection, table_name: &str) -> Result<bool, 
         table_name.replace('"', "\"\"")
     );
     conn.query_row(&sql, [], |row| row.get(0))
-        .map_err(|e| AppError::internal(format!("has_tracked_changes({}): {e}", table_name)))
+        .map_err(|e| AppError::internal(format!("has_tracked_changes({table_name}): {e}")))
 }
 
 /// Check if ALL rows in a table are marked as deleted.
@@ -359,15 +359,14 @@ pub fn has_tracked_changes(conn: &Connection, table_name: &str) -> Result<bool, 
 pub fn all_rows_deleted(conn: &Connection, table_name: &str) -> Result<bool, AppError> {
     let escaped = table_name.replace('"', "\"\"");
     let sql = format!(
-        "SELECT COUNT(*), SUM(CASE WHEN _is_deleted=1 THEN 1 ELSE 0 END) FROM \"{}\"",
-        escaped
+        "SELECT COUNT(*), SUM(CASE WHEN _is_deleted=1 THEN 1 ELSE 0 END) FROM \"{escaped}\""
     );
     conn.query_row(&sql, [], |row| {
         let total: i64 = row.get(0)?;
         let deleted: i64 = row.get(1)?;
         Ok(total > 0 && total == deleted)
     })
-    .map_err(|e| AppError::internal(format!("all_rows_deleted({}): {e}", table_name)))
+    .map_err(|e| AppError::internal(format!("all_rows_deleted({table_name}): {e}")))
 }
 
 /// Read a value from `_staging_authoring`.

@@ -14,23 +14,20 @@ impl PakPath {
 
         if trimmed.starts_with('/') || trimmed.starts_with('\\') {
             return Err(PakError::invalid_path(format!(
-                "absolute pak paths are not allowed: {}",
-                raw
+                "absolute pak paths are not allowed: {raw}"
             )));
         }
 
         if has_windows_drive_prefix(trimmed) {
             return Err(PakError::invalid_path(format!(
-                "drive-qualified pak paths are not allowed: {}",
-                raw
+                "drive-qualified pak paths are not allowed: {raw}"
             )));
         }
 
         let normalized = trimmed.replace('\\', "/");
         if normalized.chars().any(char::is_control) {
             return Err(PakError::invalid_path(format!(
-                "control characters are not allowed in pak paths: {}",
-                raw
+                "control characters are not allowed in pak paths: {raw}"
             )));
         }
 
@@ -41,8 +38,7 @@ impl PakPath {
             }
             if segment == "." || segment == ".." {
                 return Err(PakError::invalid_path(format!(
-                    "path traversal segment is not allowed: {}",
-                    raw
+                    "path traversal segment is not allowed: {raw}"
                 )));
             }
             segments.push(segment);
@@ -50,8 +46,7 @@ impl PakPath {
 
         if segments.is_empty() {
             return Err(PakError::invalid_path(format!(
-                "path has no usable segments: {}",
-                raw
+                "path has no usable segments: {raw}"
             )));
         }
 

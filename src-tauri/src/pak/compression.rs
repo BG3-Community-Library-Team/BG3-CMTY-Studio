@@ -28,8 +28,7 @@ pub fn wrap_reader(
             "zstd-compressed pak entry decoding is not implemented yet",
         )),
         PakCompression::Unknown(value) => Err(PakError::decompression(format!(
-            "unknown compression method: {}",
-            value
+            "unknown compression method: {value}"
         ))),
     }
 }
@@ -40,7 +39,7 @@ pub fn decompress_lz4_block_bytes(
     context: &'static str,
 ) -> PakResult<Vec<u8>> {
     lz4_flex::block::decompress(compressed, output_limit).map_err(|err| {
-        PakError::decompression(format!("failed to decompress {} as LZ4 block: {}", context, err))
+        PakError::decompression(format!("failed to decompress {context} as LZ4 block: {err}"))
     })
 }
 

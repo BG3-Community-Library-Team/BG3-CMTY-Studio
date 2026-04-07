@@ -87,8 +87,8 @@ fn parity_bounding_sphere_sound_01() {
     let reference = std::fs::read_to_string(&ref_lsefx_path).expect("read reference lsefx");
 
     // ── Print both for visual inspection ───────────────────────────
-    eprintln!("═══ GENERATED ═══\n{}\n", generated);
-    eprintln!("═══ REFERENCE ═══\n{}\n", reference);
+    eprintln!("═══ GENERATED ═══\n{generated}\n");
+    eprintln!("═══ REFERENCE ═══\n{reference}\n");
 
     // ── Structural comparison ──────────────────────────────────────
     let gen_norm = normalise_xml(&generated);
@@ -389,7 +389,7 @@ fn parity_compile_roundtrip() {
         for key in &["EndTime", "ID", "Name", "StartTime", "Track", "Type"] {
             let ov = attr_value(oc, key);
             let cv = attr_value(cc, key);
-            assert_eq!(ov, cv, "component attr '{}' mismatch", key);
+            assert_eq!(ov, cv, "component attr '{key}' mismatch");
         }
     }
     eprintln!("✓ component envelope attributes match");
@@ -416,30 +416,28 @@ fn parity_compile_roundtrip() {
                 .iter()
                 .find(|p| attr_value(p, "FullName").as_deref() == Some(&o_fullname))
                 .unwrap_or_else(|| {
-                    panic!("compiled missing property with FullName='{}'", o_fullname)
+                    panic!("compiled missing property with FullName='{o_fullname}'")
                 });
 
             // AttributeName should match with the override table
             assert_eq!(
                 attr_value(op, "AttributeName"),
                 attr_value(cp, "AttributeName"),
-                "AttributeName mismatch for property '{}'",
-                o_fullname
+                "AttributeName mismatch for property '{o_fullname}'"
             );
 
             // Type uint8 should match
             assert_eq!(
                 attr_value(op, "Type"),
                 attr_value(cp, "Type"),
-                "Type mismatch for property '{}'",
-                o_fullname
+                "Type mismatch for property '{o_fullname}'"
             );
 
             // Value should match (if present — animated/range may differ)
             let o_val = attr_value(op, "Value");
             let c_val = attr_value(cp, "Value");
             if o_val.is_some() && c_val.is_some() {
-                assert_eq!(o_val, c_val, "Value mismatch for property '{}'", o_fullname);
+                assert_eq!(o_val, c_val, "Value mismatch for property '{o_fullname}'");
             }
 
             // For range properties, check Min/Max
@@ -447,14 +445,12 @@ fn parity_compile_roundtrip() {
                 assert_eq!(
                     Some(o_min.clone()),
                     attr_value(cp, "Min"),
-                    "Min mismatch for property '{}'",
-                    o_fullname
+                    "Min mismatch for property '{o_fullname}'"
                 );
                 assert_eq!(
                     attr_value(op, "Max"),
                     attr_value(cp, "Max"),
-                    "Max mismatch for property '{}'",
-                    o_fullname
+                    "Max mismatch for property '{o_fullname}'"
                 );
             }
         }
@@ -519,7 +515,7 @@ fn compare_nodes_recursive(a: &[LsxNode], b: &[LsxNode], ctx: &str) {
     );
     for (na, nb) in a.iter().zip(b) {
         let path = format!("{}/{}", ctx, na.id);
-        assert_eq!(na.id, nb.id, "[{}] node id mismatch", path);
+        assert_eq!(na.id, nb.id, "[{path}] node id mismatch");
         assert_eq!(
             na.attributes.len(),
             nb.attributes.len(),
@@ -529,7 +525,7 @@ fn compare_nodes_recursive(a: &[LsxNode], b: &[LsxNode], ctx: &str) {
             nb.attributes.len()
         );
         for (aa, ab) in na.attributes.iter().zip(&nb.attributes) {
-            assert_eq!(aa.id, ab.id, "[{}] attr name", path);
+            assert_eq!(aa.id, ab.id, "[{path}] attr name");
             assert_eq!(
                 aa.attr_type, ab.attr_type,
                 "[{}] attr type for '{}'",
@@ -637,24 +633,21 @@ fn parity_full_pipeline() {
 
             assert!(
                 fp.is_some(),
-                "full pipeline: property '{}' lost in round-trip",
-                full_name
+                "full pipeline: property '{full_name}' lost in round-trip"
             );
 
             let fp = fp.unwrap();
             assert_eq!(
                 attr_value(op, "Value"),
                 attr_value(fp, "Value"),
-                "full pipeline: Value mismatch for '{}'",
-                full_name
+                "full pipeline: Value mismatch for '{full_name}'"
             );
 
             // AttributeName should survive the full pipeline
             assert_eq!(
                 attr_value(op, "AttributeName"),
                 attr_value(fp, "AttributeName"),
-                "full pipeline: AttributeName mismatch for '{}'",
-                full_name
+                "full pipeline: AttributeName mismatch for '{full_name}'"
             );
         }
     }

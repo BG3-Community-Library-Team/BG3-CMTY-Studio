@@ -3,7 +3,7 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { projectStore } from "../lib/stores/projectStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
-  import FolderOutput from "@lucide/svelte/icons/folder-output";
+  import Package from "@lucide/svelte/icons/package";
   import Save from "@lucide/svelte/icons/save";
   import Eye from "@lucide/svelte/icons/eye";
   import Button from "./Button.svelte";
@@ -114,7 +114,7 @@
       disabled={!modStore.scanResult}
       title={m.export_bar_export_title()}
     >
-      <FolderOutput size={14} />
+      <Package size={14} />
     </Button>
   {/if}
 </div>

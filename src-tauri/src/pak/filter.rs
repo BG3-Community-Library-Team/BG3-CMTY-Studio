@@ -79,7 +79,7 @@ impl PakEntryFilter {
         let pattern = build_reference_db_data_regex(public_roots, extensions);
         Self::new()
             .with_regex_pattern(pattern)
-            .map_err(|error| format!("Invalid reference DB pak filter regex: {}", error))
+            .map_err(|error| format!("Invalid reference DB pak filter regex: {error}"))
     }
 }
 
@@ -96,12 +96,12 @@ pub fn build_reference_db_data_regex(public_roots: &[&str], extensions: &[&str])
         .collect::<Vec<_>>()
         .join("|");
     let ext_filter = extensions.join("|");
-    let ext_suffix = format!("\\.({})$", ext_filter);
-    let open_pattern = format!("({})/.+{}", roots_alt, ext_suffix);
-    let diceset_pattern = format!("Public/DiceSet_[^/]+/.+{}", ext_suffix);
+    let ext_suffix = format!("\\.({ext_filter})$");
+    let open_pattern = format!("({roots_alt})/.+{ext_suffix}");
+    let diceset_pattern = format!("Public/DiceSet_[^/]+/.+{ext_suffix}");
     let meta_pattern = "Mods/[^/]+/meta\\.(lsx|lsf)".to_string();
 
-    format!("({}|{}|{})", open_pattern, diceset_pattern, meta_pattern)
+    format!("({open_pattern}|{diceset_pattern}|{meta_pattern})")
 }
 
 #[cfg(test)]

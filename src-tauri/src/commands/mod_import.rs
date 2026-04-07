@@ -48,7 +48,7 @@ const MAX_META_BYTES: usize = 1_024 * 1_024;
 /// entry found under `Mods/*/`. Returns `Ok(None)` if no meta file is present.
 pub fn read_meta_from_pak(pak_path: &Path) -> Result<Option<ModMeta>, String> {
     let reader = PakReader::open(pak_path)
-        .map_err(|e| format!("Failed to open pak: {}", e))?;
+        .map_err(|e| format!("Failed to open pak: {e}"))?;
 
     // Look for meta.lsf first (binary — more common in shipped mods), then meta.lsx
     let mut meta_lsf: Option<&crate::pak::entry::PakEntry> = None;
@@ -83,20 +83,20 @@ pub fn read_meta_from_pak(pak_path: &Path) -> Result<Option<ModMeta>, String> {
 
         let mut entry_reader = reader
             .open_entry(entry)
-            .map_err(|e| format!("Failed to open meta entry: {}", e))?;
+            .map_err(|e| format!("Failed to open meta entry: {e}"))?;
 
         let bytes = entry_reader
             .read_to_end_with_limit(MAX_META_BYTES)
-            .map_err(|e| format!("Failed to read meta entry: {}", e))?;
+            .map_err(|e| format!("Failed to read meta entry: {e}"))?;
 
         let meta = if is_binary {
             let cursor = Cursor::new(bytes);
             let resource =
-                parse_lsf(cursor).map_err(|e| format!("Failed to parse meta.lsf: {}", e))?;
+                parse_lsf(cursor).map_err(|e| format!("Failed to parse meta.lsf: {e}"))?;
             parse_meta_from_resource(&resource)?
         } else {
             let content = String::from_utf8(bytes)
-                .map_err(|e| format!("meta.lsx is not valid UTF-8: {}", e))?;
+                .map_err(|e| format!("meta.lsx is not valid UTF-8: {e}"))?;
             parse_meta_lsx(&content)?
         };
 
@@ -116,7 +116,7 @@ mod tests {
     fn test_read_meta_from_pak_real() {
         let pak = Path::new("h:\\BG3\\Mods\\AGtTPreview\\AdventurersGuideToTamriel.pak");
         if !pak.exists() {
-            eprintln!("Skipping: test pak not found at {:?}", pak);
+            eprintln!("Skipping: test pak not found at {pak:?}");
             return;
         }
         let meta = read_meta_from_pak(pak).expect("failed to read pak");
