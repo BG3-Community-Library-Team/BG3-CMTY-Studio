@@ -1,6 +1,6 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
-  import { projectStore, sectionHasNewEntries } from "../lib/stores/projectStore.svelte.js";
+  import { projectStore, sectionHasNewEntries, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { rediffMod } from "../lib/utils/tauri.js";
   import { SECTIONS_ORDERED, isCoreSection } from "../lib/types/index.js";
   import type { SectionResult, Section } from "../lib/types/index.js";
@@ -193,5 +193,6 @@
     onclose={closeContextMenu}
     onexpand={() => { modStore.sectionExpandCommand = { section: ctxMenu!.section, expand: true }; }}
     oncollapse={() => { modStore.sectionExpandCommand = { section: ctxMenu!.section, expand: false }; }}
+    onrefresh={() => { projectStore.refreshSection(sectionToTable(ctxMenu!.section)); }}
   />
 {/if}

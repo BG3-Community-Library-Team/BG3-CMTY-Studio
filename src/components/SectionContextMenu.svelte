@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Section } from "../lib/types/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -10,6 +11,7 @@
     onclose,
     onexpand,
     oncollapse,
+    onrefresh,
   }: {
     section: Section;
     x: number;
@@ -17,6 +19,7 @@
     onclose: () => void;
     onexpand: () => void;
     oncollapse: () => void;
+    onrefresh?: () => void;
   } = $props();
 
   function handleExpand() {
@@ -26,6 +29,11 @@
 
   function handleCollapse() {
     oncollapse();
+    onclose();
+  }
+
+  function handleRefresh() {
+    onrefresh?.();
     onclose();
   }
 
@@ -73,5 +81,17 @@
     <ChevronRight size={14} class="rotate-90 text-[var(--th-text-500)]" />
     {m.section_context_collapse()}
   </button>
+
+  {#if onrefresh}
+    <div class="mx-2 my-1 border-t border-[var(--th-border-700)]/50"></div>
+    <button
+      class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[var(--th-text-200)] hover:bg-[var(--th-bg-700,#27272a)] transition-colors"
+      onclick={handleRefresh}
+      role="menuitem"
+    >
+      <RefreshCw size={14} class="text-[var(--th-text-500)]" />
+      Refresh
+    </button>
+  {/if}
 
 </div>

@@ -23,6 +23,7 @@
   import Package from "@lucide/svelte/icons/package";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
   import Plus from "@lucide/svelte/icons/plus";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import type { SectionResult, DiffEntry } from "../lib/types/index.js";
   import type { ModFileEntry } from "../lib/utils/tauri.js";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -206,6 +207,14 @@
     requestAnimationFrame(() => {
       window.dispatchEvent(new CustomEvent("explorer-view-vanilla", { detail: { section: ctxSection } }));
     });
+  }
+
+  async function ctxRefreshSection() {
+    hideContextMenu();
+    if (!ctxSection) return;
+    const table = sectionToTable(ctxSection);
+    await projectStore.refreshSection(table);
+    toastStore.success("Section refreshed");
   }
 
   async function ctxOpenInFileManager() {
@@ -857,6 +866,14 @@
       >
         <File size={12} class="shrink-0" />
         {m.file_explorer_add_entry()}
+      </button>
+      <button
+        class="ctx-item"
+        onclick={ctxRefreshSection}
+        role="menuitem"
+      >
+        <RefreshCw size={12} class="shrink-0" />
+        Refresh Section
       </button>
       <button
         class="ctx-item"

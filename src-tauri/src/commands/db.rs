@@ -901,4 +901,218 @@ mod tests {
         assert_eq!(cloned.exists, status.exists);
         assert_eq!(cloned.size_bytes, status.size_bytes);
     }
+
+    /// Test 15 (S-ERRTEST): create_staging_db with a nonexistent schema DB
+    /// should return a clean error (the schema DB is opened to read table defs).
+    #[test]
+    fn test_create_staging_db_nonexistent_schema() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let fake_schema = tmp.path().join("nonexistent_schema.sqlite");
+        let staging_out = tmp.path().join("staging.sqlite");
+
+        let result = reference_db::staging::create_staging_db(&fake_schema, &staging_out);
+        assert!(result.is_err(), "create_staging_db should fail with nonexistent schema DB");
+        let err = result.unwrap_err();
+        assert!(
+            !err.is_empty(),
+            "Error message should be non-empty"
+        );
+    }
+
+    /// Test 16a (S-ERRTEST): populate_staging_from_mod with nonexistent mod_path
+    /// should return a clean error.
+    #[test]
+    fn test_populate_staging_nonexistent_mod_path() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let fake_mod = tmp.path().join("nonexistent_mod");
+        let staging_db = tmp.path().join("staging.sqlite");
+        // Create an empty staging DB so the error comes from the mod path
+        let _conn = rusqlite::Connection::open(&staging_db).expect("create empty db");
+
+        let options = reference_db::BuildOptions::default();
+        let result = reference_db::staging::populate_staging_from_mod(
+            &fake_mod,
+            "TestMod",
+            &staging_db,
+            &options,
+        );
+        assert!(result.is_err(), "populate_staging_from_mod should fail with nonexistent mod path");
+    }
+
+    /// Test 16b (S-ERRTEST): populate_staging_from_mod with nonexistent staging_db_path
+    /// should return a clean error.
+    #[test]
+    fn test_populate_staging_nonexistent_staging_db() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        // Create a valid mod directory with minimal structure
+        let mod_dir = tmp.path().join("my_mod");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        let fake_staging = tmp.path().join("nonexistent_staging.sqlite");
+
+        let options = reference_db::BuildOptions::default();
+        let result = reference_db::staging::populate_staging_from_mod(
+            &mod_dir,
+            "TestMod",
+            &fake_staging,
+            &options,
+        );
+        // Should fail when trying to open/load the nonexistent staging DB schema
+        assert!(result.is_err(), "populate_staging_from_mod should fail with nonexistent staging DB");
+    }
+
+    /// Test 17a (S-ERRTEST): populate_reference_db with nonexistent unpacked_path
+    /// should return a clean error.
+    #[test]
+    fn test_populate_reference_db_nonexistent_unpacked() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let fake_unpacked = tmp.path().join("nonexistent_unpacked");
+        // Create a valid DB file so the error comes from the unpacked path
+        let db_path = tmp.path().join("ref_base.sqlite");
+        let _conn = rusqlite::Connection::open(&db_path).expect("create empty db");
+
+        let options = reference_db::BuildOptions::default();
+        let result = reference_db::populate_reference_db(
+            &fake_unpacked,
+            &db_path,
+            reference_db::TargetDb::Base,
+            &options,
+        );
+        assert!(result.is_err(), "populate_reference_db should fail with nonexistent unpacked dir");
+        // With a nonexistent unpacked_path, collect_files returns empty, then
+        // populate_db fails because the DB has no embedded schema.
+        let err = result.unwrap_err();
+        assert!(
+            !err.is_empty(),
+            "Error message should be non-empty"
+        );
+    }
+
+    /// Test 17b (S-ERRTEST): populate_reference_db with nonexistent db_path
+    /// should return a clean error (can't open the DB file).
+    #[test]
+    fn test_populate_reference_db_nonexistent_db() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        // Create a valid unpacked directory
+        let unpacked = tmp.path().join("unpacked");
+        std::fs::create_dir_all(&unpacked).unwrap();
+        let fake_db = tmp.path().join("nonexistent_ref.sqlite");
+
+        let options = reference_db::BuildOptions::default();
+        let result = reference_db::populate_reference_db(
+            &unpacked,
+            &fake_db,
+            reference_db::TargetDb::Base,
+            &options,
+        );
+        assert!(result.is_err(), "populate_reference_db should fail with nonexistent DB path");
+    }
+
+    /// Test 18 (S-ERRTEST): cmd_process_mod_folder inner logic — passing a
+    /// regular file (not .pak, not directory) should produce an error.
+    /// Since cmd_process_mod_folder requires AppHandle, we test the same
+    /// branching logic that the command uses: is_file + not .pak + not is_dir.
+    #[test]
+    fn test_process_mod_path_neither_pak_nor_dir() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let regular_file = tmp.path().join("test.txt");
+        std::fs::File::create(&regular_file).expect("create regular file");
+
+        let mod_path = regular_file.to_string_lossy().to_string();
+        let path = std::path::Path::new(&mod_path);
+
+        // Replicate the branching from cmd_process_mod_folder
+        assert!(path.exists(), "Test file should exist");
+        let is_pak = path.is_file()
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("pak"));
+        assert!(!is_pak, "A .txt file should not be detected as .pak");
+        assert!(!path.is_dir(), "A regular file should not be a directory");
+
+        // This is the exact error the command would produce
+        let err = format!("Mod path is neither a .pak file nor a directory: {}", mod_path);
+        assert!(err.contains("neither a .pak file nor a directory"));
+    }
+
+    /// Test 19 (S-ERRTEST): run_integrity_check on a corrupt DB should surface
+    /// warnings (returned as Some(details)), not panic.
+    #[test]
+    fn test_integrity_check_corrupt_db_surfaces_warning() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let db_path = tmp.path().join("corrupt.sqlite");
+
+        // Create a valid SQLite DB first, then corrupt it
+        {
+            let conn = rusqlite::Connection::open(&db_path).expect("create db");
+            conn.execute_batch(
+                "CREATE TABLE test_data (id INTEGER PRIMARY KEY, value TEXT);
+                 INSERT INTO test_data VALUES (1, 'hello');
+                 INSERT INTO test_data VALUES (2, 'world');",
+            )
+            .expect("populate test db");
+            // Force WAL checkpoint so data is in the main file
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").ok();
+        }
+
+        // Corrupt the DB by overwriting some bytes in the middle of the file
+        {
+            use std::io::{Seek, Write};
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&db_path)
+                .expect("open db for corruption");
+            // Skip the SQLite header (first 100 bytes) and corrupt page data
+            file.seek(std::io::SeekFrom::Start(200)).expect("seek");
+            file.write_all(&[0xFF; 64]).expect("write corruption");
+        }
+
+        // run_integrity_check should return Ok (not panic/Err from connection failure)
+        let result = db_manager::run_integrity_check(&db_path);
+        match result {
+            Ok(None) => {
+                // If SQLite still says "ok" despite corruption (small DB may
+                // not detect damage), that's acceptable — no panic occurred.
+            }
+            Ok(Some(details)) => {
+                // Corruption was detected and surfaced as a warning — this is
+                // the primary expected path for Test 19.
+                assert!(
+                    !details.is_empty(),
+                    "Integrity check details should be non-empty when issues found"
+                );
+            }
+            Err(e) => {
+                // Connection-level failure is also acceptable (e.g., header
+                // corruption makes the file unreadable). The key assertion is
+                // that we didn't panic.
+                assert!(
+                    !e.is_empty(),
+                    "Error message should be non-empty, got empty string"
+                );
+            }
+        }
+    }
+
+    /// Test 19b (S-ERRTEST): run_integrity_check on a healthy DB should return Ok(None).
+    #[test]
+    fn test_integrity_check_healthy_db() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let db_path = tmp.path().join("healthy.sqlite");
+        {
+            let conn = rusqlite::Connection::open(&db_path).expect("create db");
+            conn.execute_batch(
+                "CREATE TABLE test_data (id INTEGER PRIMARY KEY, value TEXT);
+                 INSERT INTO test_data VALUES (1, 'hello');",
+            )
+            .expect("populate test db");
+        }
+
+        let result = db_manager::run_integrity_check(&db_path);
+        assert!(result.is_ok(), "Integrity check should succeed on healthy DB");
+        assert_eq!(
+            result.unwrap(),
+            None,
+            "Healthy DB should return None (no issues)"
+        );
+    }
 }

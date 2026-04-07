@@ -1089,3 +1089,114 @@ fn test_reset_staging_tracking_clears_flags() {
     assert!(uuids.contains(&"r4"));
     assert!(!uuids.contains(&"r3"), "r3 was _is_deleted and should be purged");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. Error path tests (S-ERRTEST Phase 1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// S-ERRTEST #1: Nonexistent staging DB path → error opening the DB.
+#[test]
+fn test_save_project_nonexistent_staging_db() {
+    let nonexistent = PathBuf::from("__does_not_exist_staging_db.sqlite");
+
+    // Attempt to open a connection to a nonexistent file in read-only mode
+    // (which is what the export pipeline does for safety).
+    let result = Connection::open_with_flags(
+        &nonexistent,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    );
+
+    assert!(
+        result.is_err(),
+        "Opening a nonexistent DB in read-only mode should fail"
+    );
+    let err = result.unwrap_err();
+    // rusqlite returns "unable to open database file" for nonexistent paths
+    let msg = err.to_string();
+    assert!(
+        msg.contains("unable to open") || msg.contains("not found") || msg.contains("no such"),
+        "Error should indicate file not found, got: {}",
+        msg
+    );
+}
+
+/// S-ERRTEST #2: Malformed staging DB (missing `_table_meta`) → clean error from build_export_plan.
+#[test]
+fn test_save_project_malformed_staging_missing_table_meta() {
+    // Create a staging DB WITHOUT the required _table_meta table
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE _staging_authoring (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            _is_new INTEGER DEFAULT 0,
+            _is_modified INTEGER DEFAULT 0,
+            _is_deleted INTEGER DEFAULT 0,
+            _original_hash TEXT
+        );",
+    )
+    .unwrap();
+
+    let ctx = make_context(conn, PathBuf::from("__fake_mod"));
+    let handlers = default_handlers();
+
+    // build_export_plan calls handler.plan() which calls list_staging_tables,
+    // which queries _table_meta — that table doesn't exist, so this should
+    // return an error rather than panic.
+    let result = build_export_plan(&ctx, &handlers);
+
+    assert!(
+        result.is_err(),
+        "build_export_plan on a DB missing _table_meta should return Err, not panic"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("_table_meta") || err.message.contains("no such table"),
+        "Error should reference missing _table_meta, got: {}",
+        err.message
+    );
+}
+
+/// S-ERRTEST #8: Invalid file extension in export plan → error captured in file_errors.
+///
+/// When an ExportUnit has content but write_files_atomic encounters a failure
+/// writing it (e.g., to an invalid path), the error should be reported rather
+/// than causing a panic. This test uses a path that is valid enough to attempt
+/// writing but verifies the writer handles content-less units correctly.
+#[test]
+fn test_export_invalid_extension_no_content_error() {
+    use bg3_cmty_studio_lib::export::delta::{DeltaEntry, FileSystemDelta};
+
+    // Phase 1 validation in write_files_atomic should catch units with no content
+    let dir = tempfile::tempdir().unwrap();
+
+    let mut delta = FileSystemDelta {
+        creates: vec![DeltaEntry {
+            unit: ExportUnit {
+                handler_name: "test".to_string(),
+                output_path: PathBuf::from("Public/TestMod/Invalid.xyz"),
+                action: FileAction::Create,
+                entry_count: 1,
+                content: None, // Missing content simulates a render failure
+            },
+            absolute_path: dir.path().join("Public/TestMod/Invalid.xyz"),
+            is_orphan: false,
+        }],
+        updates: vec![],
+        deletes: vec![],
+        unchanged: vec![],
+    };
+
+    let result = write_files_atomic(&mut delta, false);
+
+    assert!(
+        result.is_err(),
+        "write_files_atomic should return Err when a create unit has no content"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.message.contains("no content"),
+        "Error should mention missing content, got: {}",
+        err.message
+    );
+}

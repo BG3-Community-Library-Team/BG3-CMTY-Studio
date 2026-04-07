@@ -1627,9 +1627,8 @@ pub fn query_vanilla_lsx_for_scan(
     // Multi-region section: merge entries from all regions
     let mut merged = HashMap::new();
     for region_id in region_ids {
-        match query_vanilla_lsx_by_region(db_path, region_id) {
-            Ok(entries) => merged.extend(entries),
-            Err(_) => {} // skip regions not present in DB
+        if let Ok(entries) = query_vanilla_lsx_by_region(db_path, region_id) {
+            merged.extend(entries);
         }
     }
     Ok(merged)

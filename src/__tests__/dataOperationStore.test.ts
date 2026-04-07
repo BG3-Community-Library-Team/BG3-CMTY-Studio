@@ -171,7 +171,61 @@ describe("dataOperationStore", () => {
 
       expect(dataOperationStore.smoothPercent).toBe(0);
     });
+  });
 
+  describe("failOperation clears running state (Test 28)", () => {
+    it("clears isRunning and sets error after startOperation", () => {
+      dataOperationStore.startOperation("populate");
+      expect(dataOperationStore.isRunning).toBe(true);
+
+      dataOperationStore.failOperation("Something went wrong");
+
+      expect(dataOperationStore.isRunning).toBe(false);
+      expect(dataOperationStore.lastError).not.toBeNull();
+      expect(dataOperationStore.lastError!.message).toBe("Something went wrong");
+      expect(dataOperationStore.lastError!.timestamp).toBeGreaterThan(0);
+    });
+
+    it("resets progress fields after failure", () => {
+      dataOperationStore.startOperation("populate");
+      dataOperationStore.updateProgress({
+        phase: "Extracting",
+        detail: "Half done",
+        percent: 50,
+        elapsed_secs: 15,
+      });
+
+      dataOperationStore.failOperation("Extraction failed");
+
+      expect(dataOperationStore.isRunning).toBe(false);
+      // smoothPercent is stopped (interpolation halted) — not necessarily 0,
+      // but isRunning must be false so the UI hides the progress bar
+      expect(dataOperationStore.lastError!.message).toBe("Extraction failed");
+    });
+
+    it("preserves operationType after failure for diagnostics", () => {
+      dataOperationStore.startOperation("reset");
+      dataOperationStore.failOperation("Reset timed out");
+
+      expect(dataOperationStore.isRunning).toBe(false);
+      expect(dataOperationStore.operationType).toBe("reset");
+      expect(dataOperationStore.lastError!.message).toBe("Reset timed out");
+    });
+
+    it("clears previous success state when failing", () => {
+      dataOperationStore.lastSuccess = { message: "Old success", timestamp: 1000 };
+      dataOperationStore.startOperation("populate");
+      // startOperation already clears lastSuccess
+      expect(dataOperationStore.lastSuccess).toBeNull();
+
+      dataOperationStore.failOperation("New failure");
+
+      expect(dataOperationStore.lastSuccess).toBeNull();
+      expect(dataOperationStore.lastError!.message).toBe("New failure");
+    });
+  });
+
+  describe("smoothPercent interpolation", () => {
     it("does not regress smoothPercent below previous value", () => {
       dataOperationStore.startOperation("populate");
       dataOperationStore.updateProgress({

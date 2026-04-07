@@ -310,6 +310,7 @@ class ProjectStore {
     try {
       await stagingUpsertRow(this.#stagingDbPath, table, columns, true);
       this.invalidateSection(table);
+      await this.loadSection(table);
       this.#markDirty();
       // Refresh section list so sectionToTable lookups stay current
       this.sections = await stagingListSections(this.#stagingDbPath);
@@ -411,6 +412,13 @@ class ProjectStore {
     } catch (err) {
       toastStore.warning("Failed to reset section", getErrorMessage(err));
     }
+  }
+
+  /** Invalidate cache, reload entries, and refresh section list for a table. */
+  async refreshSection(table: string): Promise<void> {
+    this.invalidateSection(table);
+    await this.loadSection(table);
+    this.sections = await stagingListSections(this.#stagingDbPath);
   }
 
   // ────────────────────────────────────────────────────────────────────

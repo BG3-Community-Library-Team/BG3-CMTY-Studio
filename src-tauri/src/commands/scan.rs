@@ -720,6 +720,33 @@ mod tests {
         let _ = fs::remove_dir_all(tmp.join("cmty_test_canon"));
     }
 
+    /// Test 14 (S-ERRTEST): scan_mod with a missing reference DB path
+    /// should not panic — it should return Ok with empty section results
+    /// because each per-section query failure is caught and logged as a warning.
+    #[test]
+    fn test_scan_mod_missing_reference_db() {
+        let (_tmp, mod_path) = create_temp_mod();
+        let nonexistent_db = std::path::Path::new("Z:\\nonexistent\\ref_base.sqlite");
+        let result = scan_mod(
+            &mod_path.to_string_lossy(),
+            nonexistent_db,
+            &[],
+        );
+        // scan_mod should succeed (not panic) — vanilla queries fail gracefully
+        assert!(
+            result.is_ok(),
+            "scan_mod with missing reference DB should not panic or error, got: {:?}",
+            result.err()
+        );
+        let scan = result.unwrap();
+        // With no vanilla data loaded, sections should be empty (no diffs possible
+        // unless the mod has entries that would be classified as New)
+        assert!(
+            !scan.mod_meta.name.is_empty(),
+            "mod_meta should still be parsed successfully"
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     #[ignore] // Requires developer mode on Windows to create symlinks

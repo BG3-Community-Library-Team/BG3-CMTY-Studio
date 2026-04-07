@@ -2686,4 +2686,377 @@ mod tests {
         let result = staging_redo(&conn).unwrap();
         assert!(result.is_empty());
     }
+
+    // -------------------------------------------------------------------
+    // S-ERRTEST §9: SQL injection via table name
+    // -------------------------------------------------------------------
+    // `resolve_staging_table` acts as a whitelist — only table names present
+    // in the embedded schema are accepted.  Table names with SQL
+    // metacharacters must be rejected before they ever reach a format!() SQL
+    // string.
+
+    #[test]
+    fn upsert_rejects_sql_injection_table_names() {
+        let conn = setup_test_staging_db();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "test-uuid".to_string());
+
+        let injection_names = [
+            "entries; DROP TABLE entries;",
+            "test\"; --",
+            "test' OR '1'='1",
+            "Robert'); DROP TABLE Students;--",
+            "test\"; DELETE FROM test_entries WHERE \"1\"=\"1",
+            "__boundary__",   // undo journal sentinel — must not be resolvable
+        ];
+
+        for name in &injection_names {
+            let result = staging_upsert_row(&conn, name, &cols, true);
+            assert!(result.is_err(), "Should reject table name: {}", name);
+            let err = result.unwrap_err();
+            assert!(
+                err.contains("not found in staging schema") || err.contains("not in schema"),
+                "Expected schema-not-found error for '{}', got: {}",
+                name,
+                err,
+            );
+        }
+
+        // Verify the real table is unharmed
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "test_entries should be untouched after injection attempts");
+    }
+
+    #[test]
+    fn mark_deleted_rejects_sql_injection_table_names() {
+        let conn = setup_test_staging_db();
+
+        // Seed a row to verify it survives
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('safe-row', 'Safe')",
+            [],
+        )
+        .unwrap();
+
+        for name in &["entries; DROP TABLE entries;", "test\"; --"] {
+            let result = staging_mark_deleted(&conn, name, "safe-row");
+            assert!(result.is_err(), "Should reject table name: {}", name);
+        }
+
+        // Row survives
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "Row should survive injection attempts");
+    }
+
+    #[test]
+    fn query_section_rejects_sql_injection_table_names() {
+        let conn = setup_test_staging_db();
+
+        let result = staging_query_section(&conn, "test\"; DROP TABLE test_entries; --", false);
+        assert!(result.is_err());
+
+        // Table survives
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='test_entries'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(exists, "test_entries must still exist");
+    }
+
+    #[test]
+    fn get_row_rejects_sql_injection_table_names() {
+        let conn = setup_test_staging_db();
+
+        let result = staging_get_row(&conn, "test\"; DROP TABLE test_entries; --", "any-pk");
+        assert!(result.is_err());
+    }
+
+    // -------------------------------------------------------------------
+    // S-ERRTEST §10: batch_write — mixed valid/invalid → atomic rollback
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn batch_write_atomic_rollback_on_missing_pk() {
+        let conn = setup_test_staging_db();
+
+        let mut good_cols = HashMap::new();
+        good_cols.insert("UUID".to_string(), "batch-ok-1".to_string());
+        good_cols.insert("Name".to_string(), "Good".to_string());
+
+        // Second upsert is missing the PK column — should fail
+        let mut bad_cols = HashMap::new();
+        bad_cols.insert("Name".to_string(), "NoPK".to_string());
+
+        let ops = vec![
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: good_cols,
+                is_new: true,
+            },
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: bad_cols,
+                is_new: true,
+            },
+        ];
+
+        let result = staging_batch_write(&conn, &ops).unwrap();
+        assert!(result.failed > 0, "Second op should fail: {:?}", result.errors);
+        assert_eq!(result.succeeded, 1, "Only first op ran before failure");
+
+        // Atomicity check: the successful first op must be rolled back
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'batch-ok-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "Rolled-back row from first op should not exist");
+    }
+
+    #[test]
+    fn batch_write_succeeds_when_all_ops_valid() {
+        let conn = setup_test_staging_db();
+
+        let mut cols_a = HashMap::new();
+        cols_a.insert("UUID".to_string(), "batch-a".to_string());
+        cols_a.insert("Name".to_string(), "A".to_string());
+
+        let mut cols_b = HashMap::new();
+        cols_b.insert("UUID".to_string(), "batch-b".to_string());
+        cols_b.insert("Name".to_string(), "B".to_string());
+
+        let ops = vec![
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: cols_a,
+                is_new: true,
+            },
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: cols_b,
+                is_new: true,
+            },
+        ];
+
+        let result = staging_batch_write(&conn, &ops).unwrap();
+        assert_eq!(result.succeeded, 2);
+        assert_eq!(result.failed, 0);
+        assert!(result.errors.is_empty());
+
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM test_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2, "Both rows should be committed");
+    }
+
+    #[test]
+    fn batch_write_rollback_preserves_pre_existing_data() {
+        let conn = setup_test_staging_db();
+
+        // Pre-existing row that must survive a failed batch
+        conn.execute(
+            "INSERT INTO test_entries (\"UUID\", \"Name\") VALUES ('existing', 'Existing')",
+            [],
+        )
+        .unwrap();
+
+        let mut good_cols = HashMap::new();
+        good_cols.insert("UUID".to_string(), "batch-new".to_string());
+        good_cols.insert("Name".to_string(), "New".to_string());
+
+        let ops = vec![
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: good_cols,
+                is_new: true,
+            },
+            StagingOperation::MarkDeleted {
+                table: "nonexistent_table".to_string(),
+                pk: "x".to_string(),
+            },
+        ];
+
+        let result = staging_batch_write(&conn, &ops).unwrap();
+        assert!(result.failed > 0);
+
+        // Pre-existing data must be intact
+        let name: String = conn
+            .query_row(
+                "SELECT \"Name\" FROM test_entries WHERE \"UUID\" = 'existing'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Existing", "Pre-existing row must be untouched");
+
+        // New row must NOT exist (rolled back)
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_entries WHERE \"UUID\" = 'batch-new'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn batch_write_error_report_identifies_failing_op() {
+        let conn = setup_test_staging_db();
+
+        let mut good_cols = HashMap::new();
+        good_cols.insert("UUID".to_string(), "rpt-1".to_string());
+        good_cols.insert("Name".to_string(), "Good".to_string());
+
+        let ops = vec![
+            StagingOperation::Upsert {
+                table: "test_entries".to_string(),
+                columns: good_cols,
+                is_new: true,
+            },
+            StagingOperation::MarkDeleted {
+                table: "nonexistent_table".to_string(),
+                pk: "x".to_string(),
+            },
+        ];
+
+        let result = staging_batch_write(&conn, &ops).unwrap();
+        assert_eq!(result.errors.len(), 1);
+        // Error message should reference operation index 1
+        assert!(
+            result.errors[0].contains("Operation 1"),
+            "Error should reference failing op index, got: {}",
+            result.errors[0],
+        );
+    }
+
+    // -------------------------------------------------------------------
+    // S-ERRTEST §12: DB-not-found / missing schema patterns
+    // -------------------------------------------------------------------
+    // Note: The staging CRUD functions (upsert, get_row, etc.) take a
+    // `&Connection`, not a path.  Path validation happens at the command
+    // layer in `commands/db.rs` (checks `db.is_file()` before opening).
+    // Here we test the library-level functions with:
+    //   (a) `create_staging_db` given a nonexistent schema source
+    //   (b) CRUD functions on a connection missing the embedded schema
+
+    #[test]
+    fn create_staging_db_fails_on_nonexistent_schema() {
+        let bad_schema = std::path::Path::new("/tmp/nonexistent_dir_xyz/schema.sqlite");
+        let staging_out = std::path::Path::new("/tmp/nonexistent_dir_xyz/staging.sqlite");
+
+        let result = create_staging_db(bad_schema, staging_out);
+        assert!(result.is_err(), "Should fail when schema DB doesn't exist");
+    }
+
+    #[test]
+    fn upsert_fails_on_connection_without_schema() {
+        // Simulates opening a DB that isn't actually a staging DB
+        let conn = Connection::open_in_memory().unwrap();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "x".to_string());
+
+        let result = staging_upsert_row(&conn, "test_entries", &cols, true);
+        assert!(result.is_err(), "Should fail without embedded schema");
+    }
+
+    #[test]
+    fn get_row_fails_on_connection_without_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        let result = staging_get_row(&conn, "test_entries", "any-pk");
+        assert!(result.is_err(), "Should fail without embedded schema");
+    }
+
+    #[test]
+    fn query_section_fails_on_connection_without_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        let result = staging_query_section(&conn, "test_entries", false);
+        assert!(result.is_err(), "Should fail without embedded schema");
+    }
+
+    #[test]
+    fn mark_deleted_fails_on_connection_without_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        let result = staging_mark_deleted(&conn, "test_entries", "any-pk");
+        assert!(result.is_err(), "Should fail without embedded schema");
+    }
+
+    #[test]
+    fn staging_list_sections_fails_on_connection_without_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        let result = staging_list_sections(&conn);
+        assert!(result.is_err(), "Should fail without embedded schema");
+    }
+
+    // -------------------------------------------------------------------
+    // S-ERRTEST §13: undo/redo on empty journal — graceful handling
+    // -------------------------------------------------------------------
+    // The functions call ensure_undo_journal_table + ensure_staging_authoring_table
+    // internally, so even a brand-new DB with no journal table should work.
+
+    #[test]
+    fn undo_on_fresh_staging_db_without_journal_table_returns_ok_empty() {
+        let conn = setup_test_staging_db();
+        // Deliberately do NOT call ensure_undo_journal_table — undo creates it
+
+        let result = staging_undo(&conn);
+        assert!(result.is_ok(), "Undo should not error: {:?}", result.err());
+        assert!(result.unwrap().is_empty(), "Should return empty replay list");
+    }
+
+    #[test]
+    fn redo_on_fresh_staging_db_without_journal_table_returns_ok_empty() {
+        let conn = setup_test_staging_db();
+
+        let result = staging_redo(&conn);
+        assert!(result.is_ok(), "Redo should not error: {:?}", result.err());
+        assert!(result.unwrap().is_empty(), "Should return empty replay list");
+    }
+
+    #[test]
+    fn undo_then_redo_on_fresh_db_both_graceful() {
+        let conn = setup_test_staging_db();
+
+        // Undo on empty journal
+        let undo_result = staging_undo(&conn).unwrap();
+        assert!(undo_result.is_empty());
+
+        // Redo immediately after (still nothing to redo)
+        let redo_result = staging_redo(&conn).unwrap();
+        assert!(redo_result.is_empty());
+
+        // A second round should also be fine
+        let undo_result2 = staging_undo(&conn).unwrap();
+        assert!(undo_result2.is_empty());
+    }
+
+    #[test]
+    fn redo_without_prior_undo_returns_empty() {
+        let conn = setup_test_staging_db();
+
+        // Create a snapshot and do some work
+        staging_snapshot(&conn, "initial").unwrap();
+        let mut cols = HashMap::new();
+        cols.insert("UUID".to_string(), "redo-no-undo".to_string());
+        cols.insert("Name".to_string(), "Test".to_string());
+        staging_upsert_row(&conn, "test_entries", &cols, true).unwrap();
+        staging_snapshot(&conn, "after insert").unwrap();
+
+        // Try to redo without undoing first — pointer is already at the latest boundary
+        let result = staging_redo(&conn).unwrap();
+        assert!(result.is_empty(), "Redo without prior undo should return empty");
+    }
 }

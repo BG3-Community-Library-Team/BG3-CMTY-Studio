@@ -1938,3 +1938,400 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+// ── S-ERRTEST: Error path tests for lib.rs IPC commands ─────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ErrorKind;
+    use tempfile::TempDir;
+
+    // ── Test 3: cmd_save_config — NTFS ADS path injection ──────────
+
+    #[tokio::test]
+    async fn save_config_rejects_ntfs_ads_bare_path() {
+        let result = cmd_save_config(
+            "test: content".into(),
+            "config.yaml:hidden".into(),
+            false,
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::SecurityViolation),
+            "Expected SecurityViolation, got {:?}: {}",
+            err.kind,
+            err.message
+        );
+    }
+
+    #[tokio::test]
+    async fn save_config_rejects_ntfs_ads_with_drive() {
+        let result = cmd_save_config(
+            "test: content".into(),
+            "C:\\temp\\config.yaml:hidden".into(),
+            false,
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::SecurityViolation));
+    }
+
+    // ── Test 4: cmd_save_config — Double extension ─────────────────
+
+    #[tokio::test]
+    async fn save_config_rejects_double_extension() {
+        let result = cmd_save_config(
+            "test: content".into(),
+            "C:\\temp\\config.yaml.exe".into(),
+            false,
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::InvalidInput),
+            "Expected InvalidInput, got {:?}: {}",
+            err.kind,
+            err.message
+        );
+        assert!(err.message.contains("double extension"));
+    }
+
+    // ── Test 5: cmd_save_config — Unsupported extension ────────────
+
+    #[tokio::test]
+    async fn save_config_rejects_unsupported_extension() {
+        let result = cmd_save_config(
+            "test: content".into(),
+            "C:\\temp\\config.toml".into(),
+            false,
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::InvalidInput));
+        assert!(err.message.contains("Unsupported file extension"));
+    }
+
+    #[tokio::test]
+    async fn save_config_allows_supported_extensions() {
+        // Verify valid extensions are accepted (will fail at fs::write, not validation)
+        for ext in &["yaml", "json", "txt", "lsx", "xml"] {
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join(format!("config.{ext}"));
+            let result = cmd_save_config(
+                "test: content".into(),
+                path.to_string_lossy().into_owned(),
+                false,
+            )
+            .await;
+            // Should succeed (file gets written)
+            assert!(result.is_ok(), "Extension .{ext} should be allowed but got: {:?}", result.err());
+        }
+    }
+
+    // ── Test 11: cmd_save_lsx — Non-.lsx extension ─────────────────
+
+    #[tokio::test]
+    async fn save_lsx_rejects_non_lsx_extension() {
+        let result = cmd_save_lsx(
+            vec![],
+            "TestRegion".into(),
+            "C:\\temp\\output.exe".into(),
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::InvalidInput));
+        assert!(err.message.contains(".lsx extension"));
+    }
+
+    #[tokio::test]
+    async fn save_lsx_rejects_txt_extension() {
+        let result = cmd_save_lsx(
+            vec![],
+            "TestRegion".into(),
+            "C:\\temp\\output.txt".into(),
+        )
+        .await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::InvalidInput));
+    }
+
+    // ── Test 20: cmd_read_mod_file — Path traversal rejection ──────
+
+    #[tokio::test]
+    async fn read_mod_file_rejects_path_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let mod_root = tmp.path().join("mod_root");
+        fs::create_dir_all(&mod_root).unwrap();
+        fs::write(mod_root.join("legit.txt"), "ok").unwrap();
+        // Place a file outside the mod root
+        fs::write(tmp.path().join("secret.txt"), "secret data").unwrap();
+
+        let result = cmd_read_mod_file(
+            mod_root.to_string_lossy().into_owned(),
+            "../secret.txt".into(),
+        )
+        .await;
+
+        assert!(result.is_err(), "Path traversal should be rejected");
+        let err = result.unwrap_err();
+        // The internal error from blocking() becomes Internal kind
+        assert!(
+            err.message.contains("Path traversal not allowed")
+                || err.message.contains("File not found"),
+            "Unexpected error message: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test]
+    async fn read_mod_file_rejects_windows_backslash_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let mod_root = tmp.path().join("mod_root");
+        fs::create_dir_all(&mod_root).unwrap();
+        fs::write(tmp.path().join("secret.txt"), "secret data").unwrap();
+
+        let result = cmd_read_mod_file(
+            mod_root.to_string_lossy().into_owned(),
+            "..\\secret.txt".into(),
+        )
+        .await;
+
+        assert!(result.is_err(), "Backslash path traversal should be rejected");
+    }
+
+    // ── Test 21: cmd_read_mod_file — File too large ────────────────
+
+    #[tokio::test]
+    async fn read_mod_file_rejects_oversized_file() {
+        let tmp = TempDir::new().unwrap();
+        let big_file = tmp.path().join("big.txt");
+        // MAX_MOD_FILE_SIZE is 2 MB — create a file that exceeds it
+        let data = vec![b'A'; (MAX_MOD_FILE_SIZE + 1024) as usize];
+        fs::write(&big_file, &data).unwrap();
+
+        let result = cmd_read_mod_file(
+            tmp.path().to_string_lossy().into_owned(),
+            "big.txt".into(),
+        )
+        .await;
+
+        let err = result.unwrap_err();
+        assert!(
+            err.message.contains("exceeding"),
+            "Expected size-limit error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Test 22: cmd_read_existing_config — Bad extension, oversized ─
+
+    #[tokio::test]
+    async fn read_existing_config_rejects_exe_extension() {
+        let result = cmd_read_existing_config("C:\\temp\\config.exe".into()).await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::InvalidInput));
+        assert!(err.message.contains(".yaml or .json"));
+    }
+
+    #[tokio::test]
+    async fn read_existing_config_rejects_txt_extension() {
+        let result = cmd_read_existing_config("C:\\temp\\config.txt".into()).await;
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::InvalidInput));
+    }
+
+    #[tokio::test]
+    async fn read_existing_config_rejects_oversized_file() {
+        let tmp = TempDir::new().unwrap();
+        let big_file = tmp.path().join("big.yaml");
+        // MAX_CONFIG_FILE_SIZE is 10 MB — exceed it
+        let data = vec![b'A'; (MAX_CONFIG_FILE_SIZE + 1024) as usize];
+        fs::write(&big_file, &data).unwrap();
+
+        let result =
+            cmd_read_existing_config(big_file.to_string_lossy().into_owned()).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.message.contains("too large") || err.message.contains("exceeding"),
+            "Expected size-limit error, got: {}",
+            err.message
+        );
+    }
+
+    // ── Test 23: cmd_get_selector_ids — Symlink / canonicalization ──
+    //
+    // Full symlink testing requires elevated privileges on Windows.
+    // We verify that canonicalization of nonexistent paths fails, which is
+    // the same code path that rejects symlink-injected extra paths in
+    // cmd_get_selector_ids (SEC-03).
+
+    #[test]
+    fn canonicalize_rejects_nonexistent_path() {
+        let bogus = PathBuf::from("Z:\\nonexistent_path_that_cannot_exist\\mod");
+        assert!(
+            bogus.canonicalize().is_err(),
+            "Canonicalize should fail for nonexistent paths"
+        );
+    }
+
+    // ── Test 24: cmd_rename_dir — Source missing / target exists ────
+
+    #[tokio::test]
+    async fn rename_dir_rejects_missing_source() {
+        let tmp = TempDir::new().unwrap();
+        let nonexistent = tmp.path().join("does_not_exist");
+        let target = tmp.path().join("target");
+
+        let result = cmd_rename_dir(
+            nonexistent.to_string_lossy().into_owned(),
+            target.to_string_lossy().into_owned(),
+        )
+        .await;
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::NotFound),
+            "Expected NotFound, got {:?}: {}",
+            err.kind,
+            err.message
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_dir_rejects_existing_target() {
+        let tmp = TempDir::new().unwrap();
+        let source = tmp.path().join("source_dir");
+        let target = tmp.path().join("target_dir");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        let result = cmd_rename_dir(
+            source.to_string_lossy().into_owned(),
+            target.to_string_lossy().into_owned(),
+        )
+        .await;
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::InvalidInput),
+            "Expected InvalidInput, got {:?}: {}",
+            err.kind,
+            err.message
+        );
+        assert!(err.message.contains("Target already exists"));
+    }
+
+    // ── Test 25: Unknown section handling ───────────────────────────
+    //
+    // cmd_get_vanilla_entries and cmd_get_entries_by_folder require an
+    // AppHandle and cannot be unit-tested directly. We verify the
+    // validation layers they rely on: Section::parse_name and
+    // validate_folder_name.
+
+    #[test]
+    fn parse_name_returns_none_for_unknown_section() {
+        assert!(Section::parse_name("NonExistentSection999").is_none());
+        assert!(Section::parse_name("").is_none());
+        assert!(Section::parse_name("Bogus").is_none());
+        assert!(Section::parse_name("races").is_none(), "parse_name is case-sensitive");
+    }
+
+    #[test]
+    fn parse_name_returns_some_for_known_sections() {
+        assert!(Section::parse_name("Races").is_some());
+        assert!(Section::parse_name("Progressions").is_some());
+        assert!(Section::parse_name("Feats").is_some());
+    }
+
+    #[test]
+    fn validate_folder_name_rejects_traversal() {
+        assert!(validate_folder_name("../etc/passwd").is_err());
+        assert!(validate_folder_name("..\\system32").is_err());
+        assert!(validate_folder_name("sub/folder").is_err());
+        assert!(validate_folder_name("/absolute").is_err());
+        assert!(validate_folder_name("C:drive").is_err());
+        assert!(validate_folder_name("has\0null").is_err());
+    }
+
+    #[test]
+    fn validate_folder_name_accepts_valid_names() {
+        assert!(validate_folder_name("Progressions").is_ok());
+        assert!(validate_folder_name("NonExistentSection999").is_ok());
+        assert!(validate_folder_name("ColorDefinitions").is_ok());
+    }
+
+    // ── Test 26: cmd_generate_localization_xml — Malformed XML ─────
+
+    #[test]
+    fn generate_loca_xml_handles_incomplete_xml() {
+        let entries = vec![AutoLocaInput {
+            contentuid: "h_new_entry".into(),
+            version: 1,
+            text: "Hello World".into(),
+        }];
+        // Unterminated element — parser should break on error, then
+        // new entries are appended to whatever was parsed.
+        let malformed = "<contentList><content contentuid=\"h_old\" version=\"1\">Old text";
+
+        let result = cmd_generate_localization_xml(entries, Some(malformed.into()));
+        assert!(result.is_ok(), "Should not panic on malformed XML: {:?}", result.err());
+
+        let xml = result.unwrap();
+        assert!(xml.contains("h_new_entry"), "New entry must be present in output");
+        assert!(xml.contains("Hello World"));
+    }
+
+    #[test]
+    fn generate_loca_xml_handles_total_garbage() {
+        let entries = vec![AutoLocaInput {
+            contentuid: "h_fresh".into(),
+            version: 2,
+            text: "Fresh entry".into(),
+        }];
+
+        let result = cmd_generate_localization_xml(
+            entries,
+            Some("<<<not xml at all>>>".into()),
+        );
+        assert!(result.is_ok(), "Should not panic on garbage input");
+        let xml = result.unwrap();
+        assert!(xml.contains("h_fresh"));
+        assert!(xml.contains("Fresh entry"));
+    }
+
+    #[test]
+    fn generate_loca_xml_merges_with_valid_existing() {
+        let entries = vec![AutoLocaInput {
+            contentuid: "h_existing".into(),
+            version: 3,
+            text: "Updated text".into(),
+        }];
+        let existing = r#"<?xml version="1.0" encoding="utf-8"?>
+<contentList>
+  <content contentuid="h_existing" version="1">Old text</content>
+  <content contentuid="h_other" version="1">Keep me</content>
+</contentList>"#;
+
+        let result = cmd_generate_localization_xml(entries, Some(existing.into()));
+        assert!(result.is_ok());
+        let xml = result.unwrap();
+        // Existing entry should be updated
+        assert!(xml.contains("Updated text"), "Should contain updated text");
+        assert!(!xml.contains("Old text"), "Old text should be replaced");
+        // Non-matching entry preserved
+        assert!(xml.contains("h_other"));
+        assert!(xml.contains("Keep me"));
+    }
+
+    #[test]
+    fn generate_loca_xml_handles_empty_entries() {
+        let result = cmd_generate_localization_xml(vec![], None);
+        assert!(result.is_ok());
+        let xml = result.unwrap();
+        assert!(xml.contains("contentList"));
+    }
+}

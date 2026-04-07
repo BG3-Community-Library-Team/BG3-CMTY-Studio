@@ -9,7 +9,6 @@
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import EntryRow from "./EntryRow.svelte";
   import UnifiedForm from "./UnifiedForm.svelte";
-  import ManualEntryCard from "./ManualEntryCard.svelte";
   import PaginationControls from "./PaginationControls.svelte";
   import HelpTooltip from "./HelpTooltip.svelte";
   import GroupHeader from "./GroupHeader.svelte";
@@ -19,6 +18,7 @@
   import { isLazyCategory, loadCategory } from "../lib/services/scanService.js";
   import type { VanillaCategory } from "../lib/data/vanillaRegistry.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { tooltip } from "../lib/actions/tooltip.js";
   import TagBadge from "./TagBadge.svelte";
   import EntryContextMenu from "./EntryContextMenu.svelte";
@@ -265,48 +265,6 @@
     return ordered;
   });
 
-  /** For Progressions: merge manual entries (as DiffEntry stubs) into the timeline view */
-  let timelineEntries = $derived.by((): DiffEntry[] => {
-    if (sectionResult.section !== 'Progressions') return mergedEntries;
-
-    const newEntries = stagingEntries.filter(e => e._is_new);
-    if (newEntries.length === 0) return mergedEntries;
-
-    // Filter new entries by entryFilter if present (e.g. ProgressionType === "0" for Class)
-    const filtered = entryFilter
-      ? newEntries.filter(e => String(e[`Field:${entryFilter!.field}`] ?? e[entryFilter!.field] ?? "") === entryFilter!.value)
-      : newEntries;
-    if (filtered.length === 0) return mergedEntries;
-
-    // Convert staging EntryRow → DiffEntry stub
-    const stubs: DiffEntry[] = filtered.map(e => {
-      const rawAttrs: Record<string, string> = {};
-      for (const [k, v] of Object.entries(e)) {
-        if (k.startsWith("_")) continue;
-        if (k.startsWith("Field:")) rawAttrs[k.slice(6)] = String(v ?? "");
-        else if (!k.includes(":")) rawAttrs[k] = String(v ?? "");
-      }
-      return {
-        uuid: e._pk,
-        display_name: rawAttrs.Name ?? String(e["_entryLabel"] ?? e._pk ?? 'New Entry'),
-        source_file: '',
-        entry_kind: 'New' as const,
-        changes: [],
-        node_id: 'Progression',
-        region_id: '',
-        raw_attributes: rawAttrs,
-        raw_attribute_types: {},
-        raw_children: {},
-      };
-    });
-
-    // Avoid duplicates: don't add stubs whose UUID already exists in mergedEntries
-    const existingUuids = new Set(mergedEntries.map(e => e.uuid));
-    const newStubs = stubs.filter(s => !existingUuids.has(s.uuid));
-
-    return newStubs.length > 0 ? [...mergedEntries, ...newStubs] : mergedEntries;
-  });
-
   /** Depth map for race tree indentation — populated by mergedEntries */
   let entryDepthMap: Map<string, number> = $state(new Map());
 
@@ -371,25 +329,72 @@
     return result;
   });
 
-  // PF-032: Group entries (after mergedEntries is available)
+  /**
+   * Merge new staging entries (added via UnifiedForm) into the visible entry list.
+   * Converts staging EntryRow → DiffEntry stub and appends to visibleMergedEntries,
+   * skipping any whose UUID already exists (avoids duplicates after re-scan).
+   */
+  let allVisibleEntries = $derived.by((): DiffEntry[] => {
+    const newEntries = stagingEntries.filter(e => e._is_new);
+    if (newEntries.length === 0) return visibleMergedEntries;
+
+    // Filter new entries by entryFilter if present (e.g. ProgressionType === "0" for Class)
+    const filtered = entryFilter
+      ? newEntries.filter(e => String(e[`Field:${entryFilter!.field}`] ?? e[entryFilter!.field] ?? "") === entryFilter!.value)
+      : newEntries;
+    if (filtered.length === 0) return visibleMergedEntries;
+
+    // Derive a node_id from this section's folder metadata or fall back to section name
+    const folderNode = FOLDER_NODE_MAP[sectionResult.section];
+    const defaultNodeId = folderNode?.nodeTypes?.[0] ?? sectionResult.section;
+
+    // Convert staging EntryRow → DiffEntry stub
+    const stubs: DiffEntry[] = filtered.map(e => {
+      const rawAttrs: Record<string, string> = {};
+      for (const [k, v] of Object.entries(e)) {
+        if (k.startsWith("_")) continue;
+        if (k.startsWith("Field:")) rawAttrs[k.slice(6)] = String(v ?? "");
+        else if (!k.includes(":")) rawAttrs[k] = String(v ?? "");
+      }
+      return {
+        uuid: e._pk,
+        display_name: rawAttrs.Name ?? String(e["_entryLabel"] ?? e._pk ?? 'New Entry'),
+        source_file: '',
+        entry_kind: 'New' as const,
+        changes: [],
+        node_id: defaultNodeId,
+        region_id: '',
+        raw_attributes: rawAttrs,
+        raw_attribute_types: {},
+        raw_children: {},
+      };
+    });
+
+    // Avoid duplicates: don't add stubs whose UUID already exists in visibleMergedEntries
+    const existingUuids = new Set(visibleMergedEntries.map(e => e.uuid));
+    const newStubs = stubs.filter(s => !existingUuids.has(s.uuid));
+
+    return newStubs.length > 0 ? [...visibleMergedEntries, ...newStubs] : visibleMergedEntries;
+  });
+
+  /** For Progressions: use allVisibleEntries (stubs already merged above) */
+  let timelineEntries = $derived(allVisibleEntries);
+
+  // PF-032: Group entries (after allVisibleEntries is available — includes new staging stubs)
   let groupedEntries = $derived(
-    groupEntries(visibleMergedEntries, groupingMode, sectionResult.section, (_s, u) => isEntryEnabled(u))
+    groupEntries(allVisibleEntries, groupingMode, sectionResult.section, (_s, u) => isEntryEnabled(u))
   );
 
-  // ---- Combined entry list: auto-detected + manual entries for unified pagination ----
+  // ---- Combined entry list: all visible entries for unified pagination ----
   interface CombinedEntry {
-    type: "auto" | "manual";
+    type: "auto";
     autoEntry?: import("../lib/types/index.js").DiffEntry;
-    manualEntry?: { entry: ManualEntry; globalIndex: number };
   }
 
   let combinedEntries = $derived.by((): CombinedEntry[] => {
     const entries: CombinedEntry[] = [];
-    for (const e of visibleMergedEntries) {
+    for (const e of allVisibleEntries) {
       entries.push({ type: "auto", autoEntry: e });
-    }
-    for (const me of manualEntriesCompat) {
-      entries.push({ type: "manual", manualEntry: me });
     }
     return entries;
   });
@@ -411,7 +416,7 @@
   // e.g. same progression table at different levels in BG3 mods)
   let entryKeys: string[] = $derived.by(() => {
     const counts = new Map<string, number>();
-    return visibleMergedEntries.map(entry => {
+    return allVisibleEntries.map(entry => {
       const n = counts.get(entry.uuid) ?? 0;
       counts.set(entry.uuid, n + 1);
       return n === 0 ? entry.uuid : `${entry.uuid}#${n}`;
@@ -589,6 +594,15 @@
           <span class="flex-1"></span>
 
           <button
+            class="text-xs p-1 rounded border border-[var(--th-border-700)]/50 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
+            onclick={() => projectStore.refreshSection(table)}
+            use:tooltip={"Refresh"}
+            aria-label="Refresh section"
+          >
+            <RefreshCw size={13} />
+          </button>
+
+          <button
             class="text-xs font-medium px-3 py-1 rounded border border-sky-500/40 bg-sky-700/20 text-sky-300 hover:bg-sky-700/40 transition-colors whitespace-nowrap"
             onclick={() => { showManualForm = !showManualForm; if (!showManualForm) return; uiStore.pinTab(uiStore.activeTabId); }}
           >
@@ -710,13 +724,11 @@
             {/if}
           {/each}
         {:else}
-          <!-- Flat rendering with unified pagination (auto + manual entries) -->
-          {#each paginatedCombined as item, pi (item.type === "auto" ? (entryKeys[currentPage * pageSize + pi] ?? `auto-${pi}`) : `man-${item.manualEntry?.globalIndex ?? pi}`)}
+          <!-- Flat rendering with unified pagination -->
+          {#each paginatedCombined as item, pi (item.type === "auto" ? (entryKeys[currentPage * pageSize + pi] ?? `auto-${pi}`) : `auto-${pi}`)}
             {#if item.type === "auto" && item.autoEntry}
               {@const autoEntry = item.autoEntry}
               <EntryRow entry={autoEntry} section={sectionResult.section} {table} depth={entryDepthMap.get(autoEntry.uuid) ?? 0} hasChildren={hasChildrenMap.get(autoEntry.uuid) ?? false} childCount={childCountMap.get(autoEntry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(autoEntry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
-            {:else if item.type === "manual" && item.manualEntry}
-              <ManualEntryCard entry={item.manualEntry.entry} globalIndex={item.manualEntry.globalIndex} section={sectionResult.section} {table} />
             {/if}
           {/each}
 

@@ -286,13 +286,16 @@ describe("addEntry", () => {
     expect(stagingUpsertRow).toHaveBeenCalledWith(MOCK_DB_PATHS.staging, "Races", columns, true);
   });
 
-  it("invalidates section cache", async () => {
+  it("reloads section cache after add", async () => {
     await hydrateAndLoadRaces();
     expect(projectStore.isSectionLoaded("Races")).toBe(true);
 
     vi.mocked(stagingUpsertRow).mockResolvedValue({ pk_value: "new-uuid", was_insert: true });
+    vi.mocked(stagingQuerySection).mockResolvedValue([{ UUID: "new-uuid", Name: "NewRace", _is_new: true, _is_modified: false, _is_deleted: false }]);
     await projectStore.addEntry("Races", { UUID: "new-uuid", Name: "NewRace" });
-    expect(projectStore.isSectionLoaded("Races")).toBe(false);
+    // After addEntry, section should be reloaded (not just invalidated)
+    expect(projectStore.isSectionLoaded("Races")).toBe(true);
+    expect(stagingQuerySection).toHaveBeenCalled();
   });
 
   it("marks store as dirty", async () => {
