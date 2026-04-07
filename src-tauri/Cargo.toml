@@ -7,7 +7,7 @@ rust-version = "1.80"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"

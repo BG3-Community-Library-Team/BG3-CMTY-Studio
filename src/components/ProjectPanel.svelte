@@ -2,7 +2,8 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { dirSize } from "../lib/tauri/mod-management.js";
+  import { dirSize, fileExists } from "../lib/tauri/mod-management.js";
+  import { convertFileSrc } from "@tauri-apps/api/core";
   import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
   import { open as shellOpen } from "@tauri-apps/plugin-shell";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
@@ -24,6 +25,22 @@
 
   let meta = $derived(modStore.scanResult?.mod_meta ?? null);
   let folderSize: number | null = $state(null);
+  let thumbnailUrl = $state<string | null>(null);
+
+  let thumbnailPath = $derived.by(() => {
+    const modPath = modStore.selectedModPath;
+    const folder = meta?.folder;
+    if (!modPath || !folder) return null;
+    return `${modPath}/Mods/${folder}/mod_publish_logo.png`;
+  });
+
+  $effect(() => {
+    const path = thumbnailPath;
+    if (!path) { thumbnailUrl = null; return; }
+    fileExists(path).then(exists => {
+      thumbnailUrl = exists ? convertFileSrc(path) + `?t=${Date.now()}` : null;
+    }).catch(() => { thumbnailUrl = null; });
+  });
 
   $effect(() => {
     const path = modStore.selectedModPath;
@@ -124,25 +141,34 @@
   {#if modStore.scanResult && meta}
     <!-- Mod Info -->
     <div class="mod-info">
-      <div class="thumbnail-placeholder" aria-label="Mod thumbnail">
-        <span class="text-[10px] text-[var(--th-text-500)]">No Image</span>
+      <div class="thumbnail-box" aria-label="Mod thumbnail">
+        {#if thumbnailUrl}
+          <img src={thumbnailUrl} alt="Mod thumbnail" class="thumbnail-img" />
+        {:else}
+          <span class="text-[10px] text-[var(--th-text-500)]">No Image</span>
+        {/if}
       </div>
 
       <div class="mod-details">
-        <div class="text-sm font-bold text-[var(--th-text-100)]">{meta.name || "Unnamed Mod"}</div>
-        {#if versionString}
-          <div class="text-xs text-[var(--th-text-400)]">{versionString}</div>
-        {/if}
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-sm font-bold text-[var(--th-text-100)] truncate">{meta.name || "Unnamed Mod"}</span>
+          {#if meta.author}
+            <span class="text-[11px] text-[var(--th-text-500)] truncate shrink-0">{meta.author}</span>
+          {/if}
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          {#if versionString}
+            <span class="text-xs text-[var(--th-text-400)]">{versionString}</span>
+          {/if}
+          {#if folderSize !== null}
+            <span class="text-[11px] text-[var(--th-text-500)]">{formatBytes(folderSize)}</span>
+          {/if}
+        </div>
         {#if meta.description}
           <div class="text-xs text-[var(--th-text-400)] mt-1 line-clamp-2">{meta.description}</div>
         {/if}
-        <div class="text-[11px] text-[var(--th-text-500)] mt-1">
-          {#if meta.author}{meta.author}{/if}
-          {#if meta.author && meta.tags} · {/if}
-          {#if meta.tags}{meta.tags}{/if}
-        </div>
-        {#if folderSize !== null}
-          <div class="text-[11px] text-[var(--th-text-500)] mt-0.5">{formatBytes(folderSize)}</div>
+        {#if meta.tags}
+          <div class="text-[11px] text-[var(--th-text-500)] mt-0.5">{meta.tags}</div>
         {/if}
       </div>
     </div>
@@ -205,24 +231,26 @@
             </select>
           </label>
 
-          <label class="drawer-field">
-            <span class="drawer-label">Speed</span>
-            <select class="drawer-select" bind:value={compressionLevel} aria-label="Compression speed">
-              <option value="fast">Fast</option>
-              <option value="default">Default</option>
-              <option value="max">Max</option>
-            </select>
-          </label>
+          <div class="drawer-row">
+            <label class="drawer-field" style="flex:1">
+              <span class="drawer-label">Speed</span>
+              <select class="drawer-select" bind:value={compressionLevel} aria-label="Compression speed">
+                <option value="fast">Fast</option>
+                <option value="default">Default</option>
+                <option value="max">Max</option>
+              </select>
+            </label>
 
-          <label class="drawer-field">
-            <span class="drawer-label">Priority</span>
-            <input
-              type="number"
-              class="drawer-input"
-              bind:value={priority}
-              aria-label="Mod priority"
-            />
-          </label>
+            <label class="drawer-field" style="flex:1">
+              <span class="drawer-label">Priority</span>
+              <input
+                type="number"
+                class="drawer-input"
+                bind:value={priority}
+                aria-label="Mod priority"
+              />
+            </label>
+          </div>
         </div>
       {/if}
 
@@ -272,7 +300,7 @@
     border-bottom: 1px solid var(--th-bg-700);
   }
 
-  .thumbnail-placeholder {
+  .thumbnail-box {
     width: 64px;
     height: 64px;
     border: 2px dashed var(--th-bg-600);
@@ -282,6 +310,13 @@
     justify-content: center;
     background: var(--th-bg-800);
     flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .thumbnail-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   .mod-details {
