@@ -11,6 +11,10 @@ export type DiffEntry = { uuid: string, display_name: string, source_file: strin
  */
 node_id: string, 
 /**
+ * The LSX region ID this entry belongs to (e.g. "AnimationBank", "GameplayVFXs").
+ */
+region_id: string, 
+/**
  * Raw attributes from the mod's LSX entry (key → value).
  */
 raw_attributes: { [key in string]?: string }, 

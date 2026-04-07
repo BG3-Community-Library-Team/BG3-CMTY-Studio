@@ -102,6 +102,56 @@ const STATS_DATA_CHILDREN: FolderNode[] = [
 // ─── Core Modding Folders (grouped) ──────────────────────────────────────
 
 /**
+// ─── Content Bank Regions ────────────────────────────────────────────────
+
+/**
+ * All known LSX region IDs found in Content bank files.
+ * Each region maps to a separate staging DB table with node_id "Resource".
+ * Mirrors the bank types discovered in UnpackedData/Vanilla/Shared/Public/Shared/Content/.
+ */
+const CONTENT_BANK_REGIONS = [
+  "AnimationBank",
+  "AnimationBlueprintBank",
+  "AnimationSetBank",
+  "AtmosphereBank",
+  "BlendSpaceBank",
+  "ClothColliderBank",
+  "ColorListBank",
+  "DialogBank",
+  "DiffusionProfileBank",
+  "EffectBank",
+  "FCurveBank",
+  "IKRigBank",
+  "LightCookieBank",
+  "LightingBank",
+  "MaterialBank",
+  "MaterialPresetBank",
+  "MeshProxyBank",
+  "PhysicsBank",
+  "ScriptBank",
+  "SkeletonBank",
+  "SoundBank",
+  "SplineSetBank",
+  "TerrainBrushBank",
+  "TextureBank",
+  "TileSetBank",
+  "TimelineBank",
+  "TimelineSceneBank",
+  "VirtualTextureBank",
+] as const;
+
+/** Generate FolderNode children for Content bank regions. */
+const CONTENT_BANK_CHILDREN: FolderNode[] = CONTENT_BANK_REGIONS.map(region => ({
+  name: region,
+  label: region.replace(/Bank$/, "").replace(/([A-Z])/g, " $1").trim(),
+  Section: "Content",
+  regionId: region,
+  entryFilter: { field: "region_id", value: region },
+}));
+
+// ─── Core Folders ────────────────────────────────────────────────────────
+
+/**
  * Primary folders that modders work with most frequently.
  * Related sections are combined into virtual group folders.
  */
@@ -468,17 +518,20 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
     isGroup: true,
     groupSections: ["Content", "Visuals"],
     children: [
-      { name: "Content", label: "Content Banks", Section: "Content", regionId: "Content" },
-      { name: "Visuals", label: "Visual Banks", nodeTypes: ["Visual"], Section: "Visuals", regionId: "Visuals" },
+      { name: "CharacterVisualBank", label: "Character Visuals", Section: "Visuals", regionId: "CharacterVisualBank", entryFilter: { field: "region_id", value: "CharacterVisualBank" } },
+      { name: "VisualBank", label: "Visuals", Section: "Visuals", regionId: "VisualBank", entryFilter: { field: "region_id", value: "VisualBank" } },
+      ...CONTENT_BANK_CHILDREN,
     ],
   },
   {
     name: "_VFX",
     label: "VFX",
     isGroup: true,
-    groupSections: ["VFX"],
+    groupSections: ["VFX", "DeathEffects"],
     children: [
-      { name: "VFX", label: "VFX", Section: "VFX", regionId: "VFX" },
+      { name: "VFX", label: "Gameplay VFX", Section: "VFX", regionId: "GameplayVFXs", entryFilter: { field: "node_id", value: "VFX" } },
+      { name: "PassivesVFX", label: "Passives VFX", Section: "VFX", regionId: "PassivesVFX", entryFilter: { field: "node_id", value: "Passives" } },
+      { name: "ManagedStatusVFX", label: "Managed Status VFX", Section: "VFX", regionId: "ManagedStatusVFX", entryFilter: { field: "node_id", value: "ManagedStatusVFX" } },
       { name: "DeathEffects", label: "Death Effects", Section: "DeathEffects", regionId: "DeathEffects" },
     ],
   },

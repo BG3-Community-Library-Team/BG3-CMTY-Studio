@@ -237,6 +237,7 @@ fn yaml_node_to_lsx_entry(node: &LsxYamlNode) -> LsxEntry {
         attributes,
         children,
         commented: false,
+        region_id: String::new(),
     }
 }
 

@@ -1619,7 +1619,20 @@ pub fn query_vanilla_lsx_for_scan(
     db_path: &Path,
     section: &Section,
 ) -> Result<HashMap<String, LsxEntry>, String> {
-    query_vanilla_lsx_by_region(db_path, section.region_id())
+    let region_ids = section.region_ids();
+    if region_ids.len() <= 1 {
+        // Single-region section: use the fast path
+        return query_vanilla_lsx_by_region(db_path, section.region_id());
+    }
+    // Multi-region section: merge entries from all regions
+    let mut merged = HashMap::new();
+    for region_id in region_ids {
+        match query_vanilla_lsx_by_region(db_path, region_id) {
+            Ok(entries) => merged.extend(entries),
+            Err(_) => {} // skip regions not present in DB
+        }
+    }
+    Ok(merged)
 }
 
 /// Query ALL vanilla LSX entries for a given region_id string.
@@ -1739,6 +1752,7 @@ pub fn query_vanilla_lsx_by_region(
                 attributes,
                 children: Vec::new(),
                 commented: false,
+                region_id: String::new(),
             },
         );
     }

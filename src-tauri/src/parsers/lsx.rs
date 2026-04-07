@@ -166,7 +166,14 @@ pub fn resource_to_lsx_entries(resource: &LsxResource) -> Vec<LsxEntry> {
     resource
         .regions
         .iter()
-        .flat_map(|region| flatten_region_entries(&region.nodes))
+        .flat_map(|region| {
+            flatten_region_entries(&region.nodes)
+                .into_iter()
+                .map(|mut e| {
+                    e.region_id = region.id.clone();
+                    e
+                })
+        })
         .collect()
 }
 
@@ -226,6 +233,7 @@ fn node_to_lsx_entry(node: &LsxNode) -> LsxEntry {
         attributes,
         children: flatten_child_nodes(&node.children),
         commented: node.commented,
+        region_id: String::new(),
     }
 }
 

@@ -21,6 +21,7 @@ import {
 import { getDbPaths } from "../tauri/db-management.js";
 import { toastStore } from "./toastStore.svelte.js";
 import { getErrorMessage, type OutputFormat } from "../types/index.js";
+import { CF_SECTION_TO_FOLDER } from "../data/bg3FolderStructure.js";
 
 /**
  * Derive the primary-key column name from a raw staging DB row.
@@ -63,14 +64,78 @@ function rowToEntryRow(
 
 /**
  * Convert a section name (e.g. "Races") to its staging DB table name.
- * Resolves via projectStore.sections when available — handles stats tables
- * (e.g. "stats__Spells") and multi-node regions (e.g. "lsx__Progressions__Progression").
- * Falls back to `lsx__${section}` before hydration.
+ *
+ * Uses projectStore.sections (from staging_list_sections) for live lookup,
+ * with deterministic fallbacks that match the Rust table naming convention:
+ *   - Multi-node LSX: `lsx__${regionId}__${nodeId}`
+ *   - Single-node LSX: `lsx__${regionId}`
+ *   - Stats:           `stats__${nodeId}`
+ *
+ * The LSX region IDs often differ from the UI section name (e.g. "Lists"
+ * is a UI grouping — actual regions are "SpellLists", "PassiveLists", etc.).
+ * When a nodeId is known, we search by node_id directly since data-node IDs
+ * are unique across all regions in the DB.
  */
-export function sectionToTable(section: string): string {
-  const match = projectStore.sections.find(s => s.region_id === section);
-  if (match) return match.table_name;
-  return `lsx__${section}`;
+export function sectionToTable(section: string, nodeId?: string, regionIdOverride?: string): string {
+  const folder = CF_SECTION_TO_FOLDER[section];
+  const regionId = regionIdOverride ?? folder?.regionId ?? section;
+
+  // Resolve effective nodeId: explicit param > folder nodeTypes > undefined
+  const effectiveNodeId = nodeId ?? folder?.nodeTypes?.[0];
+
+  // ── With nodeId: try exact (region + node), then node-only ──
+  if (effectiveNodeId) {
+    // Stats sections (Spells → stats__SpellData, stats__Armor, etc.)
+    const statsMatch = projectStore.sections.find(
+      s => s.source_type === "stats" && s.table_name === `stats__${effectiveNodeId}`,
+    );
+    if (statsMatch) return statsMatch.table_name;
+
+    // LSX exact match by (region_id, node_id)
+    const exact = projectStore.sections.find(
+      s => s.region_id === regionId && s.node_id === effectiveNodeId,
+    );
+    if (exact) return exact.table_name;
+
+    // LSX match by node_id alone — handles cross-region lookups where
+    // the UI section doesn't match the LSX region (e.g. Section="Lists"
+    // but SpellList lives in region "SpellLists", Section="CharacterCreation"
+    // but CharacterCreationAccessorySet lives in region "CharacterCreationAccessorySets")
+    const byNode = projectStore.sections.find(
+      s => s.node_id === effectiveNodeId && s.source_type !== "stats",
+    );
+    if (byNode) return byNode.table_name;
+
+    // Deterministic fallback: stats tables use stats__ prefix if the folder has no regionId
+    if (!folder?.regionId) return `stats__${effectiveNodeId}`;
+
+    // Deterministic fallback: multi-node LSX table
+    return `lsx__${regionId}__${effectiveNodeId}`;
+  }
+
+  // ── Without any nodeId: find by region, prefer data tables over root ──
+  const regionMatches = projectStore.sections.filter(s => s.region_id === regionId);
+  const dataTable = regionMatches.find(s => s.node_id !== "root");
+  if (dataTable) return dataTable.table_name;
+  if (regionMatches.length > 0) return regionMatches[0].table_name;
+
+  // Deterministic fallback: single-node LSX table
+  return `lsx__${regionId}`;
+}
+
+/**
+ * Check if any staging table for a section has new rows.
+ * Handles multi-table sections (like CharacterCreation) by checking all
+ * tables with matching region_id, and also checks the resolved table for
+ * cross-region sections (like Lists → SpellLists, PassiveLists, etc.).
+ */
+export function sectionHasNewEntries(section: string): boolean {
+  const folder = CF_SECTION_TO_FOLDER[section];
+  const regionId = folder?.regionId ?? section;
+  const resolvedTable = sectionToTable(section);
+  return projectStore.sections.some(
+    s => (s.region_id === regionId || s.table_name === resolvedTable) && s.node_id !== "root" && s.new_rows > 0,
+  );
 }
 
 /**
@@ -159,8 +224,12 @@ class ProjectStore {
     }
   }
 
-  /** Update one or more columns on an existing entry. */
-  async updateEntry(table: string, pk: string, columns: Record<string, string>): Promise<void> {
+  /** Update one or more columns on an existing entry.  Returns true on success. */
+  async updateEntry(table: string, pk: string, columns: Record<string, string>): Promise<boolean> {
+    if (!this.#stagingDbPath) {
+      toastStore.warning("Cannot update entry", "No project loaded");
+      return false;
+    }
     const entries = this.#entryCache.get(table);
     const entry = entries?.find(e => e._pk === pk);
 
@@ -179,6 +248,7 @@ class ProjectStore {
     try {
       await stagingUpsertRow(this.#stagingDbPath, table, columns, false);
       this.#markDirty();
+      return true;
     } catch (err) {
       if (entry) {
         for (const [key, value] of Object.entries(oldValues)) {
@@ -186,17 +256,26 @@ class ProjectStore {
         }
       }
       toastStore.warning("Failed to update entry", getErrorMessage(err));
+      return false;
     }
   }
 
-  /** Insert a brand-new entry into a section. */
-  async addEntry(table: string, columns: Record<string, string>): Promise<void> {
+  /** Insert a brand-new entry into a section.  Returns true on success. */
+  async addEntry(table: string, columns: Record<string, string>): Promise<boolean> {
+    if (!this.#stagingDbPath) {
+      toastStore.warning("Cannot add entry", "No project loaded");
+      return false;
+    }
     try {
       await stagingUpsertRow(this.#stagingDbPath, table, columns, true);
       this.invalidateSection(table);
       this.#markDirty();
+      // Refresh section list so sectionToTable lookups stay current
+      this.sections = await stagingListSections(this.#stagingDbPath);
+      return true;
     } catch (err) {
       toastStore.warning("Failed to add entry", getErrorMessage(err));
+      return false;
     }
   }
 

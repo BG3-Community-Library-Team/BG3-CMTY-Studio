@@ -43,6 +43,7 @@
   import RacePresetPanel from "./manual-entry/RacePresetPanel.svelte";
   import FormNav from "./manual-entry/FormNav.svelte";
   import { buildFormState, encodeFormState } from "../lib/utils/formInit.js";
+  import { formStateToDbColumns } from "../lib/utils/fieldCodec.js";
   import { parseHandleVersion, isContentHandle, resolveLoca } from "../lib/utils/localizationManager.js";
   import { generateUuid } from "../lib/utils/uuid.js";
   import {
@@ -67,6 +68,7 @@
     sourceFile = undefined,
     initialShowSummary = false,
     nodeId = null,
+    table: tableOverride = undefined,
   }: {
     section: string;
     onclose: () => void;
@@ -81,6 +83,7 @@
     sourceFile?: string;
     initialShowSummary?: boolean;
     nodeId?: string | null;
+    table?: string;
   } = $props();
 
   // ---- Core identity fields ----
@@ -970,24 +973,32 @@
   let combinedSpellIdOptions = $derived(computeCombinedSpellIdOptions(availableVanillaSpellIds, availableSpellIdOptions));
 
   async function submit(): Promise<void> {
-    const result = encodeFormState({
+    const encoded = encodeFormState({
       caps, uuids, displayName, booleans, fields, selectors, strings,
       children, tags, subclasses, spellFields, listType, listItems,
       listInheritList, listExcludeList, argDefinitionsList, modGuid,
       blacklist, selectedNodeType,
     });
 
+    if (Object.keys(encoded).length === 0) return;
+
+    // Convert prefixed form keys (Field:Name, Boolean:X, etc.) to raw DB column names
+    const result = formStateToDbColumns(encoded);
+
     if (Object.keys(result).length === 0) return;
+
+    const resolvedTable = tableOverride ?? sectionToTable(section, selectedNodeType || undefined);
 
     if (editIndex >= 0) {
       const pk = prefill?.UUID ?? prefill?.Name ?? uuids[0] ?? '';
-      await projectStore.updateEntry(sectionToTable(section), pk, result);
-      toastStore.success(m.manual_form_entry_updated_title(), m.manual_form_entry_updated_message({ section }));
+      const ok = await projectStore.updateEntry(resolvedTable, pk, result);
+      if (ok) toastStore.success(m.manual_form_entry_updated_title(), m.manual_form_entry_updated_message({ section }));
     } else if (autoEntryId) {
-      await projectStore.updateEntry(sectionToTable(section), autoEntryId, result);
+      const ok = await projectStore.updateEntry(resolvedTable, autoEntryId, result);
+      if (ok) toastStore.success(m.manual_form_entry_updated_title(), m.manual_form_entry_updated_message({ section }));
     } else {
-      await projectStore.addEntry(sectionToTable(section), result);
-      onsave?.(result);
+      const ok = await projectStore.addEntry(resolvedTable, result);
+      if (ok) onsave?.(result);
     }
 
     // Generate race tags on save
@@ -1001,11 +1012,12 @@
       if (toCreate.length > 0) {
         await projectStore.snapshot(m.manual_form_create_race_progressions());
         for (const entry of toCreate) {
-          await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
+          await projectStore.addEntry(sectionToTable(entry.section), formStateToDbColumns(entry.fields));
         }
       }
       for (const upd of toUpdate) {
-        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? upd.fields.UUID ?? '', upd.fields);
+        const dbCols = formStateToDbColumns(upd.fields);
+        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? dbCols.UUID ?? '', dbCols);
       }
       for (const pk of toRemove) {
         await projectStore.removeEntry(sectionToTable('Progressions'), String(pk));
@@ -1018,11 +1030,12 @@
       if (toCreate.length > 0) {
         await projectStore.snapshot(m.manual_form_create_background_goals());
         for (const entry of toCreate) {
-          await projectStore.addEntry(sectionToTable(entry.section), entry.fields);
+          await projectStore.addEntry(sectionToTable(entry.section), formStateToDbColumns(entry.fields));
         }
       }
       for (const upd of toUpdate) {
-        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? upd.fields.UUID ?? '', upd.fields);
+        const dbCols = formStateToDbColumns(upd.fields);
+        await projectStore.updateEntry(sectionToTable(upd.section), upd.pk ?? dbCols.UUID ?? '', dbCols);
       }
       for (const pk of toRemove) {
         await projectStore.removeEntry(sectionToTable('BackgroundGoals'), String(pk));

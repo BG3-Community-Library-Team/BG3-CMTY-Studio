@@ -12,10 +12,12 @@
   let {
     entries,
     section,
+    table: tableOverride = undefined,
     onSelectEntry,
   }: {
     entries: DiffEntry[];
     section: string;
+    table?: string;
     onSelectEntry?: (uuid: string) => void;
   } = $props();
 
@@ -290,6 +292,7 @@
               <div class="timeline-form-container" style:height={isFormCollapsed ? "0px" : ""} style:overflow={isFormCollapsed ? "hidden" : ""} style:padding={isFormCollapsed ? "0" : ""} onclick={(e) => e.stopPropagation()} oncontextmenu={(e) => e.stopPropagation()}>
                 <UnifiedForm
                   {section}
+                  table={tableOverride}
                   prefill={getPrefillFields(step.entry)}
                   editIndex={-1}
                   autoEntryId={step.entry.uuid}

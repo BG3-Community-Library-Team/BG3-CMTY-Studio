@@ -232,6 +232,7 @@ pub fn reconstruct_lsx_entry(
         attributes,
         children,
         commented: false,
+        region_id: String::new(),
     }
 }
 
@@ -276,6 +277,7 @@ mod tests {
         let entry = LsxEntry {
             uuid: "abc-123".to_string(),
             node_id: "Progression".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut map = HashMap::new();
                 map.insert(
@@ -311,6 +313,7 @@ mod tests {
         let entry = LsxEntry {
             uuid: "abc-123".to_string(),
             node_id: "Progression".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut map = HashMap::new();
                 map.insert(
@@ -343,6 +346,7 @@ mod tests {
         let entry = LsxEntry {
             uuid: "abc-123".to_string(),
             node_id: "Origin".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut map = HashMap::new();
                 map.insert(
@@ -369,6 +373,7 @@ mod tests {
             uuid: "abc-123".to_string(),
             node_id: "Test".to_string(),
             commented: false,
+            region_id: String::new(),
             attributes: {
                 let mut map = HashMap::new();
                 map.insert(
@@ -430,6 +435,7 @@ mod tests {
             uuid: "abc-123".to_string(),
             node_id: "Progression".to_string(),
             commented: true,
+            region_id: String::new(),
             attributes: {
                 let mut map = HashMap::new();
                 map.insert(

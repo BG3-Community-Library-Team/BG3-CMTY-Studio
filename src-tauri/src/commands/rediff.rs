@@ -293,6 +293,7 @@ mod tests {
             attributes: HashMap::new(),
             children: Vec::new(),
             commented: false,
+            region_id: String::new(),
         }]);
         let mut sources = HashMap::new();
         sources.insert(Section::Races, "Races/test.lsx".to_string());

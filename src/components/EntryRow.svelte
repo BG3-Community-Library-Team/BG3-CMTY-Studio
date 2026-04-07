@@ -24,9 +24,10 @@
   import { tooltip } from "../lib/actions/tooltip.js";
   import { m } from "../paraglide/messages.js";
 
-  let { entry, section, depth = 0, hasChildren = false, childCount = 0, oncontextmenu: onCtxMenu, onaddsubrace, ontogglechildren }: {
+  let { entry, section, table: tableOverride = undefined, depth = 0, hasChildren = false, childCount = 0, oncontextmenu: onCtxMenu, onaddsubrace, ontogglechildren }: {
     entry: DiffEntry;
     section: string;
+    table?: string;
     depth?: number;
     hasChildren?: boolean;
     childCount?: number;
@@ -38,7 +39,7 @@
   let isVanilla = $derived(entry.entry_kind === 'Vanilla');
 
   /** Staging DB table name for this section */
-  let table = $derived(sectionToTable(section));
+  let table = $derived(tableOverride ?? sectionToTable(section));
 
   /** Ensure section data is loaded in projectStore (lazy) */
   $effect(() => {
@@ -380,6 +381,7 @@
       <div class="p-2" oncontextmenu={(e) => e.stopPropagation()}>
         <UnifiedForm
           {section}
+          {table}
           prefill={prefillFields}
           editIndex={-1}
           autoEntryId={entry.uuid}

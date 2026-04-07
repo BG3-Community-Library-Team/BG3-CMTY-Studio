@@ -7,6 +7,20 @@
 import { FIELD_PREFIX, simpleKey, indexedKey } from "../data/fieldKeys.js";
 import { SELECTOR_PARAMS_BY_FN, type SelectorParamValues } from "../data/selectorDefs.js";
 
+// ── Selector serialization (positional parameter ordering) ──────────
+// Must match POSITIONAL_PARAMS in selectorParser.ts for round-trip fidelity.
+const SELECTOR_POSITIONAL: Record<string, (keyof SelectorParamValues)[]> = {
+  SelectSpells:          ["Guid", "Amount", "SwapAmount", "SelectorId"],
+  AddSpells:             ["Guid", "SelectorId", "CastingAbility", "ActionResource", "PrepareType", "CooldownType"],
+  SelectSkills:          ["Guid", "Amount", "SelectorId"],
+  SelectAbilities:       ["Guid", "Amount", "SelectorId"],
+  SelectAbilityBonus:    ["Guid", "Amount", "BonusType", "Amounts"],
+  SelectEquipment:       ["Guid", "Amount", "SelectorId"],
+  SelectSkillsExpertise: ["Guid", "Amount", "LimitToProficiency", "SelectorId"],
+  SelectPassives:        ["Guid", "Amount", "SelectorId"],
+  ReplacePassives:       ["Guid", "Amount", "SelectorId"],
+};
+
 // ── Simple (non-indexed) codec ──────────────────────────────────────
 
 export interface SimpleField {
@@ -318,4 +332,120 @@ export function bg3ToCssColor(bg3: string): string {
   const hex = bg3.replace('#', '');
   if (hex.length === 8) return `#${hex.slice(2)}`;
   return bg3;
+}
+
+// ── Form-to-DB column conversion ────────────────────────────────────
+
+/**
+ * Meta keys produced by encodeFormState that are NOT DB columns.
+ * These are stripped before writing to the staging DB.
+ */
+const META_KEYS = new Set([
+  "_entryLabel", "_nodeType", "_uuidIsArray", "modGuid", "Action", "Blacklist",
+]);
+
+/**
+ * Convert the prefixed form-state output from `encodeFormState()` into
+ * raw DB column names suitable for `stagingUpsertRow()`.
+ *
+ * The form internally uses prefixed keys (e.g. `Field:Name`, `Boolean:AllowImprovement`,
+ * `Selector:0:Action`, `String:0:Values`) but the staging DB stores raw LSX
+ * attribute names (e.g. `Name`, `AllowImprovement`, `Selectors`, `Boosts`).
+ *
+ * Mapping:
+ *  - `Field:X` / `SpellField:X` / `Boolean:X` → column `X`
+ *  - `String:N:Type` + `String:N:Values` → column `{Type}` = `{Values}`
+ *  - `Selector:N:*` → serialized back into the `Selectors` column
+ *  - Direct keys (`UUID`, `Name`, `EntryName`, `Type`, `Items`, etc.) → kept as-is
+ *  - Meta keys (`_entryLabel`, `_nodeType`, `modGuid`, etc.) → stripped
+ */
+export function formStateToDbColumns(encoded: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  // Collect indexed items for later serialization
+  const strings: Map<string, { type: string; values: string }> = new Map();
+  const selectors: Map<string, Record<string, string>> = new Map();
+
+  for (const [key, value] of Object.entries(encoded)) {
+    if (META_KEYS.has(key)) continue;
+
+    // Simple prefixed keys: Field:X, Boolean:X, SpellField:X → column X
+    if (key.startsWith(`${FIELD_PREFIX.Field}:`)) {
+      result[key.slice(FIELD_PREFIX.Field.length + 1)] = value;
+    } else if (key.startsWith(`${FIELD_PREFIX.Boolean}:`)) {
+      result[key.slice(FIELD_PREFIX.Boolean.length + 1)] = value;
+    } else if (key.startsWith(`${FIELD_PREFIX.SpellField}:`)) {
+      result[key.slice(FIELD_PREFIX.SpellField.length + 1)] = value;
+    }
+    // Indexed String:N:SubKey → accumulate for per-type serialization
+    else if (key.startsWith(`${FIELD_PREFIX.String}:`)) {
+      const rest = key.slice(FIELD_PREFIX.String.length + 1); // "N:SubKey"
+      const colonIdx = rest.indexOf(":");
+      if (colonIdx < 0) continue;
+      const idx = rest.slice(0, colonIdx);
+      const subKey = rest.slice(colonIdx + 1);
+      let entry = strings.get(idx);
+      if (!entry) { entry = { type: "", values: "" }; strings.set(idx, entry); }
+      if (subKey === "Type") entry.type = value;
+      else if (subKey === "Values") entry.values = value;
+    }
+    // Indexed Selector:N:SubKey → accumulate per-selector
+    else if (key.startsWith(`${FIELD_PREFIX.Selector}:`)) {
+      const rest = key.slice(FIELD_PREFIX.Selector.length + 1);
+      const colonIdx = rest.indexOf(":");
+      if (colonIdx < 0) continue;
+      const idx = rest.slice(0, colonIdx);
+      const subKey = rest.slice(colonIdx + 1);
+      let entry = selectors.get(idx);
+      if (!entry) { entry = {}; selectors.set(idx, entry); }
+      entry[subKey] = value;
+    }
+    // Child:*, Tag:*, Subclass:* → skip (stored in child/junction tables, not flat columns)
+    else if (
+      key.startsWith(`${FIELD_PREFIX.Child}:`) ||
+      key.startsWith(`${FIELD_PREFIX.Tag}:`) ||
+      key.startsWith(`${FIELD_PREFIX.Subclass}:`)
+    ) {
+      continue;
+    }
+    // Direct keys (UUID, EntryName, Name, Type, Items, Inherit, Exclude, etc.)
+    else {
+      result[key] = value;
+    }
+  }
+
+  // Serialize String items: each type becomes a column (e.g. "Boosts" = "ActionSurge;...")
+  for (const [, entry] of strings) {
+    if (entry.type && entry.values) {
+      result[entry.type] = entry.values;
+    }
+  }
+
+  // Serialize Selectors back to LSX format: "SelectSpells(guid,1,Cantrip);..."
+  if (selectors.size > 0) {
+    const parts: string[] = [];
+    const sortedIdxs = [...selectors.keys()].sort((a, b) => Number(a) - Number(b));
+    for (const idx of sortedIdxs) {
+      const sel = selectors.get(idx)!;
+      const fn = sel["Function"];
+      if (!fn) continue;
+      const isReplace = sel["IsReplace"] === "true";
+      const outputFn = isReplace ? "ReplacePassives" : fn;
+      const positionalKeys = SELECTOR_POSITIONAL[outputFn] ?? SELECTOR_POSITIONAL[fn] ?? ["Guid", "Amount"];
+      const args: string[] = [];
+      // Build positional args, trimming trailing empty values
+      for (const paramKey of positionalKeys) {
+        const paramVal = sel[`Param:${paramKey}`] ?? "";
+        args.push(paramVal);
+      }
+      // Remove trailing empty args
+      while (args.length > 0 && !args[args.length - 1]) args.pop();
+      parts.push(`${outputFn}(${args.join(",")})`);
+    }
+    if (parts.length > 0) {
+      result["Selectors"] = parts.join(";");
+    }
+  }
+
+  return result;
 }

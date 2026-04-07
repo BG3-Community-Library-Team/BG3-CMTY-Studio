@@ -41,6 +41,7 @@ function makeEntry(overrides: Partial<DiffEntry> = {}): DiffEntry {
       },
     ],
     node_id: "ClassDescription",
+    region_id: "",
     raw_attributes: { UUID: "test-uuid-1234", Name: "Test Entry" },
     raw_attribute_types: { UUID: "guid", Name: "FixedString" },
     raw_children: {},

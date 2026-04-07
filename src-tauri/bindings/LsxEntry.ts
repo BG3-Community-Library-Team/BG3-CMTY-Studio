@@ -9,4 +9,8 @@ export type LsxEntry = { uuid: string, node_id: string, attributes: { [key in st
 /**
  * True if this entry was parsed from an XML comment (<!-- ... -->).
  */
-commented: boolean, };
+commented: boolean, 
+/**
+ * The LSX region ID this entry belongs to (e.g. "AnimationBank", "GameplayVFXs").
+ */
+region_id: string, };

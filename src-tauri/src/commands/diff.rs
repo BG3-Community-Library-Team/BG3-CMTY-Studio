@@ -73,6 +73,7 @@ pub fn diff_section(
                         mod_value: None,
                     }],
                     node_id: mod_entry.node_id.clone(),
+                    region_id: mod_entry.region_id.clone(),
                     raw_attributes: extract_raw_attributes(mod_entry),
                     raw_attribute_types: extract_raw_attribute_types(mod_entry),
                     raw_children: extract_raw_children(mod_entry),
@@ -107,6 +108,7 @@ pub fn diff_section(
                         entry_kind: EntryKind::Modified,
                         changes,
                         node_id: mod_entry.node_id.clone(),
+                        region_id: mod_entry.region_id.clone(),
                         raw_attributes: extract_raw_attributes(mod_entry),
                         raw_attribute_types: extract_raw_attribute_types(mod_entry),
                         raw_children: extract_raw_children(mod_entry),
@@ -172,6 +174,7 @@ pub fn diff_stats(
                 entry_kind: EntryKind::Modified,
                 changes,
                 node_id: mod_entry.entry_type.clone(),
+                region_id: String::new(),
                 raw_attributes: mod_entry.data.clone(),
                 raw_attribute_types: HashMap::new(),
                 raw_children: HashMap::new(),
@@ -762,6 +765,7 @@ mod tests {
             attributes,
             children: vec![],
             commented: false,
+            region_id: String::new(),
         }
     }
 
@@ -870,6 +874,7 @@ mod tests {
         let vanilla_entry = LsxEntry {
             uuid: "uuid-1".to_string(),
             node_id: "Progression".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut m = HashMap::new();
                 m.insert(
@@ -903,6 +908,7 @@ mod tests {
             node_id: "Progression".to_string(),
             attributes: vanilla_entry.attributes.clone(),
             commented: false,
+            region_id: String::new(),
             children: vec![LsxChildGroup {
                 group_id: "SubClass".to_string(),
                 entries: vec![
@@ -975,6 +981,7 @@ mod tests {
         let vanilla_entry = LsxEntry {
             uuid: "list-uuid".to_string(),
             node_id: "SpellList".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut m = HashMap::new();
                 m.insert(
@@ -1000,6 +1007,7 @@ mod tests {
         let mod_entry = LsxEntry {
             uuid: "list-uuid".to_string(),
             node_id: "SpellList".to_string(),
+            region_id: String::new(),
             attributes: {
                 let mut m = HashMap::new();
                 m.insert(

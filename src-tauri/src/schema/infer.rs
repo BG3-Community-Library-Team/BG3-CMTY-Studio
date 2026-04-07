@@ -192,6 +192,7 @@ mod tests {
             attributes,
             children: vec![],
             commented: false,
+            region_id: String::new(),
         }
     }
 
@@ -247,6 +248,7 @@ mod tests {
             LsxEntry {
                 uuid: "uuid-1".to_string(),
                 node_id: "Race".to_string(),
+                region_id: String::new(),
                 attributes: {
                     let mut m = HashMap::new();
                     m.insert("UUID".to_string(), LsxAttribute {

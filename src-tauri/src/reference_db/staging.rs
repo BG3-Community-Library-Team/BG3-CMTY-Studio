@@ -409,11 +409,23 @@ pub fn staging_upsert_row(
         .get(table)
         .map(|ts| ts.columns.iter().map(|c| c.name.as_str()).collect())
         .unwrap_or_default();
-    let columns: HashMap<String, String> = columns
+    let mut columns: HashMap<String, String> = columns
         .iter()
         .filter(|(k, _)| known_cols.contains(k.as_str()) || *k == &pk_col)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+
+    // Auto-generate _row_id for new entries in Rowid-PK tables
+    if pk_col == "_row_id" && is_new && !columns.contains_key("_row_id") {
+        let next_id: i64 = conn
+            .query_row(
+                &format!("SELECT COALESCE(MAX(\"_row_id\"), 0) + 1 FROM \"{}\"", table),
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(1);
+        columns.insert("_row_id".to_string(), next_id.to_string());
+    }
 
     let pk_value = columns
         .get(&pk_col)
@@ -1078,8 +1090,9 @@ fn resolve_staging_table(conn: &Connection, table: &str) -> Result<String, Strin
 }
 
 /// Resolve a frontend table name (e.g. `lsx__Progressions`) to the actual
-/// table in _table_meta by matching region_id.  Returns the first match
-/// for the given region, preferring the prefix-implied source_type.
+/// table in _table_meta by matching region_id.  Prefers data tables (where
+/// node_id != 'root') over wrapper root tables, since root tables use
+/// _row_id PK and don't hold the actual mod-editable entries.
 fn resolve_table_by_region(conn: &Connection, table: &str) -> Result<Option<String>, String> {
     // Extract the region and implied source type from "lsx__RegionName" or "stats__RegionName"
     let (source_type, region) = if let Some(r) = table.strip_prefix("lsx__") {
@@ -1090,29 +1103,52 @@ fn resolve_table_by_region(conn: &Connection, table: &str) -> Result<Option<Stri
         (None, table)
     };
 
-    // Try with source_type filter first, then fall back to any match
+    // Try with source_type filter first, preferring data tables (node_id != 'root')
     if let Some(st) = source_type {
-        let result: Option<String> = conn
+        // First: data table (non-root) for this region + source type
+        let data_result: Option<String> = conn
+            .query_row(
+                "SELECT table_name FROM _table_meta WHERE region_id = ?1 AND source_type = ?2 AND node_id != 'root' LIMIT 1",
+                rusqlite::params![region, st],
+                |row| row.get(0),
+            )
+            .ok();
+        if data_result.is_some() {
+            return Ok(data_result);
+        }
+        // Fallback: any table for this region + source type (including root)
+        let any_result: Option<String> = conn
             .query_row(
                 "SELECT table_name FROM _table_meta WHERE region_id = ?1 AND source_type = ?2 LIMIT 1",
                 rusqlite::params![region, st],
                 |row| row.get(0),
             )
             .ok();
-        if result.is_some() {
-            return Ok(result);
+        if any_result.is_some() {
+            return Ok(any_result);
         }
     }
 
-    // Fallback: match by region_id alone
-    let result: Option<String> = conn
+    // Fallback: match by region_id alone, prefer data tables
+    let data_result: Option<String> = conn
+        .query_row(
+            "SELECT table_name FROM _table_meta WHERE region_id = ?1 AND node_id != 'root' LIMIT 1",
+            [region],
+            |row| row.get(0),
+        )
+        .ok();
+    if data_result.is_some() {
+        return Ok(data_result);
+    }
+
+    let any_result: Option<String> = conn
         .query_row(
             "SELECT table_name FROM _table_meta WHERE region_id = ?1 LIMIT 1",
             [region],
             |row| row.get(0),
         )
         .ok();
-    Ok(result)
+    Ok(any_result)
 }
 
 /// Get PK column name for a staging table.

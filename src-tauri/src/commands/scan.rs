@@ -233,6 +233,7 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                 entry_kind: EntryKind::New,
                 changes: vec![],
                 node_id: lsx_entry.node_id.clone(),
+                region_id: lsx_entry.region_id.clone(),
                 raw_attributes: lsx_entry
                     .attributes
                     .iter()

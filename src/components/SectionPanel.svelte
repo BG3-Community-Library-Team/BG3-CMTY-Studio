@@ -32,12 +32,14 @@
     globalFilter = "",
     displayLabel = "",
     entryFilter = undefined,
+    regionId = undefined,
     oncontextmenu: onCtxMenu,
   }: {
     sectionResult: SectionResult;
     globalFilter?: string;
     displayLabel?: string;
     entryFilter?: { field: string; value: string };
+    regionId?: string;
     oncontextmenu?: (e: MouseEvent) => void;
   } = $props();
 
@@ -45,7 +47,11 @@
   let showManualForm = $state(false);
 
   /** Staging DB table name for this section */
-  let table = $derived(sectionToTable(sectionResult.section));
+  let table = $derived(sectionToTable(
+    sectionResult.section,
+    entryFilter?.field === "node_id" ? entryFilter.value : undefined,
+    regionId,
+  ));
 
   /** Ensure section data is loaded in projectStore (lazy) */
   $effect(() => {
@@ -222,6 +228,7 @@
         entry_kind: 'Vanilla' as const,
         changes: [],
         node_id: v.node_id,
+        region_id: '',
         raw_attributes: v.parent_guid ? { ParentGuid: v.parent_guid } : {} as Record<string, string>,
         raw_attribute_types: {},
         raw_children: {},
@@ -286,6 +293,7 @@
         entry_kind: 'New' as const,
         changes: [],
         node_id: 'Progression',
+        region_id: '',
         raw_attributes: rawAttrs,
         raw_attribute_types: {},
         raw_children: {},
@@ -426,16 +434,21 @@
       });
   });
 
-  // Expansion state persists across tab switches via uiStore (defaults to expanded)
-  let expanded = $derived(uiStore.expandedSections[sectionResult.section] ?? true);
+  // Expansion state persists across tab switches via uiStore (defaults to expanded).
+  // Use a composite key (section + entryFilter) so sibling panels within the same
+  // section (e.g. Lists → Spell Lists, Passive Lists) expand/collapse independently.
+  let expandKey = $derived(
+    entryFilter ? `${sectionResult.section}::${entryFilter.field}=${entryFilter.value}` : sectionResult.section
+  );
+  let expanded = $derived(uiStore.expandedSections[expandKey] ?? true);
   function setExpanded(value: boolean) {
-    uiStore.expandedSections = { ...uiStore.expandedSections, [sectionResult.section]: value };
+    uiStore.expandedSections = { ...uiStore.expandedSections, [expandKey]: value };
   }
 
   // Watch for expansion commands from the context menu
   $effect(() => {
     const cmd = modStore.sectionExpandCommand;
-    if (cmd && cmd.section === sectionResult.section) {
+    if (cmd && (cmd.section === sectionResult.section || cmd.section === expandKey)) {
       setExpanded(cmd.expand);
       modStore.sectionExpandCommand = null;
     }
@@ -640,6 +653,7 @@
           {#if hasCaps}
             <UnifiedForm
               section={sectionResult.section}
+              {table}
               {entryFilter}
               nodeId={entryFilter?.field === "node_id" ? entryFilter.value : undefined}
               prefill={subraceParentUuid ? { 'Field:ParentGuid': subraceParentUuid } : null}
@@ -652,6 +666,7 @@
           {:else}
             <UnifiedForm
               section={sectionResult.section}
+              {table}
               onclose={() => showManualForm = false}
               onsave={(result) => {
                 showManualForm = false;
@@ -667,6 +682,7 @@
           <ProgressionTimeline
             entries={timelineEntries}
             section={sectionResult.section}
+            {table}
           />
         </div>
       {:else}
@@ -689,7 +705,7 @@
             />
             {#if groupExpandState.get(group.key) ?? true}
               {#each group.entries as entry, gi (group.originalIndices[gi] < entryKeys.length ? entryKeys[group.originalIndices[gi]] : `${group.key}-${gi}`)}
-                <EntryRow {entry} section={sectionResult.section} depth={entryDepthMap.get(entry.uuid) ?? 0} hasChildren={hasChildrenMap.get(entry.uuid) ?? false} childCount={childCountMap.get(entry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(entry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
+                <EntryRow {entry} section={sectionResult.section} {table} depth={entryDepthMap.get(entry.uuid) ?? 0} hasChildren={hasChildrenMap.get(entry.uuid) ?? false} childCount={childCountMap.get(entry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(entry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
               {/each}
             {/if}
           {/each}
@@ -698,9 +714,9 @@
           {#each paginatedCombined as item, pi (item.type === "auto" ? (entryKeys[currentPage * pageSize + pi] ?? `auto-${pi}`) : `man-${item.manualEntry?.globalIndex ?? pi}`)}
             {#if item.type === "auto" && item.autoEntry}
               {@const autoEntry = item.autoEntry}
-              <EntryRow entry={autoEntry} section={sectionResult.section} depth={entryDepthMap.get(autoEntry.uuid) ?? 0} hasChildren={hasChildrenMap.get(autoEntry.uuid) ?? false} childCount={childCountMap.get(autoEntry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(autoEntry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
+              <EntryRow entry={autoEntry} section={sectionResult.section} {table} depth={entryDepthMap.get(autoEntry.uuid) ?? 0} hasChildren={hasChildrenMap.get(autoEntry.uuid) ?? false} childCount={childCountMap.get(autoEntry.uuid) ?? 0} ontogglechildren={sectionResult.section === 'Races' ? () => toggleRaceCollapsed(autoEntry.uuid) : undefined} oncontextmenu={handleEntryContextMenu} onaddsubrace={sectionResult.section === 'Races' ? handleAddSubrace : undefined} />
             {:else if item.type === "manual" && item.manualEntry}
-              <ManualEntryCard entry={item.manualEntry.entry} globalIndex={item.manualEntry.globalIndex} section={sectionResult.section} />
+              <ManualEntryCard entry={item.manualEntry.entry} globalIndex={item.manualEntry.globalIndex} section={sectionResult.section} {table} />
             {/if}
           {/each}
 

@@ -103,6 +103,9 @@ pub struct LsxEntry {
     /// True if this entry was parsed from an XML comment (<!-- ... -->).
     #[serde(default)]
     pub commented: bool,
+    /// The LSX region ID this entry belongs to (e.g. "AnimationBank", "GameplayVFXs").
+    #[serde(default)]
+    pub region_id: String,
 }
 
 /// A single attribute on an LSX node.
@@ -658,7 +661,16 @@ impl Section {
             Section::Calendar => &["Calendar"],
             Section::CinematicArenaFrequencyGroups => &["CinematicArenaFrequencyGroups"],
             Section::CombatCameraGroups => &["CombatCameraGroups"],
-            Section::Content => &["Content"],
+            Section::Content => &[
+                "AnimationBank", "AnimationBlueprintBank", "AnimationSetBank",
+                "AtmosphereBank", "BlendSpaceBank", "ClothColliderBank", "ColorListBank",
+                "DialogBank", "DiffusionProfileBank", "EffectBank", "FCurveBank",
+                "IKRigBank", "LightCookieBank", "LightingBank", "MaterialBank",
+                "MaterialPresetBank", "MeshProxyBank", "PhysicsBank", "ScriptBank",
+                "SkeletonBank", "SoundBank", "SplineSetBank", "TerrainBrushBank",
+                "TextureBank", "TileSetBank", "TimelineBank", "TimelineSceneBank",
+                "VirtualTextureBank",
+            ],
             Section::CustomDice => &["CustomDice"],
             Section::DefaultValues => &["DefaultValues"],
             Section::DifficultyClasses => &["DifficultyClasses"],
@@ -724,6 +736,9 @@ pub struct DiffEntry {
     /// The LSX node_id for this entry (e.g. "SpellList", "PassiveList", "Progression").
     #[serde(default)]
     pub node_id: String,
+    /// The LSX region ID this entry belongs to (e.g. "AnimationBank", "GameplayVFXs").
+    #[serde(default)]
+    pub region_id: String,
     /// Raw attributes from the mod's LSX entry (key → value).
     #[serde(default)]
     pub raw_attributes: HashMap<String, String>,

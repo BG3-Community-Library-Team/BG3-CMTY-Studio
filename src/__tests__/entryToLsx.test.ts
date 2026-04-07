@@ -11,6 +11,7 @@ function entry(overrides: Partial<DiffEntry> = {}): DiffEntry {
     entry_kind: "Modified",
     changes: [],
     node_id: "Progression",
+    region_id: "",
     raw_attributes: { UUID: "test-uuid", Name: "TestEntry" },
     raw_attribute_types: { UUID: "guid", Name: "FixedString" },
     raw_children: {},

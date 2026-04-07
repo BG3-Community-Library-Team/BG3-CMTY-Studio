@@ -19,10 +19,12 @@
     entry,
     globalIndex,
     section,
+    table: tableOverride = undefined,
   }: {
     entry: ManualEntry;
     globalIndex: number;
     section: string;
+    table?: string;
   } = $props();
 
   let editing = $state(false);
@@ -96,7 +98,7 @@
   function removeEntry() {
     const label = getLabel(entry.fields);
     const pk = entry.fields["UUID"] ?? entry.fields["EntryName"] ?? "";
-    projectStore.removeEntry(sectionToTable(section), pk);
+    projectStore.removeEntry(tableOverride ?? sectionToTable(section), pk);
     toastStore.info(m.manual_entry_card_removed_title(), label);
   }
 
@@ -139,6 +141,7 @@
     <div class="px-2 py-1">
       <UnifiedForm
         {section}
+        table={tableOverride}
         prefill={editFields}
         editIndex={globalIndex}
         editComment={entry.comment ?? ""}

@@ -300,6 +300,8 @@ export interface DiffEntry {
   changes: Change[];
   /** The LSX node_id for this entry (e.g. "SpellList", "PassiveList", "Progression"). */
   node_id: string;
+  /** The LSX region ID this entry belongs to (e.g. "AnimationBank", "GameplayVFXs"). */
+  region_id: string;
   /** Raw attributes from the mod's LSX entry (key → value). */
   raw_attributes: Record<string, string>;
   /** LSX attribute types for each raw_attribute key (key → type string, e.g. "FixedString", "guid"). */
