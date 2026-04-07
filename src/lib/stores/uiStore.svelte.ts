@@ -40,7 +40,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
@@ -49,6 +49,8 @@ export interface EditorTab {
   filePath?: string;
   /** When true, this tab is a temporary preview (italic label, replaced by next preview) */
   preview?: boolean;
+  /** Script language for script-editor tabs */
+  language?: string;
 }
 
 class UiStore {
@@ -226,6 +228,37 @@ class UiStore {
     if (!this.expandedNodes[path]) {
       this.expandedNodes = { ...this.expandedNodes, [path]: true };
     }
+  }
+
+  /** Auto-detect script language from file path and extension */
+  detectScriptLanguage(filePath: string): string {
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+    // Osiris goal files: .txt in Story/RawFiles/Goals/
+    if (ext === "txt" && filePath.includes("Story/RawFiles/Goals/")) return "osiris";
+    switch (ext) {
+      case "lua": return "lua";
+      case "khn": return "khn";
+      case "anc": case "ann": case "anm": return "anubis";
+      case "clc": case "cln": case "clm": return "constellations";
+      case "json": return "json";
+      case "yaml": case "yml": return "yaml";
+      default: return "lua";
+    }
+  }
+
+  /** Open a script file in a script-editor tab */
+  openScriptTab(filePath: string, language?: string): void {
+    const lang = language ?? this.detectScriptLanguage(filePath);
+    const fileName = filePath.split("/").pop() ?? filePath;
+    this.openTab({
+      id: `script:${filePath}`,
+      label: fileName,
+      type: "script-editor",
+      filePath,
+      language: lang,
+      icon: "📝",
+      preview: false,
+    });
   }
 
   /** Reset UI state (e.g., when closing a mod) */

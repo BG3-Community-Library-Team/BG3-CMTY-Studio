@@ -10,6 +10,7 @@ pub mod pak;
 pub mod parsers;
 pub mod reference_db;
 pub mod schema;
+pub mod script;
 pub mod serializers;
 pub mod validation;
 
@@ -1935,6 +1936,11 @@ pub fn run() {
             commands::db::cmd_validate_handlers,
             commands::export::cmd_save_project,
             commands::package::cmd_package_mod,
+            commands::scripts::cmd_script_read,
+            commands::scripts::cmd_script_write,
+            commands::scripts::cmd_script_delete,
+            commands::scripts::cmd_script_list,
+            commands::scripts::cmd_script_create_from_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

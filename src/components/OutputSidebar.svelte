@@ -9,11 +9,9 @@
   import type { Section } from "../lib/types/index.js";
   import { m } from "../paraglide/messages.js";
   import ExportBar from "./ExportBar.svelte";
-  import ExportModModal from "./ExportModModal.svelte";
   import { saveProject } from "../lib/tauri/save.js";
   import { getDbPaths } from "../lib/tauri/db-management.js";
 
-  let showExportModal = $state(false);
   let isSaving = $state(false);
 
   async function handleSave() {
@@ -121,12 +119,8 @@
 
   <!-- Export bar -->
   <div class="px-4 py-3 border-t border-[var(--th-border-700)]">
-    <ExportBar lsxPreviewText={lsxPreviewText} onexportmod={() => showExportModal = true} onsave={handleSave} saving={isSaving} />
+    <ExportBar lsxPreviewText={lsxPreviewText} onexportmod={() => window.dispatchEvent(new CustomEvent('open-export-mod-modal'))} onsave={handleSave} saving={isSaving} />
   </div>
 </aside>
-
-{#if showExportModal}
-  <ExportModModal onclose={() => showExportModal = false} />
-{/if}
 
 

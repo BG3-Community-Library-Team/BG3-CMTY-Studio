@@ -24,6 +24,8 @@
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
   import Plus from "@lucide/svelte/icons/plus";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { SectionResult, DiffEntry } from "../lib/types/index.js";
   import type { ModFileEntry } from "../lib/utils/tauri.js";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -39,8 +41,19 @@
     txt: "var(--th-badge-txt)",
     xml: "var(--th-badge-xml)",
     cfg: "var(--th-badge-cfg)",
+    khn: "var(--th-badge-khn)",
+    anc: "var(--th-badge-anubis)", ann: "var(--th-badge-anubis)", anm: "var(--th-badge-anubis)",
+    clc: "var(--th-badge-constellations)", cln: "var(--th-badge-constellations)", clm: "var(--th-badge-constellations)",
   };
   const EXT_BADGE_FALLBACK = "var(--th-badge-fallback)";
+
+  /** Extensions that should open in the script editor instead of file preview */
+  const SCRIPT_EXTENSIONS = new Set(["lua", "khn", "anc", "ann", "anm", "clc", "cln", "clm"]);
+
+  /** Check if a file extension is a script type that opens in the editor */
+  function isScriptFile(ext?: string): boolean {
+    return !!ext && SCRIPT_EXTENSIONS.has(ext.toLowerCase());
+  }
 
   /** A node in the mod file tree. */
   interface FileTreeNode {
@@ -181,6 +194,29 @@
 
   function hideContextMenu() {
     ctxVisible = false;
+    fileCtxVisible = false;
+    fileCtxNode = null;
+  }
+
+  // ── File tree context menu state ──
+  let fileCtxVisible = $state(false);
+  let fileCtxX = $state(0);
+  let fileCtxY = $state(0);
+  let fileCtxNode: FileTreeNode | null = $state(null);
+
+  function showFileContextMenu(e: MouseEvent, node: FileTreeNode) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+    fileCtxX = e.clientX / zoom;
+    fileCtxY = e.clientY / zoom;
+    fileCtxNode = node;
+    fileCtxVisible = true;
+  }
+
+  function hideFileContextMenu() {
+    fileCtxVisible = false;
+    fileCtxNode = null;
   }
 
   /** Whether the context-menu target has a filesystem path that maps to a real directory */
@@ -468,6 +504,7 @@
     if (tab.type === "lsx-file") return tab.category ?? "";
     if (tab.type === "meta-lsx") return "meta.lsx";
     if (tab.type === "file-preview") return `file:${tab.filePath ?? ""}`;
+    if (tab.type === "script-editor") return `file:${tab.filePath ?? ""}`;
     return "";
   });
 
@@ -491,6 +528,19 @@
   function openFilePreview(fileNode: FileTreeNode, preview = true): void {
     const fileName = fileNode.name;
     const fullRelPath = `${modsFilePrefix}${fileNode.relPath}`;
+
+    // Script files open in the script editor
+    if (isScriptFile(fileNode.extension)) {
+      uiStore.openScriptTab(fullRelPath);
+      return;
+    }
+
+    // Osiris goal files (.txt in Story/RawFiles/Goals/) open in script editor
+    if (fileNode.extension === "txt" && fileNode.relPath.includes("Story/RawFiles/Goals/")) {
+      uiStore.openScriptTab(fullRelPath);
+      return;
+    }
+
     uiStore.openTab({
       id: `file:${fullRelPath}`,
       label: fileName,
@@ -803,6 +853,7 @@
                       class:active-node={isActiveFile(node.relPath)}
                       onclick={() => openFilePreview(node)}
                       ondblclick={() => openFilePreview(node, false)}
+                      oncontextmenu={(e) => showFileContextMenu(e, node)}
                     >
                       <span class="w-3.5 shrink-0"></span>
                       <File size={14} class="text-[var(--th-text-emerald-400)]" />
@@ -894,6 +945,45 @@
         {m.file_explorer_copy_path()}
       </button>
     {/if}
+  </ContextMenu>
+{/if}
+
+<!-- File tree context menu -->
+{#if fileCtxVisible && fileCtxNode}
+  <ContextMenu x={fileCtxX} y={fileCtxY} header={fileCtxNode.name} onclose={hideFileContextMenu}>
+    {#if isScriptFile(fileCtxNode.extension)}
+      <button
+        class="ctx-item"
+        onclick={() => { const fullPath = `${modsFilePrefix}${fileCtxNode!.relPath}`; uiStore.openScriptTab(fullPath); hideFileContextMenu(); }}
+        role="menuitem"
+      >
+        <Pencil size={12} class="shrink-0" />
+        {m.file_explorer_edit_script()}
+      </button>
+      <button
+        class="ctx-item"
+        onclick={() => { /* TODO: soft-delete in Sprint 23 */ hideFileContextMenu(); }}
+        role="menuitem"
+      >
+        <Trash2 size={12} class="shrink-0" />
+        {m.file_explorer_delete_script()}
+      </button>
+    {/if}
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        const modPath = modStore.selectedModPath;
+        if (modPath && fileCtxNode) {
+          try { await openPath(`${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`); }
+          catch (e) { toastStore.error(m.file_explorer_open_failed_title(), String(e)); }
+        }
+        hideFileContextMenu();
+      }}
+      role="menuitem"
+    >
+      <File size={12} class="shrink-0" />
+      {m.file_explorer_open_in_file_manager()}
+    </button>
   </ContextMenu>
 {/if}
 

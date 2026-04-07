@@ -23,6 +23,7 @@
     "file-preview": FileText,
     settings: Cog,
     "theme-gallery": Palette,
+    "script-editor": FileCode2,
   };
 
   let tabs = $derived(uiStore.openTabs);

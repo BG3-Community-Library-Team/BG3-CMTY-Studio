@@ -45,6 +45,7 @@
 
   let filter = $state("");
   let showManualForm = $state(false);
+  let refreshing = $state(false);
 
   /** Staging DB table name for this section */
   let table = $derived(sectionToTable(
@@ -595,11 +596,12 @@
 
           <button
             class="text-xs p-1 rounded border border-[var(--th-border-700)]/50 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
-            onclick={() => projectStore.refreshSection(table)}
+            onclick={async () => { refreshing = true; await projectStore.refreshSection(table); refreshing = false; }}
+            disabled={refreshing}
             use:tooltip={"Refresh"}
             aria-label="Refresh section"
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={13} class={refreshing ? 'animate-spin' : ''} />
           </button>
 
           <button

@@ -3,6 +3,7 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { projectStore, sectionToTable, sectionHasNewEntries } from "../lib/stores/projectStore.svelte.js";
   import type { SectionResult, Section, DiffEntry } from "../lib/types/index.js";
+  import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
   import { SECTIONS_ORDERED } from "../lib/types/index.js";
   import { BG3_CORE_FOLDERS, type FolderNode } from "../lib/data/bg3FolderStructure.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
@@ -10,6 +11,7 @@
   import MetaLsxForm from "./MetaLsxForm.svelte";
   import LocalizationPanel from "./LocalizationPanel.svelte";
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
+  import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
@@ -471,6 +473,14 @@
     {:else if activeTab.type === "file-preview"}
       {#if activeTab.filePath}
         <FilePreviewPanel filePath={activeTab.filePath} />
+      {/if}
+    {:else if activeTab.type === "script-editor"}
+      {#if activeTab.filePath}
+        <ScriptEditorPanel
+          filePath={activeTab.filePath}
+          language={(activeTab.language ?? "lua") as ScriptLanguage}
+          readonly={false}
+        />
       {/if}
     {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
       <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />

@@ -168,7 +168,14 @@ class ProjectStore {
 
   // === Private State ===
   #entryCache: Map<string, EntryRow[]> = $state(new Map());
+  /** Bumped on every cache mutation to guarantee reactive propagation. */
+  #cacheVersion: number = $state(0);
   #stagingDbPath: string = "";
+
+  /** Public read-only access to the staging DB path. */
+  get stagingDbPath(): string {
+    return this.#stagingDbPath;
+  }
   #writeGeneration: number = 0;
   #savedGeneration: number = 0;
   #snapshotCount: number = 0;
@@ -196,6 +203,7 @@ class ProjectStore {
         } catch {
           // Best-effort rollback — invalidate cache so next load re-fetches
           this.#entryCache.delete(table);
+          this.#cacheVersion++;
         }
         toastStore.warning("Failed to update entry", getErrorMessage(err));
       }
@@ -217,6 +225,7 @@ class ProjectStore {
     if (formatMeta) this.format = formatMeta as OutputFormat;
 
     this.#entryCache.clear();
+    this.#cacheVersion++;
     this.#writeGeneration = 0;
     this.#savedGeneration = 0;
     this.dirty = false;
@@ -237,6 +246,7 @@ class ProjectStore {
     const sourceType = this.#sourceTypeForTable(table);
     const entries: EntryRow[] = rows.map(row => rowToEntryRow(row, table, sourceType));
     this.#entryCache.set(table, entries);
+    this.#cacheVersion++;
     return entries;
   }
 
@@ -258,6 +268,7 @@ class ProjectStore {
 
     const wasDeleted = entry._is_deleted;
     entry._is_deleted = !wasDeleted;
+    this.#cacheVersion++;
 
     try {
       if (wasDeleted) {
@@ -268,6 +279,7 @@ class ProjectStore {
       this.#markDirty();
     } catch (err) {
       entry._is_deleted = wasDeleted;
+      this.#cacheVersion++;
       const ipcOp = wasDeleted
         ? () => stagingUnmarkDeleted(this.#stagingDbPath, table, pk)
         : () => stagingMarkDeleted(this.#stagingDbPath, table, pk);
@@ -293,6 +305,7 @@ class ProjectStore {
         entry[key] = value;
       }
       entry._is_modified = true;
+      this.#cacheVersion++;
     }
 
     const key = `${table}::${pk}`;
@@ -340,17 +353,20 @@ class ProjectStore {
     if (entry && !wasNew) {
       entry._is_deleted = true;
     }
+    this.#cacheVersion++;
 
     try {
       await stagingMarkDeleted(this.#stagingDbPath, table, pk);
       if (wasNew && entries && entryIndex >= 0) {
         entries.splice(entryIndex, 1);
+        this.#cacheVersion++;
       }
       this.#markDirty();
     } catch (err) {
       if (entry && !wasNew) {
         entry._is_deleted = false;
       }
+      this.#cacheVersion++;
       this.#enqueueRetry(
         async () => {
           await stagingMarkDeleted(this.#stagingDbPath, table, pk);
@@ -380,6 +396,7 @@ class ProjectStore {
           entry._is_deleted = deleted;
         }
       }
+      this.#cacheVersion++;
     }
 
     try {
@@ -393,6 +410,7 @@ class ProjectStore {
             entry._is_deleted = old;
           }
         }
+        this.#cacheVersion++;
       }
       this.#enqueueRetry(
         async () => {
@@ -407,6 +425,7 @@ class ProjectStore {
   /** Discard cached entries for a section and reload from the staging DB. */
   async resetSection(table: string): Promise<void> {
     this.#entryCache.delete(table);
+    this.#cacheVersion++;
     try {
       await this.loadSection(table);
     } catch (err) {
@@ -516,6 +535,7 @@ class ProjectStore {
     this.dbCorrupted = false;
     this.#retryQueue = [];
     this.#entryCache.clear();
+    this.#cacheVersion++;
     this.#stagingDbPath = "";
     this.#writeGeneration = 0;
     this.#savedGeneration = 0;
@@ -528,6 +548,10 @@ class ProjectStore {
 
   /** Synchronously return cached entries for a table (empty array if not yet loaded). */
   getEntries(table: string): EntryRow[] {
+    // Read version counter to establish a reactive dependency — guarantees
+    // $derived consumers re-evaluate after any cache mutation (belt-and-suspenders
+    // for SvelteMap proxy edge cases in async flows).
+    void this.#cacheVersion;
     return this.#entryCache.get(table) ?? [];
   }
 
@@ -539,6 +563,7 @@ class ProjectStore {
   /** Remove a section from cache so the next {@link loadSection} call re-fetches from DB. */
   invalidateSection(table: string): void {
     this.#entryCache.delete(table);
+    this.#cacheVersion++;
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -550,6 +575,7 @@ class ProjectStore {
     if (!this.#stagingDbPath) return;
     const loadedTables = [...this.#entryCache.keys()];
     this.#entryCache.clear();
+    this.#cacheVersion++;
     this.#retryQueue = [];
     this.pendingWriteCount = 0;
     this.syncError = null;

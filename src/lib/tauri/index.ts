@@ -13,3 +13,4 @@ export * from "./secure-storage.js";
 export * from "./staging.js";
 export * from "./save.js";
 export * from "./packaging.js";
+export * from "./scripts.js";

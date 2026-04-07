@@ -90,10 +90,19 @@
   let modPath = $derived(modStore.selectedModPath);
   let modFolder = $derived(scanResult?.mod_meta.folder ?? "");
 
-  // Initialize default pak output path
+  // Derive parent directory of the project for default pak output
+  let modParentDir = $derived(() => {
+    if (!modPath) return "";
+    const sep = modPath.includes("\\") ? "\\" : "/";
+    const idx = modPath.lastIndexOf(sep);
+    return idx > 0 ? modPath.slice(0, idx) : "";
+  });
+
+  // Initialize default pak output path (to parent dir of project)
   $effect(() => {
     if (modFolder && !pakOutputPath) {
-      pakOutputPath = `${modFolder}.pak`;
+      const parent = modParentDir();
+      pakOutputPath = parent ? `${parent}${parent.includes("\\") ? "\\" : "/"}${modFolder}.pak` : `${modFolder}.pak`;
     }
   });
 

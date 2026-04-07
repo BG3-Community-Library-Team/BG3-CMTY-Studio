@@ -6,6 +6,7 @@
   import OutputSidebar from "./components/OutputSidebar.svelte";
   import FirstRunModal from "./components/FirstRunModal.svelte";
   import CreateModModal from "./components/CreateModModal.svelte";
+  import ExportModModal from "./components/ExportModModal.svelte";
   import PanelSplitter from "./components/PanelSplitter.svelte";
   import ToastContainer from "./components/ToastContainer.svelte";
   import StatusBar from "./components/StatusBar.svelte";
@@ -71,6 +72,7 @@
   });
 
   let showFirstRunModal = $state(false);
+  let showExportModModal = $state(false);
 
   // ERR-006 Option C: Global unhandled error/rejection safety net
   $effect(() => {
@@ -93,6 +95,13 @@
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
     };
+  });
+
+  // Listen for global export modal open event (from OutputSidebar export button)
+  $effect(() => {
+    function onOpenExportModal() { showExportModModal = true; }
+    window.addEventListener("open-export-mod-modal", onOpenExportModal);
+    return () => window.removeEventListener("open-export-mod-modal", onOpenExportModal);
   });
 
   // PF-034: Register static commands
@@ -176,6 +185,17 @@
         enabled: () => true,
         execute: () => {
           uiStore.showCreateModModal = true;
+        },
+      },
+      {
+        id: "action.exportMod",
+        label: m.command_label_export_mod(),
+        category: "action",
+        icon: "⚡",
+        shortcut: "Ctrl+Shift+E",
+        enabled: () => !!modStore.scanResult,
+        execute: () => {
+          showExportModModal = true;
         },
       },
       {
@@ -826,6 +846,10 @@
 </div>
 
 <CreateModModal />
+
+{#if showExportModModal}
+  <ExportModModal onclose={() => showExportModModal = false} />
+{/if}
 
 <!-- USE-03: First-run onboarding modal -->
 <FirstRunModal bind:show={showFirstRunModal} />

@@ -166,6 +166,10 @@ html {
   --th-badge-xml: #f97316;
   --th-badge-cfg: #eab308;
   --th-badge-cf: #0ea5e9;
+  --th-badge-khn: #ec4899;
+  --th-badge-anubis: #f97316;
+  --th-badge-constellations: #0ea5e9;
+  --th-badge-osiris: #facc15;
   --th-badge-fallback: #6b7280;
   /* Card tokens (derived from surface values) */
   --th-card-bg: var(--th-bg-800);
@@ -299,6 +303,10 @@ html {
   --th-badge-xml: var(--custom-badge-xml, #f97316);
   --th-badge-cfg: var(--custom-badge-cfg, #eab308);
   --th-badge-cf: var(--custom-badge-cf, #0ea5e9);
+  --th-badge-khn: var(--custom-badge-khn, #ec4899);
+  --th-badge-anubis: var(--custom-badge-anubis, #f97316);
+  --th-badge-constellations: var(--custom-badge-constellations, #0ea5e9);
+  --th-badge-osiris: var(--custom-badge-osiris, #facc15);
   --th-badge-fallback: var(--custom-badge-fallback, #6b7280);
   /* Entry tag / type-hint badge colors */
   --th-badge-new-bg: var(--custom-badge-new-bg, rgba(109,40,217,.5));
