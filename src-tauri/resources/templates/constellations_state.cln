@@ -1,0 +1,27 @@
+-- {{FILE_NAME}}
+-- Constellations behavior state
+-- Created by CMTY Studio
+
+local State = {}
+
+function State:OnInit(args)
+    -- Called when the state is first initialized
+end
+
+function State:OnEnter(args)
+    -- Called when entering this state
+end
+
+function State:OnLeave(args)
+    -- Called when leaving this state
+end
+
+function State:OnInterrupt(args)
+    -- Called when the state is interrupted
+end
+
+function State:OnUpdate(dt)
+    -- Called each tick while active
+end
+
+return State

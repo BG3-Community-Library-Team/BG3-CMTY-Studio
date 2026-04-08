@@ -549,7 +549,7 @@ describe("highlightFrameworkLua", () => {
   });
 
   it("highlights framework-specific keywords", () => {
-    for (const kw of ["State", "Config", "Proxy", "Action", "Event", "Handler", "Listener", "Register", "Unregister"]) {
+    for (const kw of ["State", "Config", "Proxy", "AnubisModule", "StateRef", "Action", "Selector", "ImmediateSelector", "Sequence", "Parallel", "RandomSelector", "TriggerOutput", "ExtSocket"]) {
       const result = highlightFrameworkLua(kw);
       expect(result).toContain("hl-key");
     }

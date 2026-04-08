@@ -1,0 +1,21 @@
+-- {{FILE_NAME}}
+-- Anubis behavior config
+-- Created by CMTY Studio
+
+local Config = {}
+
+Config.ModuleName = "{{MOD_NAME}}"
+
+Config.States = {
+    Default = {
+        Script = "{{STATE_SCRIPT}}",
+        Params = {},
+    },
+}
+
+Config.Transitions = {
+    -- Define state transitions here
+    -- { From = "Default", To = "NextState", Condition = function(self) return false end },
+}
+
+return Config

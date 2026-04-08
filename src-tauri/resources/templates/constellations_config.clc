@@ -1,0 +1,30 @@
+-- {{FILE_NAME}}
+-- Constellations behavior config
+-- Created by CMTY Studio
+
+local Config = {}
+
+Config.ModuleName = "{{MOD_NAME}}"
+
+Config.States = {
+    Default = {
+        Script = "{{STATE_SCRIPT}}",
+        Params = {},
+    },
+}
+
+Config.Inputs = {
+    -- Define input sockets
+    -- { Name = "Activate", Type = EParamType.Bool },
+}
+
+Config.Outputs = {
+    -- Define output sockets
+    -- { Name = "OnActivated", Type = EParamType.Bool },
+}
+
+Config.Transitions = {
+    -- Define state transitions
+}
+
+return Config

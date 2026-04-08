@@ -2134,6 +2134,8 @@ pub fn run() {
             commands::scan::cmd_import_se_scripts,
             commands::scan::cmd_import_osiris_goals,
             commands::scan::cmd_import_khonsu_scripts,
+            commands::scan::cmd_import_anubis_scripts,
+            commands::scan::cmd_import_constellations_scripts,
             commands::filesystem::cmd_touch_file,
             commands::filesystem::cmd_create_mod_directory,
             commands::filesystem::cmd_move_mod_file,

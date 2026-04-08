@@ -235,7 +235,7 @@ export function highlightKhonsu(raw: string): string {
  */
 export function highlightFrameworkLua(raw: string): string {
   if (/^\s*--/.test(raw)) return hl(raw, 'comment');
-  const re = /--.*$|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(State|Config|Proxy|Action|Event|Handler|Listener|OnCreate|OnDestroy|OnActivate|OnDeactivate|OnTurnStart|OnTurnEnd|Register|Unregister)\b|\b(\d+(?:\.\d+)?)\b/g;
+  const re = /--.*$|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(self\.\w+)|(EParamType\.\w+)|((?:socket)?[Ee]vents\.\w+)|\b(State|Config|Proxy|AnubisModule|StateRef|Action|Selector|ImmediateSelector|Sequence|Parallel|RandomSelector|TriggerOutput|ExtSocket)\b|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(\d+(?:\.\d+)?)\b/g;
   let result = '';
   let pos = 0;
   let m: RegExpExecArray | null;
@@ -247,11 +247,17 @@ export function highlightFrameworkLua(raw: string): string {
     } else if (m[1] !== undefined) {
       result += hl(m[1], 'string');
     } else if (m[2] !== undefined) {
-      result += hl(m[2], 'keyword');
+      result += hl(m[2], 'attr');       // self.OnXxx lifecycle hooks
     } else if (m[3] !== undefined) {
-      result += hl(m[3], 'key');
+      result += hl(m[3], 'string');     // EParamType.* param types (cyan)
     } else if (m[4] !== undefined) {
-      result += hl(m[4], 'num');
+      result += hl(m[4], 'bool');       // events.* / socketEvents.* (green)
+    } else if (m[5] !== undefined) {
+      result += hl(m[5], 'key');        // Framework constructors (bold)
+    } else if (m[6] !== undefined) {
+      result += hl(m[6], 'keyword');    // Standard Lua keywords
+    } else if (m[7] !== undefined) {
+      result += hl(m[7], 'num');        // Numbers
     }
     pos = m.index + m[0].length;
   }

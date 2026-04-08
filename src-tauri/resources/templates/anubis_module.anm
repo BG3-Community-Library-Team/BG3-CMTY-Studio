@@ -1,0 +1,17 @@
+-- {{FILE_NAME}}
+-- Anubis behavior module
+-- Created by CMTY Studio
+
+local AnubisModule = {}
+
+AnubisModule.Name = "{{MOD_NAME}}"
+
+function AnubisModule:Register()
+    -- Register actions, selectors, and event handlers
+end
+
+function AnubisModule:OnInit()
+    -- Module initialization
+end
+
+return AnubisModule

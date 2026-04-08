@@ -37,7 +37,7 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
-  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure } from "../lib/tauri/scripts.js";
+  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate } from "../lib/tauri/scripts.js";
   import ScriptCreationModal from "./ScriptCreationModal.svelte";
   import Copy from "@lucide/svelte/icons/copy";
   import Scissors from "@lucide/svelte/icons/scissors";
@@ -57,6 +57,16 @@
     clc: "var(--th-badge-constellations)", cln: "var(--th-badge-constellations)", clm: "var(--th-badge-constellations)",
   };
   const EXT_BADGE_FALLBACK = "var(--th-badge-fallback)";
+
+  /** Detect if a file is an Osiris goal (*.txt under Story/RawFiles/Goals/) */
+  function getOsirisBadge(relPath: string, ext?: string): { label: string; color: string } | null {
+    if (ext !== 'txt') return null;
+    const normalized = relPath.replace(/\\/g, '/');
+    if (normalized.includes('Story/RawFiles/Goals')) {
+      return { label: 'osi', color: 'var(--th-badge-osiris)' };
+    }
+    return null;
+  }
 
   /** SE context detection for files under ScriptExtender/Lua/{Server|Client|Shared} */
   function getSeContextBadge(path: string): { label: string; color: string } | null {
@@ -138,14 +148,15 @@
     return root.children ?? [];
   }
 
-  /** Derived file tree from mod files — only files under Mods/{modFolder}/ */
+  /** Derived file tree from mod files — only files under Mods/{modFolder}/ (excluding Localization, shown at root level) */
   let modFileTree = $derived.by(() => {
     const folder = modStore.scanResult?.mod_meta?.folder;
     if (!folder) return buildFileTree(modStore.modFiles);
     const prefix = `Mods/${folder}/`;
     const filtered = modStore.modFiles
       .filter(f => f.rel_path.startsWith(prefix))
-      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }));
+      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }))
+      .filter(f => !f.rel_path.startsWith('Localization/') && f.rel_path !== 'Localization');
     return buildFileTree(filtered);
   });
 
@@ -239,6 +250,8 @@
     fileCtxVisible = false;
     fileCtxNode = null;
     locaCtxVisible = false;
+    locaFileCtxVisible = false;
+    locaFileCtxNode = null;
     scriptsCtxVisible = false;
   }
 
@@ -246,6 +259,13 @@
   let locaCtxVisible = $state(false);
   let locaCtxX = $state(0);
   let locaCtxY = $state(0);
+
+  // ── Localization file context menu state ──
+  let locaFileCtxVisible = $state(false);
+  let locaFileCtxX = $state(0);
+  let locaFileCtxY = $state(0);
+  let locaFileCtxNode: FileTreeNode | null = $state(null);
+
   let scriptsCtxVisible = $state(false);
   let scriptsCtxX = $state(0);
   let scriptsCtxY = $state(0);
@@ -300,6 +320,18 @@
     inlineCreateName = '';
   }
 
+  /** Determine default file extension based on parent directory context. */
+  function getDefaultExtForPath(parentPath: string): string | null {
+    const normalized = parentPath.replace(/\\/g, '/');
+    if (normalized.includes('Scripts/anubis')) return '.anc';
+    if (normalized.includes('Scripts/constellations')) return '.clc';
+    if (normalized.startsWith('Story/RawFiles/Goals') || normalized.includes('/Story/RawFiles/Goals')) return '.txt';
+    if (normalized.startsWith('Localization') || normalized.includes('/Localization')) return '.xml';
+    if (normalized.startsWith('Scripts') || normalized.includes('/Scripts')) return '.khn';
+    if (normalized.startsWith('ScriptExtender') || normalized.includes('/ScriptExtender')) return '.lua';
+    return null;
+  }
+
   async function commitInlineCreate() {
     if (!inlineCreateName.trim() || !inlineCreateParent || !inlineCreateType) {
       cancelInlineCreate();
@@ -309,8 +341,15 @@
     const modPath = modStore.selectedModPath;
     if (!modPath) { cancelInlineCreate(); return; }
 
+    // Context-aware default extension for files without an explicit extension
+    let finalName = name;
+    if (inlineCreateType === 'file' && !name.includes('.') && inlineCreateParent) {
+      const defaultExt = getDefaultExtForPath(inlineCreateParent);
+      if (defaultExt) finalName = name + defaultExt;
+    }
+
     if (inlineCreateType === 'file') {
-      const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
+      const relPath = `${modsFilePrefix}${inlineCreateParent}/${finalName}`;
       try {
         await touchFile(modPath, relPath);
         await refreshModFiles();
@@ -358,6 +397,98 @@
     }
   }
 
+  // ── Context-aware templates per section ──
+  const SECTION_TEMPLATES: Record<string, Array<{ id: string; label: string }>> = {
+    'lua-se': [
+      { id: 'lua_empty', label: 'Empty Lua' },
+      { id: 'lua_se_server_module', label: 'Server Module' },
+      { id: 'lua_se_client_module', label: 'Client Module' },
+      { id: 'lua_se_shared_module', label: 'Shared Module' },
+      { id: 'se_bootstrap_server', label: 'Bootstrap Server' },
+      { id: 'se_bootstrap_client', label: 'Bootstrap Client' },
+      { id: 'se_config', label: 'SE Config' },
+    ],
+    'osiris': [
+      { id: 'osiris_basic_goal', label: 'Basic Goal' },
+      { id: 'osiris_state_machine', label: 'State Machine' },
+      { id: 'osiris_quest_goal', label: 'Quest Goal' },
+    ],
+    'khonsu': [
+      { id: 'khonsu_basic_condition', label: 'Basic Condition' },
+      { id: 'khonsu_context_condition', label: 'Context Condition' },
+    ],
+    'anubis': [
+      { id: 'anubis_config', label: 'Anubis Config' },
+      { id: 'anubis_state', label: 'Anubis State' },
+      { id: 'anubis_module', label: 'Anubis Module' },
+    ],
+    'constellations': [
+      { id: 'constellations_config', label: 'Constellations Config' },
+      { id: 'constellations_state', label: 'Constellations State' },
+      { id: 'constellations_module', label: 'Constellations Module' },
+    ],
+  };
+
+  /** Default file extensions per section for template creation */
+  const SECTION_DEFAULT_EXT: Record<string, string> = {
+    'lua-se': '.lua',
+    'osiris': '.txt',
+    'khonsu': '.khn',
+    'anubis': '.anc',
+    'constellations': '.clc',
+  };
+
+  function promptFileName(defaultExt: string): string | null {
+    const input = window.prompt(`Enter file name (default extension: ${defaultExt})`);
+    if (!input?.trim()) return null;
+    let name = input.trim();
+    if (!name.includes('.')) name += defaultExt;
+    return name;
+  }
+
+  function detectSectionFromPath(relPath: string): string | null {
+    if (relPath.startsWith('ScriptExtender') || relPath.includes('/ScriptExtender/')) return 'lua-se';
+    if (relPath.startsWith('Story/RawFiles/Goals') || relPath.includes('/Story/RawFiles/Goals')) return 'osiris';
+    if (relPath.startsWith('Scripts/anubis') || relPath.includes('/Scripts/anubis')) return 'anubis';
+    if (relPath.startsWith('Scripts/constellations') || relPath.includes('/Scripts/constellations')) return 'constellations';
+    if (relPath.startsWith('Scripts') || relPath.includes('/Scripts')) return 'khonsu';
+    return null;
+  }
+
+  async function createFromSectionTemplate(templateId: string, sectionCategory: string | null): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    if (!modPath || !modFolder) return;
+
+    const ext = SECTION_DEFAULT_EXT[sectionCategory ?? 'lua-se'] ?? '.lua';
+    const fileName = promptFileName(ext);
+    if (!fileName) return;
+
+    let targetDir: string;
+    switch (sectionCategory) {
+      case 'osiris': targetDir = `Mods/${modFolder}/Story/RawFiles/Goals`; break;
+      case 'khonsu': targetDir = `Mods/${modFolder}/Scripts`; break;
+      case 'anubis': targetDir = `Mods/${modFolder}/Scripts/anubis`; break;
+      case 'constellations': targetDir = `Mods/${modFolder}/Scripts/constellations`; break;
+      default: targetDir = `Mods/${modFolder}/ScriptExtender/Lua`; break;
+    }
+
+    const relPath = `${targetDir}/${fileName}`;
+    const variables: Record<string, string> = {
+      FILE_NAME: fileName,
+      MOD_NAME: modFolder,
+      MOD_TABLE: modFolder.replace(/[^a-zA-Z0-9_]/g, '_'),
+    };
+
+    try {
+      await scriptCreateFromTemplate(modPath, relPath, templateId, variables);
+      await refreshModFiles();
+      uiStore.openScriptTab(relPath);
+      toastStore.success("Template created", fileName);
+    } catch (e) {
+      toastStore.error("Template creation failed", String(e));
+    }
+  }
+
   // ── Script creation modal state ──
   let showCreateScript = $state(false);
   let createScriptDefaultContext: 'Server' | 'Client' | 'Shared' | 'Other' = $state('Other');
@@ -386,6 +517,38 @@
     }
   }
 
+  /** Create a localization contentlist from template */
+  async function createLocalizationTemplate(): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    if (!modPath || !modFolder) return;
+
+    const fileName = window.prompt("Enter file name (e.g., MyContent.xml)");
+    if (!fileName?.trim()) return;
+    let name = fileName.trim();
+    if (!name.includes('.')) name += '.xml';
+
+    const relPath = `Mods/${modFolder}/Localization/${name}`;
+    const now = new Date();
+    const date = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const uid = `h${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`;
+
+    const variables: Record<string, string> = {
+      FILE_NAME: name,
+      DATE: date,
+      CONTENT_UID: uid,
+      VERSION: '1',
+    };
+
+    try {
+      await scriptCreateFromTemplate(modPath, relPath, 'localization_contentlist', variables);
+      await refreshModFiles();
+      uiStore.openScriptTab(relPath);
+      toastStore.success("Template created", name);
+    } catch (e) {
+      toastStore.error("Template creation failed", String(e));
+    }
+  }
+
   /** Scaffold a script category's directory structure with starter files. */
   async function scaffoldCategory(catKey: string): Promise<void> {
     const modPath = modStore.selectedModPath;
@@ -399,6 +562,20 @@
         created = await scaffoldKhonsuStructure(modPath, folder);
       } else if (catKey === 'osiris') {
         created = await scaffoldOsirisStructure(modPath, folder);
+      } else if (catKey === 'anubis') {
+        const dirPath = `Mods/${folder}/Scripts/anubis`;
+        await createModDirectory(modPath, dirPath);
+        const relPath = `${dirPath}/config.anc`;
+        const variables = { FILE_NAME: 'config.anc', MOD_NAME: folder, MOD_TABLE: folder.replace(/[^a-zA-Z0-9_]/g, '_') };
+        await scriptCreateFromTemplate(modPath, relPath, 'anubis_config', variables);
+        created = [relPath];
+      } else if (catKey === 'constellations') {
+        const dirPath = `Mods/${folder}/Scripts/constellations`;
+        await createModDirectory(modPath, dirPath);
+        const relPath = `${dirPath}/config.clc`;
+        const variables = { FILE_NAME: 'config.clc', MOD_NAME: folder, MOD_TABLE: folder.replace(/[^a-zA-Z0-9_]/g, '_') };
+        await scriptCreateFromTemplate(modPath, relPath, 'constellations_config', variables);
+        created = [relPath];
       } else {
         return;
       }
@@ -618,9 +795,17 @@
   const LOCA_EXTENSIONS = new Set(["loca", "xml"]);
   const LUA_SE_EXTENSIONS = new Set(["lua", "yaml", "toml", "ini", "json"]);
 
-  /** Localization tree: recursively filtered to .loca and .xml files. */
+  /** Localization tree: computed directly from modFiles (modFileTree excludes Localization). */
   let localizationTree = $derived.by((): FileTreeNode[] => {
-    const locaDir = modFileTree.find(n => !n.isFile && n.name === "Localization");
+    const folder = modStore.scanResult?.mod_meta?.folder;
+    if (!folder) return [];
+    const prefix = `Mods/${folder}/`;
+    const locaFiles = modStore.modFiles
+      .filter(f => f.rel_path.startsWith(prefix + 'Localization/'))
+      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }));
+    if (locaFiles.length === 0) return [];
+    const tree = buildFileTree(locaFiles);
+    const locaDir = tree.find(n => !n.isFile && n.name === 'Localization');
     if (!locaDir?.children) return [];
     return filterTree(locaDir.children, LOCA_EXTENSIONS);
   });
@@ -650,13 +835,31 @@
     return filterTree(goalsDir.children, new Set(["txt"]));
   });
 
+  /** Anubis tree: Scripts/anubis/ with .anc/.ann/.anm files. */
+  let anubisTree = $derived.by((): FileTreeNode[] => {
+    const scriptsDir = modFileTree.find(n => !n.isFile && n.name === "Scripts");
+    if (!scriptsDir?.children) return [];
+    const anubisDir = scriptsDir.children.find(n => !n.isFile && n.name === "anubis");
+    if (!anubisDir?.children) return [];
+    return filterTree(anubisDir.children, new Set(["anc", "ann", "anm"]));
+  });
+
+  /** Constellations tree: Scripts/constellations/ with .clc/.cln/.clm files. */
+  let constellationsTree = $derived.by((): FileTreeNode[] => {
+    const scriptsDir = modFileTree.find(n => !n.isFile && n.name === "Scripts");
+    if (!scriptsDir?.children) return [];
+    const constDir = scriptsDir.children.find(n => !n.isFile && n.name === "constellations");
+    if (!constDir?.children) return [];
+    return filterTree(constDir.children, new Set(["clc", "cln", "clm"]));
+  });
+
   /** Script sub-categories derived from the mod file tree. */
   const SCRIPT_CATEGORIES = [
     { key: "lua-se", label: "Lua (SE)", dir: "ScriptExtender", extensions: LUA_SE_EXTENSIONS },
     { key: "osiris", label: "Osiris", dir: "Story/RawFiles/Goals", extensions: new Set(["txt"]) },
     { key: "khonsu", label: "Khonsu", dir: "Scripts", extensions: new Set(["khn"]) },
-    { key: "anubis", label: "Anubis", dir: null, extensions: new Set(["anc", "ann", "anm"]) },
-    { key: "constellations", label: "Constellations", dir: null, extensions: new Set(["clc", "cln", "clm"]) },
+    { key: "anubis", label: "Anubis", dir: "Scripts/anubis", extensions: new Set(["anc", "ann", "anm"]) },
+    { key: "constellations", label: "Constellations", dir: "Scripts/constellations", extensions: new Set(["clc", "cln", "clm"]) },
   ];
 
   /** Collect script files per category, counting files for badge. */
@@ -1194,7 +1397,10 @@
                           </span>
                         </span>
                       {:else}
-                        {#if node.extension}
+                        {#if getOsirisBadge(node.relPath, node.extension)}
+                          {@const osiBadge = getOsirisBadge(node.relPath, node.extension)!}
+                          <span class="ext-badge" style="background: {osiBadge.color}">{osiBadge.label}</span>
+                        {:else if node.extension}
                           <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
                         {/if}
                         {#if getSeContextBadge(node.relPath)}
@@ -1329,6 +1535,15 @@
                     class:active-node={isActiveFile(node.relPath)}
                     onclick={() => openFilePreview(node)}
                     ondblclick={() => openFilePreview(node, false)}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+                      locaFileCtxX = e.clientX / zoom;
+                      locaFileCtxY = e.clientY / zoom;
+                      locaFileCtxNode = node;
+                      locaFileCtxVisible = true;
+                    }}
                   >
                     <span class="w-3.5 shrink-0"></span>
                     <File size={14} class="text-[var(--th-text-amber-400)]" />
@@ -1357,11 +1572,32 @@
                   {/if}
                 {/if}
               {/snippet}
+              {#if inlineCreateParent === 'Localization'}
+                <div class="tree-node inline-create">
+                  <span class="w-3.5 shrink-0"></span>
+                  {#if inlineCreateType === 'folder'}
+                    <Folder size={14} class="text-[var(--th-text-amber-400)]" />
+                  {:else}
+                    <File size={14} class="text-[var(--th-text-amber-400)]" />
+                  {/if}
+                  <input
+                    bind:this={inlineCreateInput}
+                    bind:value={inlineCreateName}
+                    class="inline-create-input"
+                    placeholder={inlineCreateType === 'folder' ? 'folder name' : 'filename.xml'}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); }
+                      if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); }
+                    }}
+                    onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
+                  />
+                </div>
+              {/if}
               {#if localizationTree.length > 0}
                 {#each localizationTree as treeNode (treeNode.relPath)}
                   {@render locaNode(treeNode)}
                 {/each}
-              {:else}
+              {:else if inlineCreateParent !== 'Localization'}
                 <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">No localization files</span>
               {/if}
             </div>
@@ -1439,7 +1675,12 @@
                       </span>
                     {:else}
                       {#if node.extension}
-                        <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                        {@const osirisBadge = getOsirisBadge(node.relPath, node.extension)}
+                        {#if osirisBadge}
+                          <span class="ext-badge" style="background: {osirisBadge.color}">{osirisBadge.label}</span>
+                        {:else}
+                          <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                        {/if}
                       {/if}
                       {#if getSeContextBadge(node.relPath)}
                         {@const seBadge = getSeContextBadge(node.relPath)!}
@@ -1519,42 +1760,61 @@
               {/snippet}
               {#each SCRIPT_CATEGORIES as cat (cat.key)}
                 {@const count = scriptCounts.get(cat.key) ?? 0}
-                {#if cat.key === 'lua-se' || cat.key === 'khonsu' || cat.key === 'osiris'}
-                  <!-- Expandable folder tree for SE / Khonsu / Osiris -->
-                  {@const treeData = cat.key === 'lua-se' ? luaSeTree : cat.key === 'khonsu' ? khonsuTree : osirisTree}
-                  {@const nodeKey = `_Scripts_${cat.key}`}
-                  {@const isExpanded = uiStore.expandedNodes[nodeKey] ?? false}
-                  <div>
-                    <div class="tree-node" class:has-files={count > 0} role="treeitem" tabindex="-1" aria-selected={false} aria-expanded={isExpanded}
-                      oncontextmenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const zoom = getComputedZoom(e.currentTarget as HTMLElement);
-                        scriptsCtxX = e.clientX / zoom;
-                        scriptsCtxY = e.clientY / zoom;
-                        scriptsCtxCategory = cat.key;
-                        scriptsCtxVisible = true;
-                      }}
-                    >
-                      <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(nodeKey); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(nodeKey); } }} role="button" tabindex="0" aria-label="Toggle {cat.label}">
-                        <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
-                      </span>
-                      <button class="tree-node-label" onclick={() => uiStore.toggleNode(nodeKey)}>
-                        <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                        <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
-                        {#if count > 0}
-                          <span class="entry-count">{count}</span>
-                        {/if}
-                      </button>
-                    </div>
-                    {#if isExpanded && treeData.length > 0}
-                      <div class="tree-children">
+                {@const treeData = cat.key === 'lua-se' ? luaSeTree : cat.key === 'khonsu' ? khonsuTree : cat.key === 'osiris' ? osirisTree : cat.key === 'anubis' ? anubisTree : constellationsTree}
+                {@const nodeKey = `_Scripts_${cat.key}`}
+                {@const isExpanded = uiStore.expandedNodes[nodeKey] ?? false}
+                {@const catDir = cat.dir}
+                <div>
+                  <div class="tree-node" class:has-files={count > 0} role="treeitem" tabindex="-1" aria-selected={false} aria-expanded={isExpanded}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+                      scriptsCtxX = e.clientX / zoom;
+                      scriptsCtxY = e.clientY / zoom;
+                      scriptsCtxCategory = cat.key;
+                      scriptsCtxVisible = true;
+                    }}
+                  >
+                    <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(nodeKey); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(nodeKey); } }} role="button" tabindex="0" aria-label="Toggle {cat.label}">
+                      <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
+                    </span>
+                    <button class="tree-node-label" onclick={() => uiStore.toggleNode(nodeKey)}>
+                      <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                      <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
+                      {#if count > 0}
+                        <span class="entry-count">{count}</span>
+                      {/if}
+                    </button>
+                  </div>
+                  {#if isExpanded}
+                    <div class="tree-children">
+                      {#if catDir && inlineCreateParent === catDir}
+                        <div class="tree-node inline-create">
+                          <span class="w-3.5 shrink-0"></span>
+                          {#if inlineCreateType === 'folder'}
+                            <Folder size={14} class="text-[var(--th-text-emerald-400)]" />
+                          {:else}
+                            <File size={14} class="text-[var(--th-text-emerald-400)]" />
+                          {/if}
+                          <input
+                            bind:this={inlineCreateInput}
+                            bind:value={inlineCreateName}
+                            class="inline-create-input"
+                            placeholder={inlineCreateType === 'folder' ? 'folder name' : `filename${SECTION_DEFAULT_EXT[cat.key] ?? ''}`}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); }
+                              if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); }
+                            }}
+                            onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
+                          />
+                        </div>
+                      {/if}
+                      {#if treeData.length > 0}
                         {#each treeData as node (node.relPath)}
                           {@render scriptNode(node)}
                         {/each}
-                      </div>
-                    {:else if isExpanded && count === 0}
-                      <div class="tree-children">
+                      {:else if count === 0 && !(catDir && inlineCreateParent === catDir)}
                         <button
                           class="tree-node text-muted"
                           onclick={() => scaffoldCategory(cat.key)}
@@ -1563,36 +1823,10 @@
                           <Plus size={14} class="text-[var(--th-text-500)]" />
                           <span class="node-label truncate text-[var(--th-text-500)] italic">Initialize {cat.label}...</span>
                         </button>
-                      </div>
-                    {/if}
-                  </div>
-                {:else}
-                  <button
-                    class="tree-node"
-                    class:has-files={count > 0}
-                    onclick={() => {
-                      if (count > 0) {
-                        uiStore.expandNode('root');
-                        uiStore.expandNode('Mods');
-                        if (cat.dir) {
-                          const dirParts = cat.dir.split('/');
-                          let path = '';
-                          for (const part of dirParts) {
-                            path = path ? `${path}/${part}` : part;
-                            uiStore.expandNode(`modfile:${path}`);
-                          }
-                        }
-                      }
-                    }}
-                  >
-                    <span class="w-3.5 shrink-0"></span>
-                    <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                    <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
-                    {#if count > 0}
-                      <span class="entry-count">{count}</span>
-                    {/if}
-                  </button>
-                {/if}
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
               {/each}
             </div>
           {/if}
@@ -1659,6 +1893,49 @@
   <ContextMenu x={locaCtxX} y={locaCtxY} header="Localization" onclose={hideContextMenu}>
     <button
       class="ctx-item"
+      onclick={() => { startInlineCreate('Localization', 'file'); locaCtxVisible = false; uiStore.expandNode('_Localization'); }}
+      role="menuitem"
+    >
+      <FilePlus2 size={12} class="shrink-0" />
+      New File
+    </button>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        locaCtxVisible = false;
+        await createLocalizationTemplate();
+      }}
+      role="menuitem"
+    >
+      <FileCode size={12} class="shrink-0" />
+      New Contentlist from Template
+    </button>
+    <button
+      class="ctx-item"
+      onclick={() => { startInlineCreate('Localization', 'folder'); locaCtxVisible = false; uiStore.expandNode('_Localization'); }}
+      role="menuitem"
+    >
+      <FolderPlus size={12} class="shrink-0" />
+      New Folder
+    </button>
+    <div class="ctx-separator"></div>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        const modPath = modStore.selectedModPath;
+        if (modPath && modFolder) {
+          try { await revealPath(`${modPath}/Mods/${modFolder}/Localization`); }
+          catch (e) { toastStore.error("Open failed", String(e)); }
+        }
+        locaCtxVisible = false;
+      }}
+      role="menuitem"
+    >
+      <FolderOpen size={12} class="shrink-0" />
+      Open in File Manager
+    </button>
+    <button
+      class="ctx-item"
       onclick={async () => { locaCtxVisible = false; await refreshModFiles(); }}
       role="menuitem"
     >
@@ -1668,11 +1945,73 @@
   </ContextMenu>
 {/if}
 
+<!-- Localization file context menu -->
+{#if locaFileCtxVisible && locaFileCtxNode}
+  <ContextMenu x={locaFileCtxX} y={locaFileCtxY} header={locaFileCtxNode.name} onclose={hideContextMenu}>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        if (!locaFileCtxNode) return;
+        const fullPath = `${modsFilePrefix}${locaFileCtxNode.relPath}`;
+        const modPath = modStore.selectedModPath;
+        if (!modPath) return;
+        try {
+          await scriptDelete(modPath, fullPath);
+          const tabId = `script:${fullPath}`;
+          if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
+          await refreshModFiles();
+          toastStore.success("File deleted", locaFileCtxNode.name);
+        } catch (e) {
+          toastStore.error("Delete failed", String(e));
+        }
+        locaFileCtxVisible = false;
+      }}
+      role="menuitem"
+    >
+      <Trash2 size={12} class="shrink-0" />
+      Delete
+    </button>
+    <div class="ctx-separator"></div>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        const modPath = modStore.selectedModPath;
+        if (modPath && locaFileCtxNode) {
+          try { await revealPath(`${modPath}/${modsFilePrefix}${locaFileCtxNode.relPath}`); }
+          catch (e) { toastStore.error("Open failed", String(e)); }
+        }
+        locaFileCtxVisible = false;
+      }}
+      role="menuitem"
+    >
+      <FolderOpen size={12} class="shrink-0" />
+      Open in File Manager
+    </button>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        if (locaFileCtxNode) {
+          await navigator.clipboard.writeText(`${modsFilePrefix}${locaFileCtxNode.relPath}`);
+          toastStore.success("Copied", "Relative path copied to clipboard");
+        }
+        locaFileCtxVisible = false;
+      }}
+      role="menuitem"
+    >
+      <Copy size={12} class="shrink-0" />
+      Copy Path
+    </button>
+  </ContextMenu>
+{/if}
+
 <!-- Scripts context menu (category-aware) -->
 {#if scriptsCtxVisible}
   {@const ctxDir = scriptsCtxCategory === 'khonsu' ? 'Scripts'
     : scriptsCtxCategory === 'osiris' ? 'Story/RawFiles/Goals'
+    : scriptsCtxCategory === 'anubis' ? 'Scripts/anubis'
+    : scriptsCtxCategory === 'constellations' ? 'Scripts/constellations'
     : 'ScriptExtender'}
+  {@const templates = SECTION_TEMPLATES[scriptsCtxCategory ?? 'lua-se'] ?? []}
   {@const ctxNodeKey = scriptsCtxCategory ? `_Scripts_${scriptsCtxCategory}` : '_Scripts_lua-se'}
   {@const ctxLabel = scriptsCtxCategory === 'khonsu' ? 'Khonsu'
     : scriptsCtxCategory === 'osiris' ? 'Osiris'
@@ -1694,18 +2033,23 @@
       <FolderPlus size={12} class="shrink-0" />
       New Folder
     </button>
-    <button
-      class="ctx-item"
-      onclick={() => {
-        showCreateScript = true;
-        createScriptDefaultContext = 'Other';
-        scriptsCtxVisible = false;
-      }}
-      role="menuitem"
-    >
-      <FileCode size={12} class="shrink-0" />
-      New File from Template...
-    </button>
+    {#if templates.length > 0}
+      <div class="ctx-separator"></div>
+      <span class="ctx-group-label">Templates</span>
+      {#each templates as tmpl (tmpl.id)}
+        <button
+          class="ctx-item"
+          onclick={async () => {
+            scriptsCtxVisible = false;
+            await createFromSectionTemplate(tmpl.id, scriptsCtxCategory);
+          }}
+          role="menuitem"
+        >
+          <FileCode size={12} class="shrink-0" />
+          {tmpl.label}
+        </button>
+      {/each}
+    {/if}
     <div class="ctx-separator"></div>
     <button
       class="ctx-item"
@@ -1761,18 +2105,25 @@
         <FolderPlus size={12} class="shrink-0" />
         New Folder
       </button>
-      <button
-        class="ctx-item"
-        onclick={() => {
-          showCreateScript = true;
-          createScriptDefaultContext = deriveContextFromPath(fileCtxNode!.relPath);
-          hideFileContextMenu();
-        }}
-        role="menuitem"
-      >
-        <FileCode size={12} class="shrink-0" />
-        New File from Template...
-      </button>
+      {@const folderSection = detectSectionFromPath(fileCtxNode!.relPath)}
+      {@const folderTemplates = SECTION_TEMPLATES[folderSection ?? 'lua-se'] ?? []}
+      {#if folderTemplates.length > 0}
+        <div class="ctx-separator"></div>
+        <span class="ctx-group-label">Templates</span>
+        {#each folderTemplates as tmpl (tmpl.id)}
+          <button
+            class="ctx-item"
+            onclick={async () => {
+              hideFileContextMenu();
+              await createFromSectionTemplate(tmpl.id, folderSection);
+            }}
+            role="menuitem"
+          >
+            <FileCode size={12} class="shrink-0" />
+            {tmpl.label}
+          </button>
+        {/each}
+      {/if}
       <button
         class="ctx-item"
         onclick={() => {
@@ -2128,5 +2479,16 @@
     height: 1px;
     background: var(--th-border-700);
     margin: 4px 8px;
+  }
+
+  .ctx-group-label {
+    display: block;
+    padding: 2px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--th-text-500);
+    letter-spacing: 0.05em;
+    user-select: none;
   }
 </style>

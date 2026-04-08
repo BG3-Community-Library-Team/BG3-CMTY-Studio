@@ -1,0 +1,17 @@
+-- {{FILE_NAME}}
+-- Constellations behavior module
+-- Created by CMTY Studio
+
+local Module = {}
+
+Module.Name = "{{MOD_NAME}}"
+
+function Module:Register()
+    -- Register actions, selectors, and event handlers
+end
+
+function Module:OnInit()
+    -- Module initialization
+end
+
+return Module
