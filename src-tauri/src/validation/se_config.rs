@@ -144,7 +144,7 @@ pub fn validate_se_config(content: &str) -> Vec<Diagnostic> {
                         message: "\"ModTable\" must be a string".into(),
                     });
                 }
-                Some(s) if s.is_empty() => {
+                Some("") => {
                     diagnostics.push(Diagnostic {
                         line,
                         col,

@@ -240,9 +240,6 @@ fn query_se_file_content(
 /// E.g. `Mods/MyMod/ScriptExtender/Lua/Server/Foo.lua`
 ///    → `Mods/MyMod/ScriptExtender/Lua/`
 fn find_lua_base(key: &str) -> Option<String> {
-    if let Some(idx) = key.find("/ScriptExtender/Lua/") {
-        Some(key[..idx + "/ScriptExtender/Lua/".len()].to_string())
-    } else {
-        None
-    }
+    key.find("/ScriptExtender/Lua/")
+        .map(|idx| key[..idx + "/ScriptExtender/Lua/".len()].to_string())
 }
