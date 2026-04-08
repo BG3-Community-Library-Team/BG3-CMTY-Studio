@@ -37,7 +37,7 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
-  import { scriptDelete, scriptRead, scriptWrite, touchFile, createModDirectory, moveModFile, copyModFile } from "../lib/tauri/scripts.js";
+  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure } from "../lib/tauri/scripts.js";
   import ScriptCreationModal from "./ScriptCreationModal.svelte";
   import Copy from "@lucide/svelte/icons/copy";
   import Scissors from "@lucide/svelte/icons/scissors";
@@ -311,12 +311,8 @@
 
     if (inlineCreateType === 'file') {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
-      const dbPath = projectStore.stagingDbPath;
       try {
         await touchFile(modPath, relPath);
-        if (dbPath) {
-          await scriptWrite(dbPath, relPath, "");
-        }
         await refreshModFiles();
         uiStore.openScriptTab(relPath);
       } catch (e) {
@@ -352,23 +348,8 @@
     try {
       if (clipboardOp === 'cut') {
         await moveModFile(modPath, srcRelPath, destRelPath);
-        const dbPath = projectStore.stagingDbPath;
-        if (dbPath) {
-          const content = await scriptRead(dbPath, srcRelPath);
-          if (content !== null) {
-            await scriptWrite(dbPath, destRelPath, content);
-            await scriptDelete(dbPath, srcRelPath);
-          }
-        }
       } else {
         await copyModFile(modPath, srcRelPath, destRelPath);
-        const dbPath = projectStore.stagingDbPath;
-        if (dbPath) {
-          const content = await scriptRead(dbPath, srcRelPath);
-          if (content !== null) {
-            await scriptWrite(dbPath, destRelPath, content);
-          }
-        }
       }
       await refreshModFiles();
       if (clipboardOp === 'cut') { clipboardNode = null; clipboardOp = null; }
@@ -392,16 +373,43 @@
     if (!node.isFile) return;
     if (!isScriptFile(node.extension) && node.extension !== 'json') return;
     const fullPath = `${modsFilePrefix}${node.relPath}`;
-    const dbPath = projectStore.stagingDbPath;
-    if (!dbPath) return;
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
     try {
-      await scriptDelete(dbPath, fullPath);
+      await scriptDelete(modPath, fullPath);
       const tabId = `script:${fullPath}`;
       if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
       await refreshModFiles();
       toastStore.success(m.file_explorer_delete_script(), node.name);
     } catch (e) {
       toastStore.error(m.file_explorer_delete_script(), String(e));
+    }
+  }
+
+  /** Scaffold a script category's directory structure with starter files. */
+  async function scaffoldCategory(catKey: string): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    const folder = modFolder;
+    if (!modPath || !folder) return;
+    try {
+      let created: string[];
+      if (catKey === 'lua-se') {
+        created = await scaffoldSeStructure(modPath, folder, true, true);
+      } else if (catKey === 'khonsu') {
+        created = await scaffoldKhonsuStructure(modPath, folder);
+      } else if (catKey === 'osiris') {
+        created = await scaffoldOsirisStructure(modPath, folder);
+      } else {
+        return;
+      }
+      if (created.length > 0) {
+        await refreshModFiles();
+        toastStore.success("Scaffold created", `${created.length} file(s) added`);
+        // Open the first created file in the editor
+        uiStore.openScriptTab(created[0]);
+      }
+    } catch (e) {
+      toastStore.error("Scaffold failed", String(e));
     }
   }
 
@@ -1545,6 +1553,17 @@
                           {@render scriptNode(node)}
                         {/each}
                       </div>
+                    {:else if isExpanded && count === 0}
+                      <div class="tree-children">
+                        <button
+                          class="tree-node text-muted"
+                          onclick={() => scaffoldCategory(cat.key)}
+                        >
+                          <span class="w-3.5 shrink-0"></span>
+                          <Plus size={14} class="text-[var(--th-text-500)]" />
+                          <span class="node-label truncate text-[var(--th-text-500)] italic">Initialize {cat.label}...</span>
+                        </button>
+                      </div>
                     {/if}
                   </div>
                 {:else}
@@ -1658,9 +1677,6 @@
   {@const ctxLabel = scriptsCtxCategory === 'khonsu' ? 'Khonsu'
     : scriptsCtxCategory === 'osiris' ? 'Osiris'
     : 'Scripts'}
-  {@const ctxPlaceholder = scriptsCtxCategory === 'khonsu' ? 'filename.khn'
-    : scriptsCtxCategory === 'osiris' ? 'GoalName.txt'
-    : 'filename.lua'}
   <ContextMenu x={scriptsCtxX} y={scriptsCtxY} header={ctxLabel} onclose={hideContextMenu}>
     <button
       class="ctx-item"

@@ -3,7 +3,7 @@
   import { focusTrap } from "../lib/utils/focusTrap.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { scriptCreateFromTemplate } from "../lib/tauri/scripts.js";
-  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { modStore } from "../lib/stores/modStore.svelte.js";
   import { getErrorMessage } from "../lib/types/index.js";
   import X from "@lucide/svelte/icons/x";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
@@ -62,15 +62,15 @@
     if (!canCreate || !fullPath) return;
     isCreating = true;
     try {
-      const dbPath = projectStore.stagingDbPath;
-      if (!dbPath) throw new Error("No staging database");
+      const modPath = modStore.selectedModPath;
+      if (!modPath) throw new Error("No mod folder selected");
 
       const variables: Record<string, string> = {
         FILE_NAME: normalizedFileName,
         MOD_NAME: modFolder,
       };
 
-      await scriptCreateFromTemplate(dbPath, fullPath, templateId, variables);
+      await scriptCreateFromTemplate(modPath, fullPath, templateId, variables);
       toastStore.success(m.script_creation_success());
       onCreated(fullPath);
       onClose();

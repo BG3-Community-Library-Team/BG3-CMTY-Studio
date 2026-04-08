@@ -8,42 +8,42 @@ export interface ScriptFileInfo {
 }
 
 export async function scriptRead(
-  dbPath: string,
+  modPath: string,
   filePath: string,
 ): Promise<string | null> {
-  return invoke("cmd_script_read", { dbPath, filePath });
+  return invoke("cmd_script_read", { modPath, filePath });
 }
 
 export async function scriptWrite(
-  dbPath: string,
+  modPath: string,
   filePath: string,
   content: string,
 ): Promise<boolean> {
-  return invoke("cmd_script_write", { dbPath, filePath, content });
+  return invoke("cmd_script_write", { modPath, filePath, content });
 }
 
 export async function scriptDelete(
-  dbPath: string,
+  modPath: string,
   filePath: string,
 ): Promise<boolean> {
-  return invoke("cmd_script_delete", { dbPath, filePath });
+  return invoke("cmd_script_delete", { modPath, filePath });
 }
 
 export async function scriptList(
-  dbPath: string,
+  modPath: string,
   prefix?: string,
 ): Promise<ScriptFileInfo[]> {
-  return invoke("cmd_script_list", { dbPath, prefix: prefix ?? null });
+  return invoke("cmd_script_list", { modPath, prefix: prefix ?? null });
 }
 
 export async function scriptCreateFromTemplate(
-  dbPath: string,
+  modPath: string,
   filePath: string,
   templateId: string,
   variables: Record<string, string>,
 ): Promise<boolean> {
   return invoke("cmd_script_create_from_template", {
-    dbPath,
+    modPath,
     filePath,
     templateId,
     variables,
@@ -75,13 +75,13 @@ export async function importKhonsuScripts(
 }
 
 export async function scaffoldSeStructure(
-  dbPath: string,
+  modPath: string,
   modFolder: string,
   includeServer: boolean,
   includeClient: boolean,
 ): Promise<string[]> {
   return invoke("cmd_scaffold_se_structure", {
-    dbPath,
+    modPath,
     modFolder,
     includeServer,
     includeClient,
@@ -89,17 +89,17 @@ export async function scaffoldSeStructure(
 }
 
 export async function scaffoldKhonsuStructure(
-  dbPath: string,
+  modPath: string,
   modFolder: string,
 ): Promise<string[]> {
-  return invoke("cmd_scaffold_khonsu_structure", { dbPath, modFolder });
+  return invoke("cmd_scaffold_khonsu_structure", { modPath, modFolder });
 }
 
 export async function scaffoldOsirisStructure(
-  dbPath: string,
+  modPath: string,
   modFolder: string,
 ): Promise<string[]> {
-  return invoke("cmd_scaffold_osiris_structure", { dbPath, modFolder });
+  return invoke("cmd_scaffold_osiris_structure", { modPath, modFolder });
 }
 
 // ── Filesystem commands ──

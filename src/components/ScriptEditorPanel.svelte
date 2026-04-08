@@ -3,7 +3,7 @@
   import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
   import { getCompletions, extractPrefix, type CompletionItem } from "../lib/utils/luaCompletions.js";
   import { scriptRead, scriptWrite } from "../lib/tauri/scripts.js";
-  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import Loader2 from "@lucide/svelte/icons/loader-2";
@@ -51,15 +51,15 @@
   // Load file content
   $effect(() => {
     const path = filePath;
-    const dbPath = projectStore.stagingDbPath;
-    if (!path || !dbPath) {
-      error = "No staging database available";
+    const modPath = modStore.selectedModPath;
+    if (!path || !modPath) {
+      error = "No mod folder selected";
       isLoading = false;
       return;
     }
     isLoading = true;
     error = null;
-    scriptRead(dbPath, path).then(text => {
+    scriptRead(modPath, path).then(text => {
       // Normalize line endings: CRLF → LF, stray CR → LF
       const normalized = (text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       content = normalized;
@@ -333,13 +333,13 @@
     }
   }
 
-  // Save to staging DB
+  // Save to disk
   async function save() {
     if (readonly) return;
-    const dbPath = projectStore.stagingDbPath;
-    if (!dbPath) return;
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
     try {
-      await scriptWrite(dbPath, filePath, content);
+      await scriptWrite(modPath, filePath, content);
       originalContent = content;
       isDirty = false;
       const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);

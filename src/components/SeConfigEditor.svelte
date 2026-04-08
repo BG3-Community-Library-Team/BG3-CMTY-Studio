@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import { scriptRead, scriptWrite } from "../lib/tauri/scripts.js";
-  import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
@@ -91,16 +91,16 @@
   // ── Load content on mount / filePath change ──
   $effect(() => {
     const path = filePath;
-    const dbPath = projectStore.stagingDbPath;
-    if (!path || !dbPath) {
-      error = "No staging database available";
+    const modPath = modStore.selectedModPath;
+    if (!path || !modPath) {
+      error = "No mod folder selected";
       isLoading = false;
       return;
     }
     isLoading = true;
     error = null;
     parseError = null;
-    scriptRead(dbPath, path).then(text => {
+    scriptRead(modPath, path).then(text => {
       if (text && text.trim()) {
         rawContent = text;
         if (!jsonToForm(text)) {
@@ -124,13 +124,13 @@
     });
   });
 
-  // ── Save form to staging DB ──
+  // ── Save form to disk ──
   async function saveForm() {
-    const dbPath = projectStore.stagingDbPath;
-    if (!dbPath) return;
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
     const json = rawMode ? rawContent : formToJson();
     try {
-      await scriptWrite(dbPath, filePath, json);
+      await scriptWrite(modPath, filePath, json);
       rawContent = json;
       const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);
       if (tab) tab.dirty = false;
