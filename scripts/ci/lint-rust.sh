@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd src-tauri && cargo clippy -- -D warnings -A clippy::uninlined_format_args
+cd src-tauri && cargo clippy --all-targets -- -D warnings

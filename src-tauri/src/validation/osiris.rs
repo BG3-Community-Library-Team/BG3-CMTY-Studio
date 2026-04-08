@@ -387,7 +387,7 @@ ParentTargetEdge \"__Shared_Campaign\"";
     fn valid_goal_passes() {
         let diags = validate_osiris_goal(VALID_GOAL);
         let errors: Vec<_> = diags.iter().filter(|d| d.severity == DiagnosticSeverity::Error).collect();
-        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+        assert!(errors.is_empty(), "Expected no errors, got: {errors:?}");
     }
 
     #[test]
@@ -490,7 +490,7 @@ ParentTargetEdge \"__Shared_Campaign\"";
         let content = "// Header comment\n\nVersion 1\n// Another comment\nSubGoalCombiner SGC_AND\nINITSECTION\nKBSECTION\nEXITSECTION\nENDEXITSECTION\nParentTargetEdge \"Test\"";
         let diags = validate_osiris_goal(content);
         let errors: Vec<_> = diags.iter().filter(|d| d.severity == DiagnosticSeverity::Error).collect();
-        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+        assert!(errors.is_empty(), "Expected no errors, got: {errors:?}");
     }
 
     #[test]
