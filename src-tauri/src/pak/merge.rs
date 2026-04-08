@@ -69,6 +69,9 @@ pub fn compute_merges(file_entries: &[(PathBuf, PakPath)]) -> Result<MergePlan, 
     // Fix double extensions first (before other analysis)
     fix_double_extensions(file_entries, &mut plan);
 
+    // Flatten subdirectories under MultiEffectInfos
+    flatten_multieffectinfos(file_entries, &mut plan);
+
     // RootTemplates merge
     merge_root_templates(file_entries, &mut plan)?;
 
@@ -100,6 +103,36 @@ fn fix_double_extensions(
         if let Some(fixed) = fixed {
             if let Ok(new_pak) = PakPath::parse(&fixed) {
                 plan.path_rewrites.insert(i, new_pak);
+            }
+        }
+    }
+}
+
+// ─── MultiEffectInfos flatten ────────────────────────────────────────────────
+
+/// Flatten subdirectories under `MultiEffectInfos/` so that files like
+/// `MultiEffectInfos/SubDir/Foo.lsf.lsx` become `MultiEffectInfos/Foo.lsf.lsx`.
+/// The actual `.lsf.lsx` → `.lsf` conversion is handled later by the packaging
+/// step.
+fn flatten_multieffectinfos(
+    file_entries: &[(PathBuf, PakPath)],
+    plan: &mut MergePlan,
+) {
+    for (i, (_disk, pak)) in file_entries.iter().enumerate() {
+        let s = pak.as_str();
+        let lower = s.to_ascii_lowercase();
+        if let Some(pos) = lower.find("/multieffectinfos/") {
+            let base_end = pos + "/multieffectinfos/".len();
+            let after = &s[base_end..];
+            // If there's a subdirectory (contains '/'), flatten by keeping
+            // only the filename.
+            if let Some(last_slash) = after.rfind('/') {
+                let filename = &after[last_slash + 1..];
+                let base_dir = &s[..base_end];
+                let new_path = format!("{base_dir}{filename}");
+                if let Ok(new_pak) = PakPath::parse(&new_path) {
+                    plan.path_rewrites.insert(i, new_pak);
+                }
             }
         }
     }
@@ -262,6 +295,30 @@ fn merge_regiontype_files(
         let _ = skip_base;
     }
 
+    // Process orphan base files — standalone REGIONTYPE.lsx files with no
+    // Name.REGIONTYPE.lsx companions. Parsing and re-serialising strips XML
+    // comments and normalises formatting.
+    for ((base_dir, region_type), &base_idx) in &base_files {
+        let key = (base_dir.clone(), region_type.clone());
+        if groups.contains_key(&key) {
+            continue; // Already processed as part of a group
+        }
+        if plan.skip_indices.contains(&base_idx) {
+            continue;
+        }
+
+        let (disk_path, pak_path) = &file_entries[base_idx];
+        let resource = parse_lsx_file_resource(disk_path, pak_path)?;
+
+        let merged_pak_str = format!("{base_dir}{region_type}.lsx");
+        let merged_pak = PakPath::parse(&merged_pak_str)
+            .map_err(|e| format!("Invalid regiontype path: {e}"))?;
+
+        let xml_bytes = write_lsx_resource_xml(&resource);
+        plan.skip_indices.insert(base_idx);
+        plan.merged_entries.push((merged_pak, xml_bytes));
+    }
+
     Ok(())
 }
 
@@ -349,6 +406,7 @@ fn merge_stats_files(
         }
 
         let mut merged_content = String::new();
+        merged_content.push_str("// ==== Generated with CMTY Studio ====\n");
 
         // Sort by pak path for deterministic output
         let mut sorted: Vec<usize> = indices.clone();
@@ -410,13 +468,13 @@ fn parse_lsx_file_resource(disk_path: &Path, pak_path: &PakPath) -> Result<LsxRe
 fn merge_resource_into(target: &mut LsxResource, source: &LsxResource) {
     for src_region in &source.regions {
         if let Some(tgt_region) = target.regions.iter_mut().find(|r| r.id == src_region.id) {
-            // Same region id — look for the "root" node and merge its children.
-            // The LSX structure is: region → root node → children.
-            // We want to merge the children of the root nodes.
+            // Same region id — merge children of the wrapper node.
+            // LSX structure: region → wrapper node (e.g. "root", "Templates") → children.
+            // When both sides have a single wrapper node with the same id,
+            // combine their children instead of duplicating the wrapper.
             if tgt_region.nodes.len() == 1
-                && tgt_region.nodes[0].id == "root"
                 && src_region.nodes.len() == 1
-                && src_region.nodes[0].id == "root"
+                && tgt_region.nodes[0].id == src_region.nodes[0].id
             {
                 tgt_region.nodes[0]
                     .children

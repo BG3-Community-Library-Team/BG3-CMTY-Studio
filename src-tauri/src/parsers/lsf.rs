@@ -570,10 +570,10 @@ fn read_typed_value<R: Read>(
             let mut arguments = Vec::with_capacity(arg_count.max(0) as usize);
             for _ in 0..arg_count.max(0) {
                 let key_len = read_i32(reader)?;
-                let key = read_utf8_exact(reader, key_len.max(0) as usize)?;
+                let key = read_lsf_utf8_string(reader, key_len.max(0) as usize)?;
                 let (nested_handle, nested_version) = read_translated_string_payload(reader)?;
                 let value_len = read_i32(reader)?;
-                let value = read_utf8_exact(reader, value_len.max(0) as usize)?;
+                let value = read_lsf_utf8_string(reader, value_len.max(0) as usize)?;
                 arguments.push(crate::models::LsxTranslatedFsArgument {
                     key,
                     string: Box::new(LsxNodeAttribute {
@@ -709,11 +709,6 @@ fn read_bytes_exact<R: Read>(reader: &mut R, len: usize) -> Result<Vec<u8>, Stri
     reader.read_exact(&mut bytes)
         .map_err(|e| format!("Failed to read LSF bytes: {e}"))?;
     Ok(bytes)
-}
-
-fn read_utf8_exact<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
-    let bytes = read_bytes_exact(reader, len)?;
-    String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 in LSF value: {e}"))
 }
 
 fn read_lsf_wide_string<R: Read>(reader: &mut R, len: usize) -> Result<String, String> {
@@ -1189,14 +1184,16 @@ fn write_typed_value(buf: &mut Vec<u8>, type_id: u32, attr: &LsxNodeAttribute) -
             buf.extend_from_slice(&arg_count.to_le_bytes());
             for arg in &attr.arguments {
                 let key_bytes = arg.key.as_bytes();
-                buf.extend_from_slice(&(key_bytes.len() as i32).to_le_bytes());
+                buf.extend_from_slice(&((key_bytes.len() + 1) as i32).to_le_bytes());
                 buf.extend_from_slice(key_bytes);
+                buf.push(0); // null terminator
                 let nested_handle = arg.string.handle.as_deref().unwrap_or(&arg.string.value);
                 let nested_version = arg.string.version.unwrap_or(1);
                 write_translated_string(buf, nested_handle, nested_version);
                 let val_bytes = arg.value.as_bytes();
-                buf.extend_from_slice(&(val_bytes.len() as i32).to_le_bytes());
+                buf.extend_from_slice(&((val_bytes.len() + 1) as i32).to_le_bytes());
                 buf.extend_from_slice(val_bytes);
+                buf.push(0); // null terminator
             }
         }
         _ => return Err(format!("Unsupported write type_id {type_id}")),
@@ -1220,8 +1217,9 @@ fn write_lsf_wide(buf: &mut Vec<u8>, value: &str) {
 fn write_translated_string(buf: &mut Vec<u8>, handle: &str, version: u16) {
     buf.extend_from_slice(&version.to_le_bytes());
     let handle_bytes = handle.as_bytes();
-    buf.extend_from_slice(&(handle_bytes.len() as i32).to_le_bytes());
+    buf.extend_from_slice(&((handle_bytes.len() + 1) as i32).to_le_bytes());
     buf.extend_from_slice(handle_bytes);
+    buf.push(0); // null terminator (required by LSLib/divine)
 }
 
 fn write_lsf_guid_bytes(buf: &mut Vec<u8>, value: &str) -> Result<(), String> {
