@@ -18,24 +18,24 @@
   } = $props();
 
   let menuEl: HTMLDivElement | undefined = $state(undefined);
-  let menuStyle = $state(`left: ${x}px; top: ${y}px; visibility: hidden`);
+  let menuStyle = $state('visibility: hidden');
 
   $effect(() => {
     // Re-run when x, y, or the menu element changes
-    const _x = x;
-    const _y = y;
     if (!menuEl) {
-      menuStyle = `left: ${_x}px; top: ${_y}px; visibility: hidden`;
+      menuStyle = `left: ${x}px; top: ${y}px; visibility: hidden`;
       return;
     }
     // Use requestAnimationFrame to let the browser lay out the menu first
+    const curX = x;
+    const curY = y;
     requestAnimationFrame(() => {
       if (!menuEl) return;
       const rect = menuEl.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const clampedX = Math.min(_x, vw - rect.width - 8);
-      const clampedY = Math.min(_y, vh - rect.height - 8);
+      const clampedX = Math.min(curX, vw - rect.width - 8);
+      const clampedY = Math.min(curY, vh - rect.height - 8);
       menuStyle = `left: ${Math.max(4, clampedX)}px; top: ${Math.max(4, clampedY)}px`;
     });
   });
