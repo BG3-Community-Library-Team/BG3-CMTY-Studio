@@ -1,0 +1,10 @@
+Version 1
+SubGoalCombiner SGC_AND
+INITSECTION
+// Initialize databases for {{GOAL_NAME}}
+KBSECTION
+// Rules for {{GOAL_NAME}}
+EXITSECTION
+// Cleanup for {{GOAL_NAME}}
+ENDEXITSECTION
+ParentTargetEdge "{{PARENT_GOAL}}"

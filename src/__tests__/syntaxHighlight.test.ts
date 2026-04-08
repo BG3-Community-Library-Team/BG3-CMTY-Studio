@@ -383,13 +383,13 @@ describe("highlightOsiris", () => {
   });
 
   it("highlights inline comment", () => {
-    const result = highlightOsiris("INIT // start");
+    const result = highlightOsiris("INITSECTION // start");
     expect(result).toContain("hl-comment");
     expect(result).toContain("hl-keyword");
   });
 
   it("highlights keywords", () => {
-    for (const kw of ["INIT", "KB", "EXIT", "IF", "THEN", "AND", "NOT", "EVENTS", "ENDEXITSECTION", "EXITSECTION"]) {
+    for (const kw of ["INITSECTION", "KBSECTION", "EXITSECTION", "ENDEXITSECTION", "IF", "THEN", "AND", "NOT", "EVENTS", "Version", "SubGoalCombiner", "SGC_AND", "ParentTargetEdge", "PROC", "QRY"]) {
       const result = highlightOsiris(kw);
       expect(result).toContain("hl-keyword");
     }
@@ -421,6 +421,44 @@ describe("highlightOsiris", () => {
     const result = highlightOsiris("someName");
     // No special tokens, just escaped
     expect(result).toBe("someName");
+  });
+
+  it("highlights section keywords", () => {
+    expect(highlightOsiris("Version 1")).toContain("hl-keyword");
+    expect(highlightOsiris("SubGoalCombiner SGC_AND")).toContain("hl-keyword");
+    expect(highlightOsiris("INITSECTION")).toContain("hl-keyword");
+    expect(highlightOsiris("KBSECTION")).toContain("hl-keyword");
+    expect(highlightOsiris("ParentTargetEdge")).toContain("hl-keyword");
+  });
+
+  it("highlights type casts like (CHARACTER)_Var", () => {
+    const result = highlightOsiris('(CHARACTER)_Player');
+    expect(result).toContain("hl-attr");
+  });
+
+  it("highlights GUIDs", () => {
+    const result = highlightOsiris("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+    expect(result).toContain("hl-string");
+  });
+
+  it("highlights additional type keywords", () => {
+    for (const t of ["INTEGER64", "ACTION", "PASSIVEID", "TAG", "SPLINEGUID", "LEVELTEMPLATEGUID"]) {
+      expect(highlightOsiris(t)).toContain("hl-attr");
+    }
+  });
+
+  it("highlights bare PROC and QRY keywords", () => {
+    expect(highlightOsiris("PROC")).toContain("hl-keyword");
+    expect(highlightOsiris("QRY")).toContain("hl-keyword");
+  });
+
+  it("does not leak comment highlighting into next content", () => {
+    // Comments only go to end of line
+    const line1 = highlightOsiris("// comment");
+    const line2 = highlightOsiris("THEN");
+    expect(line1).toContain("hl-comment");
+    expect(line2).toContain("hl-keyword");
+    expect(line2).not.toContain("hl-comment");
   });
 
   it("handles empty string", () => {
@@ -469,6 +507,23 @@ describe("highlightKhonsu", () => {
 
   it("highlights numbers", () => {
     expect(highlightKhonsu("42")).toContain("hl-num");
+  });
+
+  it("highlights context object paths", () => {
+    expect(highlightKhonsu("context.Source")).toContain("hl-attr");
+    expect(highlightKhonsu("context.Target.Level")).toContain("hl-attr");
+  });
+
+  it("highlights additional condition functions", () => {
+    for (const fn of ["Tagged", "GetDistanceTo", "WieldingWeapon", "SpellId", "IsSpellOfSchool", "Self", "Ally", "Enemy", "Dead"]) {
+      expect(highlightKhonsu(fn)).toContain("hl-key");
+    }
+  });
+
+  it("highlights ConditionResult with true/false", () => {
+    const result = highlightKhonsu("ConditionResult(true)");
+    expect(result).toContain("hl-key");  // ConditionResult
+    expect(result).toContain("hl-keyword");  // true
   });
 
   it("handles empty string", () => {
@@ -558,7 +613,7 @@ describe("highlightLine", () => {
   });
 
   it("dispatches osiris", () => {
-    const result = highlightLine("INIT", "osiris");
+    const result = highlightLine("INITSECTION", "osiris");
     expect(result).toContain("hl-keyword");
   });
 

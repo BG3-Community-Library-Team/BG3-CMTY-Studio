@@ -1,0 +1,28 @@
+Version 1
+SubGoalCombiner SGC_AND
+INITSECTION
+// Quest: {{QUEST_NAME}} ({{GOAL_NAME}})
+// Quest states: 0=NotStarted, 1=Started, 2=InProgress, 3=Complete
+KBSECTION
+// Quest state progression
+PROC
+PROC_{{PREFIX}}_QuestProgress((CHARACTERGUID)_Char, (INTEGER)_NewState)
+AND
+DB_{{PREFIX}}_QuestState(_Char, "{{QUEST_NAME}}", _OldState)
+AND
+_NewState > _OldState
+THEN
+NOT DB_{{PREFIX}}_QuestState(_Char, "{{QUEST_NAME}}", _OldState);
+DB_{{PREFIX}}_QuestState(_Char, "{{QUEST_NAME}}", _NewState);
+
+// Quest start trigger
+IF
+DB_Players(_Player)
+AND
+NOT DB_{{PREFIX}}_QuestState(_Player, "{{QUEST_NAME}}", _)
+THEN
+DB_{{PREFIX}}_QuestState(_Player, "{{QUEST_NAME}}", 0);
+
+EXITSECTION
+ENDEXITSECTION
+ParentTargetEdge "{{PARENT_GOAL}}"

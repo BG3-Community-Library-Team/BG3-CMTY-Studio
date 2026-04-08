@@ -2091,6 +2091,7 @@ pub fn run() {
             commands::scripts::cmd_script_create_from_template,
             commands::scripts::cmd_scaffold_se_structure,
             commands::scan::cmd_import_se_scripts,
+            commands::scan::cmd_import_osiris_goals,
             commands::filesystem::cmd_touch_file,
             commands::filesystem::cmd_create_mod_directory,
             commands::filesystem::cmd_move_mod_file,

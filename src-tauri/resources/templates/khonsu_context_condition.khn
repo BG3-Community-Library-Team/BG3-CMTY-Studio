@@ -1,0 +1,15 @@
+-- {{FILE_NAME}}
+-- Condition with source/target context
+-- Created by CMTY Studio
+
+function {{FUNCTION_NAME}}(context)
+    local source = context.Source
+    local target = context.Target
+
+    -- Check conditions on target
+    if HasStatus(target, "{{STATUS_NAME}}") then
+        return ConditionResult(false)
+    end
+
+    return ConditionResult(true)
+end

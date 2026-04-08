@@ -58,6 +58,14 @@ export async function importSeScripts(
   return invoke("cmd_import_se_scripts", { dbPath, modPath, modFolder });
 }
 
+export async function importOsirisGoals(
+  dbPath: string,
+  modPath: string,
+  modFolder: string,
+): Promise<number> {
+  return invoke("cmd_import_osiris_goals", { dbPath, modPath, modFolder });
+}
+
 export async function scaffoldSeStructure(
   dbPath: string,
   modFolder: string,

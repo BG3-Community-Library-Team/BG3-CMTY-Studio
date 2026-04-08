@@ -1,0 +1,34 @@
+Version 1
+SubGoalCombiner SGC_AND
+INITSECTION
+// State machine: {{GOAL_NAME}}
+// States are tracked via DB_{{PREFIX}}_State
+KBSECTION
+// State progression — states only increase
+PROC
+PROC_{{PREFIX}}_StateProgress((CHARACTERGUID)_Char, (INTEGER)_NewState)
+AND
+DB_{{PREFIX}}_State(_Char, _OldState)
+AND
+_NewState > _OldState
+THEN
+NOT DB_{{PREFIX}}_State(_Char, _OldState);
+DB_{{PREFIX}}_State(_Char, _NewState);
+
+// React to state changes
+IF
+DB_{{PREFIX}}_State(_Char, 1)
+THEN
+// Handle state 1
+DB_NOOP(1);
+
+IF
+DB_{{PREFIX}}_State(_Char, 2)
+THEN
+// Handle state 2
+DB_NOOP(1);
+
+EXITSECTION
+// Cleanup state tracking
+ENDEXITSECTION
+ParentTargetEdge "{{PARENT_GOAL}}"

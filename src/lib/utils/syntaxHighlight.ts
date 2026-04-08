@@ -165,7 +165,7 @@ export function highlightXml(raw: string): string {
  */
 export function highlightOsiris(raw: string): string {
   if (/^\s*\/\//.test(raw)) return hl(raw, 'comment');
-  const re = /\/\/.*$|("(?:[^"\\]|\\.)*")|\b(INIT|KB|EXIT|EVENTS|ENDEXITSECTION|EXITSECTION|IF|THEN|AND|NOT)\b|\b(DB_\w+|PROC_\w+|QRY_\w+)\b|\b(STRING|INTEGER|REAL|GUIDSTRING|CHARACTERGUID|ITEMGUID|TRIGGERGUID|SPELLID|STATUSID|SURFACEID|LEVELTEMPLATEID|DIALOGRESOURCE)\b|\b(\d+(?:\.\d+)?)\b/g;
+  const re = /\/\/.*$|("(?:[^"\\]|\\.)*")|\b(Version|SubGoalCombiner|SGC_AND|INITSECTION|KBSECTION|EXITSECTION|ENDEXITSECTION|ParentTargetEdge|IF|THEN|AND|NOT|PROC|QRY|EVENTS)\b|\b(DB_\w+|PROC_\w+|QRY_\w+)\b|(\((?:INTEGER|INTEGER64|REAL|STRING|GUIDSTRING|CHARACTERGUID|ITEMGUID|TRIGGERGUID|CHARACTER|ITEM|TRIGGER|SPLINE|LEVELTEMPLATE|SPLINEGUID|LEVELTEMPLATEGUID)\))|\b(STRING|INTEGER|INTEGER64|REAL|GUIDSTRING|CHARACTERGUID|ITEMGUID|TRIGGERGUID|SPLINEGUID|LEVELTEMPLATEGUID|SPELLID|STATUSID|SURFACEID|LEVELTEMPLATEID|DIALOGRESOURCE|ACTION|PASSIVEID|TAG)\b|\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b|\b(\d+(?:\.\d+)?)\b/g;
   let result = '';
   let pos = 0;
   let m: RegExpExecArray | null;
@@ -183,7 +183,11 @@ export function highlightOsiris(raw: string): string {
     } else if (m[4] !== undefined) {
       result += hl(m[4], 'attr');
     } else if (m[5] !== undefined) {
-      result += hl(m[5], 'num');
+      result += hl(m[5], 'attr');
+    } else if (m[6] !== undefined) {
+      result += hl(m[6], 'string');
+    } else if (m[7] !== undefined) {
+      result += hl(m[7], 'num');
     }
     pos = m.index + m[0].length;
   }
@@ -197,7 +201,7 @@ export function highlightOsiris(raw: string): string {
  */
 export function highlightKhonsu(raw: string): string {
   if (/^\s*--/.test(raw)) return hl(raw, 'comment');
-  const re = /--.*$|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(ConditionResult|HasPassive|HasStatus|HasSpell|IsClass|HasFlag|StatusGetDescriptionParam|GetLevel|GetAbilityModifier|GetProficiencyBonus|GetBaseAbility|HasProficiency)\b|([&|~]|<<|>>)|\b(\d+(?:\.\d+)?)\b/g;
+  const re = /--.*$|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(context\.\w+(?:\.\w+)*)|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(ConditionResult|HasPassive|HasStatus|HasSpell|IsClass|HasFlag|Tagged|GetDistanceTo|WieldingWeapon|SpellId|IsSpellOfSchool|HasSpellFlag|HasUseCosts|HasFunctor|Distance|Self|Ally|Enemy|Character|Item|Dead|HasActionResource|GetLevel|GetBaseAbility|StatusGetDescriptionParam|HasProficiency|GetAbilityModifier|GetProficiencyBonus)\b|([&|~]|<<|>>)|\b(\d+(?:\.\d+)?)\b/g;
   let result = '';
   let pos = 0;
   let m: RegExpExecArray | null;
@@ -209,13 +213,15 @@ export function highlightKhonsu(raw: string): string {
     } else if (m[1] !== undefined) {
       result += hl(m[1], 'string');
     } else if (m[2] !== undefined) {
-      result += hl(m[2], 'keyword');
+      result += hl(m[2], 'attr');
     } else if (m[3] !== undefined) {
-      result += hl(m[3], 'key');
+      result += hl(m[3], 'keyword');
     } else if (m[4] !== undefined) {
-      result += hl(m[4], 'punct');
+      result += hl(m[4], 'key');
     } else if (m[5] !== undefined) {
-      result += hl(m[5], 'num');
+      result += hl(m[5], 'punct');
+    } else if (m[6] !== undefined) {
+      result += hl(m[6], 'num');
     }
     pos = m.index + m[0].length;
   }

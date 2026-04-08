@@ -1,4 +1,5 @@
 pub mod delta;
+pub mod khonsu_handler;
 pub mod loca_handler;
 pub mod lsx_handler;
 pub mod meta_handler;
@@ -133,6 +134,7 @@ pub static HANDLER_REGISTRY: LazyLock<Vec<Box<dyn FileTypeHandler>>> = LazyLock:
         Box::new(osiris_handler::OsirisHandler),
         Box::new(se_config_handler::SeConfigHandler),
         Box::new(se_lua_handler::SeLuaHandler),
+        Box::new(khonsu_handler::KhonsuHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 });
@@ -149,6 +151,7 @@ pub fn default_handlers() -> Vec<Box<dyn FileTypeHandler>> {
         Box::new(osiris_handler::OsirisHandler),
         Box::new(se_config_handler::SeConfigHandler),
         Box::new(se_lua_handler::SeLuaHandler),
+        Box::new(khonsu_handler::KhonsuHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 }

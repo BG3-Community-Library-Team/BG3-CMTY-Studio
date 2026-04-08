@@ -1,0 +1,8 @@
+-- {{FILE_NAME}}
+-- Basic condition script
+-- Created by CMTY Studio
+
+function {{FUNCTION_NAME}}(context)
+    local result = ConditionResult(true)
+    return result
+end
