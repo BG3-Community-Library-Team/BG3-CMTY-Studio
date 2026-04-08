@@ -1,13 +1,16 @@
 export { completionRegistry } from './completionRegistry.js';
 export type { CompletionItem, CompletionContext, CompletionPlugin } from './completionTypes.js';
 export { updateModSymbols, clearModSymbols } from './activeModPlugin.js';
+export { loadIdeHelpers, reloadIdeHelpers } from './ideHelpersPlugin.js';
 
 import { completionRegistry } from './completionRegistry.js';
 import { seApiPlugin } from './seApiPlugin.js';
 import { luaStdlibPlugin } from './luaStdlibPlugin.js';
 import { activeModPlugin } from './activeModPlugin.js';
+import { ideHelpersPlugin } from './ideHelpersPlugin.js';
 
 // Register built-in plugins
 completionRegistry.register(seApiPlugin);
 completionRegistry.register(luaStdlibPlugin);
 completionRegistry.register(activeModPlugin);
+completionRegistry.register(ideHelpersPlugin);

@@ -10,7 +10,7 @@
     SECTIONS_EXCLUDED_FROM_DISCOVERY,
     type FolderNode,
   } from "../lib/data/bg3FolderStructure.js";
-  import { openPath, listModFiles } from "../lib/utils/tauri.js";
+  import { openPath, revealPath, listModFiles } from "../lib/utils/tauri.js";
   import { localeCompare } from "../lib/utils/localeSort.js";
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import ContextMenu from "./ContextMenu.svelte";
@@ -1377,21 +1377,55 @@
                     class:active-node={isActiveFile(node.relPath)}
                     onclick={() => openFilePreview(node)}
                     ondblclick={() => openFilePreview(node, false)}
+                    oncontextmenu={(e) => showFileContextMenu(e, node)}
+                    onkeydown={(e) => { if (e.key === 'Delete') { deleteScriptFile(node); } }}
+                    onmouseenter={() => { hoveredNode = node.relPath; }}
+                    onmouseleave={() => { hoveredNode = null; }}
                   >
                     <span class="w-3.5 shrink-0"></span>
                     <File size={14} class="text-[var(--th-text-emerald-400)]" />
                     <span class="node-label truncate">{node.name}</span>
-                    {#if node.extension}
-                      <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
-                    {/if}
-                    {#if getSeContextBadge(node.relPath)}
-                      {@const seBadge = getSeContextBadge(node.relPath)!}
-                      <span class="se-ctx-badge" style="background: {seBadge.color}">{seBadge.label}</span>
+                    {#if hoveredNode === node.relPath}
+                      <span class="hover-actions">
+                        <span
+                          role="button"
+                          tabindex="0"
+                          class="hover-action-btn"
+                          title="New File"
+                          onclick={(e) => { e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'file'); }}
+                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'file'); } }}
+                        >
+                          <FilePlus2 size={12} />
+                        </span>
+                        <span
+                          role="button"
+                          tabindex="0"
+                          class="hover-action-btn"
+                          title="New Folder"
+                          onclick={(e) => { e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'folder'); }}
+                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'folder'); } }}
+                        >
+                          <FolderPlus size={12} />
+                        </span>
+                      </span>
+                    {:else}
+                      {#if node.extension}
+                        <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                      {/if}
+                      {#if getSeContextBadge(node.relPath)}
+                        {@const seBadge = getSeContextBadge(node.relPath)!}
+                        <span class="se-ctx-badge" style="background: {seBadge.color}">{seBadge.label}</span>
+                      {/if}
                     {/if}
                   </button>
                 {:else}
                   {@const expanded = uiStore.expandedNodes[`script:${node.relPath}`] ?? false}
-                  <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`script:${node.relPath}`)}>
+                  <button class="tree-node has-files"
+                    onclick={() => uiStore.toggleNode(`script:${node.relPath}`)}
+                    oncontextmenu={(e) => showFileContextMenu(e, node)}
+                    onmouseenter={() => { hoveredNode = node.relPath; }}
+                    onmouseleave={() => { hoveredNode = null; }}
+                  >
                     <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
                     {#if expanded}
                       <FolderOpen size={14} class="text-[var(--th-text-emerald-400)]" />
@@ -1399,9 +1433,54 @@
                       <Folder size={14} class="text-[var(--th-text-emerald-400)]" />
                     {/if}
                     <span class="node-label truncate">{node.name}</span>
+                    {#if hoveredNode === node.relPath}
+                      <span class="hover-actions">
+                        <span
+                          role="button"
+                          tabindex="0"
+                          class="hover-action-btn"
+                          title="New File"
+                          onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'file'); }}
+                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'file'); } }}
+                        >
+                          <FilePlus2 size={12} />
+                        </span>
+                        <span
+                          role="button"
+                          tabindex="0"
+                          class="hover-action-btn"
+                          title="New Folder"
+                          onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); }}
+                          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); } }}
+                        >
+                          <FolderPlus size={12} />
+                        </span>
+                      </span>
+                    {/if}
                   </button>
                   {#if expanded && node.children}
                     <div class="tree-children">
+                      {#if inlineCreateParent === node.relPath}
+                        <div class="tree-node inline-create">
+                          <span class="w-3.5 shrink-0"></span>
+                          {#if inlineCreateType === 'folder'}
+                            <Folder size={14} class="text-[var(--th-text-emerald-400)]" />
+                          {:else}
+                            <File size={14} class="text-[var(--th-text-emerald-400)]" />
+                          {/if}
+                          <input
+                            bind:this={inlineCreateInput}
+                            bind:value={inlineCreateName}
+                            class="inline-create-input"
+                            placeholder={inlineCreateType === 'folder' ? 'folder name' : 'filename.lua'}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); }
+                              if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); }
+                            }}
+                            onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
+                          />
+                        </div>
+                      {/if}
                       {#each node.children as child (child.relPath)}
                         {@render scriptNode(child)}
                       {/each}
@@ -1542,6 +1621,35 @@
   <ContextMenu x={scriptsCtxX} y={scriptsCtxY} header="Scripts" onclose={hideContextMenu}>
     <button
       class="ctx-item"
+      onclick={() => { startInlineCreate('ScriptExtender', 'file'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode('_Scripts_lua-se'); }}
+      role="menuitem"
+    >
+      <FilePlus2 size={12} class="shrink-0" />
+      New File
+    </button>
+    <button
+      class="ctx-item"
+      onclick={() => { startInlineCreate('ScriptExtender', 'folder'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode('_Scripts_lua-se'); }}
+      role="menuitem"
+    >
+      <FolderPlus size={12} class="shrink-0" />
+      New Folder
+    </button>
+    <button
+      class="ctx-item"
+      onclick={() => {
+        showCreateScript = true;
+        createScriptDefaultContext = 'Other';
+        scriptsCtxVisible = false;
+      }}
+      role="menuitem"
+    >
+      <FileCode size={12} class="shrink-0" />
+      New File from Template...
+    </button>
+    <div class="ctx-separator"></div>
+    <button
+      class="ctx-item"
       onclick={async () => { scriptsCtxVisible = false; await refreshModFiles(); }}
       role="menuitem"
     >
@@ -1668,7 +1776,7 @@
       onclick={async () => {
         const modPath = modStore.selectedModPath;
         if (modPath && fileCtxNode) {
-          try { await openPath(`${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`); }
+          try { await revealPath(`${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`); }
           catch (e) { toastStore.error(m.file_explorer_open_failed_title(), String(e)); }
         }
         hideFileContextMenu();

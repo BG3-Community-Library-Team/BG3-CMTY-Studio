@@ -6,8 +6,24 @@
   import { m } from "../paraglide/messages.js";
   import { settingsStore, THEME_OPTIONS, DEFAULT_CUSTOM_THEME, type CustomThemeValues } from "../lib/stores/settingsStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
+  import { open } from "@tauri-apps/plugin-dialog";
 
   let { stagingOverrideStyle = $bindable("") }: { stagingOverrideStyle?: string } = $props();
+
+  async function browseIdeHelpers() {
+    try {
+      const selected = await open({
+        title: m.settings_scripts_ide_helpers_browse_title(),
+        filters: [{ name: "Lua Files", extensions: ["lua"] }],
+        multiple: false,
+        directory: false,
+      });
+      if (selected) {
+        settingsStore.ideHelpersPath = selected;
+        settingsStore.persist();
+      }
+    } catch { /* user cancelled */ }
+  }
 
   /** Maps CustomThemeValues keys → CSS custom property names for live preview overrides. */
   const STAGING_CSS_MAP: Record<keyof CustomThemeValues, string> = {
@@ -283,6 +299,30 @@
             </label>
           {/each}
         </div>
+      </div>
+    </div>
+  {:else if uiStore.settingsSection === "scripts"}
+    <h3 class="settings-section-title">{m.settings_scripts_title()}</h3>
+    <div class="space-y-3">
+      <div>
+        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_scripts_ide_helpers_heading()}</p>
+        <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_scripts_ide_helpers_desc()}</p>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+            placeholder={m.settings_scripts_ide_helpers_placeholder()}
+            value={settingsStore.ideHelpersPath}
+            oninput={(e) => { settingsStore.ideHelpersPath = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+          />
+          <button
+            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
+            onclick={browseIdeHelpers}
+          >{m.common_browse()}</button>
+        </div>
+        {#if settingsStore.ideHelpersPath}
+          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.ideHelpersPath}</p>
+        {/if}
       </div>
     </div>
   {:else}

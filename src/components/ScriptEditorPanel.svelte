@@ -60,8 +60,10 @@
     isLoading = true;
     error = null;
     scriptRead(dbPath, path).then(text => {
-      content = text ?? "";
-      originalContent = text ?? "";
+      // Normalize line endings: CRLF → LF, stray CR → LF
+      const normalized = (text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      content = normalized;
+      originalContent = normalized;
       isDirty = false;
       isLoading = false;
     }).catch(err => {
@@ -71,6 +73,15 @@
   });
 
   // Minimap rendering
+  /** Convert a hex color (e.g. #7dcfff) to an rgba() string with the given alpha */
+  function hexToRgba(hex: string, alpha: number): string {
+    if (!hex || !hex.startsWith('#')) return `rgba(200, 200, 220, ${alpha})`;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   function renderMinimap() {
     if (!minimapCanvas || !content) return;
     const ctx = minimapCanvas.getContext('2d');
@@ -87,6 +98,13 @@
 
     ctx.clearRect(0, 0, width, height);
 
+    // Derive minimap colors from theme CSS variables
+    const cs = minimapCanvas.parentElement ? getComputedStyle(minimapCanvas.parentElement) : null;
+    const minimapCommentColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-comment').trim() || cs.getPropertyValue('--th-text-600').trim(), 0.6) : 'rgba(106, 106, 122, 0.6)';
+    const minimapBracketColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-key').trim() || cs.getPropertyValue('--th-text-sky-400').trim(), 0.5) : 'rgba(125, 207, 255, 0.5)';
+    const minimapStringColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-string').trim() || cs.getPropertyValue('--th-text-emerald-400').trim(), 0.5) : 'rgba(169, 220, 118, 0.5)';
+    const minimapDefaultColor = 'rgba(200, 200, 220, 0.35)';
+
     for (let i = 0; i < minimapLines.length; i++) {
       const line = minimapLines[i];
       const y = i * lineHeight;
@@ -97,13 +115,13 @@
 
         let color: string;
         if (line.trimStart().startsWith('--')) {
-          color = 'rgba(106, 106, 122, 0.6)';
+          color = minimapCommentColor;
         } else if (/[{}()\[\]]/.test(char)) {
-          color = 'rgba(125, 207, 255, 0.5)';
+          color = minimapBracketColor;
         } else if (/["']/.test(char)) {
-          color = 'rgba(169, 220, 118, 0.5)';
+          color = minimapStringColor;
         } else {
-          color = 'rgba(200, 200, 220, 0.35)';
+          color = minimapDefaultColor;
         }
 
         ctx.fillStyle = color;
@@ -253,6 +271,12 @@
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
       save();
+      return;
+    }
+
+    // Ctrl+R → block browser refresh while editing
+    if ((e.ctrlKey || e.metaKey) && e.key === "r") {
+      e.preventDefault();
       return;
     }
 
@@ -554,15 +578,15 @@
     background: rgba(56, 189, 248, 0.2);
   }
 
-  /* Syntax highlighting tokens — same as FilePreviewPanel */
-  .script-editor-panel :global(.hl-key) { color: #7dcfff; }
-  .script-editor-panel :global(.hl-string) { color: #a9dc76; }
-  .script-editor-panel :global(.hl-comment) { color: #6a6a7a; font-style: italic; }
-  .script-editor-panel :global(.hl-bool) { color: #ff9e64; }
-  .script-editor-panel :global(.hl-num) { color: #ff9e64; }
-  .script-editor-panel :global(.hl-punct) { color: #89929b; }
-  .script-editor-panel :global(.hl-keyword) { color: #bb9af7; }
-  .script-editor-panel :global(.hl-attr) { color: #7dcfff; }
+  /* Syntax highlighting tokens — theme-aware via CSS variables */
+  .script-editor-panel :global(.hl-key) { color: var(--th-syntax-key, var(--th-text-sky-400, #7dcfff)); }
+  .script-editor-panel :global(.hl-string) { color: var(--th-syntax-string, var(--th-text-emerald-400, #a9dc76)); }
+  .script-editor-panel :global(.hl-comment) { color: var(--th-syntax-comment, var(--th-text-600, #6a6a7a)); font-style: italic; }
+  .script-editor-panel :global(.hl-bool) { color: var(--th-syntax-num, var(--th-text-amber-400, #ff9e64)); }
+  .script-editor-panel :global(.hl-num) { color: var(--th-syntax-num, var(--th-text-amber-400, #ff9e64)); }
+  .script-editor-panel :global(.hl-punct) { color: var(--th-syntax-punct, var(--th-text-500, #89929b)); }
+  .script-editor-panel :global(.hl-keyword) { color: var(--th-syntax-keyword, var(--th-text-violet-400, #bb9af7)); }
+  .script-editor-panel :global(.hl-attr) { color: var(--th-syntax-key, var(--th-text-sky-400, #7dcfff)); }
 
   /* Autocomplete dropdown */
   .autocomplete-dropdown {

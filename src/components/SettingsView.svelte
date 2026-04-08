@@ -12,6 +12,7 @@
     { id: "dataHandling", label: () => m.settings_nav_data_handling() },
     { id: "modConfig", label: () => m.settings_nav_mod_config() },
     { id: "notifications", label: () => m.settings_nav_notifications() },
+    { id: "scripts", label: () => m.settings_nav_scripts() },
   ];
   function selectSection(id: SettingsSection) {
     uiStore.settingsSection = id;

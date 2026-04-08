@@ -45,6 +45,8 @@ interface StoredSettings {
   hasSeenFirstRunModal: boolean;
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean;
+  /** Path to an IDE Helpers Lua file for supplemental intellisense definitions */
+  ideHelpersPath: string;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -72,6 +74,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   enableMazzleDocsSupport: false,
   hasSeenFirstRunModal: false,
   autoHideTabBar: false,
+  ideHelpersPath: "",
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -188,6 +191,9 @@ class SettingsStore {
 
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean = $state(this.#initial.autoHideTabBar);
+
+  /** Path to an IDE Helpers Lua file for supplemental intellisense definitions */
+  ideHelpersPath: string = $state(this.#initial.ideHelpersPath);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);

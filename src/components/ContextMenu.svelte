@@ -17,12 +17,27 @@
     children: Snippet;
   } = $props();
 
-  let menuStyle = $derived.by(() => {
-    const vw = typeof window !== 'undefined' ? window.innerWidth : x + 200;
-    const vh = typeof window !== 'undefined' ? window.innerHeight : y + 200;
-    const clampedX = Math.min(x, vw - 200 - 8);
-    const clampedY = Math.min(y, vh - 200 - 8);
-    return `left: ${clampedX}px; top: ${clampedY}px`;
+  let menuEl: HTMLDivElement | undefined = $state(undefined);
+  let menuStyle = $state(`left: ${x}px; top: ${y}px; visibility: hidden`);
+
+  $effect(() => {
+    // Re-run when x, y, or the menu element changes
+    const _x = x;
+    const _y = y;
+    if (!menuEl) {
+      menuStyle = `left: ${_x}px; top: ${_y}px; visibility: hidden`;
+      return;
+    }
+    // Use requestAnimationFrame to let the browser lay out the menu first
+    requestAnimationFrame(() => {
+      if (!menuEl) return;
+      const rect = menuEl.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const clampedX = Math.min(_x, vw - rect.width - 8);
+      const clampedY = Math.min(_y, vh - rect.height - 8);
+      menuStyle = `left: ${Math.max(4, clampedX)}px; top: ${Math.max(4, clampedY)}px`;
+    });
   });
 </script>
 
@@ -37,6 +52,7 @@
 
 <!-- Context menu -->
 <div
+  bind:this={menuEl}
   class="ctx-container fixed z-[151] min-w-[180px] py-1 rounded-lg shadow-xl shadow-black/40
          bg-[var(--th-bg-800,#1f1f23)] border border-[var(--th-border-700,#3f3f46)] text-sm select-none"
   style={menuStyle}

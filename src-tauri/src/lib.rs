@@ -1366,6 +1366,52 @@ async fn cmd_open_path(path: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Reveal a file or directory in the native OS file manager (selecting it if it's a file).
+/// On Windows: `explorer.exe /select,"path"` for files, `explorer.exe "path"` for directories.
+/// On macOS: `open -R "path"`. On Linux: opens the parent directory with `xdg-open`.
+#[tauri::command]
+async fn cmd_reveal_path(path: String) -> Result<(), AppError> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(AppError::not_found(format!("Path does not exist: {path}")));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let win_path = path.replace('/', "\\");
+        let mut cmd = std::process::Command::new("explorer.exe");
+        if p.is_file() {
+            cmd.arg("/select,");
+            cmd.arg(&win_path);
+        } else {
+            cmd.arg(&win_path);
+        }
+        cmd.spawn().map_err(|e| format!("Failed to reveal path: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to reveal path: {e}"))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let dir = if p.is_file() {
+            p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or(path.clone())
+        } else {
+            path.clone()
+        };
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| format!("Failed to reveal path: {e}"))?;
+    }
+
+    Ok(())
+}
+
 /// Auto-detect the BG3 game Data folder via Windows Registry (Steam & GOG).
 #[tauri::command]
 async fn cmd_detect_game_data_path() -> Result<Option<String>, AppError> {
@@ -1984,6 +2030,7 @@ pub fn run() {
             cmd_detect_game_data_path,
             cmd_validate_game_data_path,
             cmd_open_path,
+            cmd_reveal_path,
             cmd_copy_file,
             cmd_file_exists,
             cmd_read_text_file,

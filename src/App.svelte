@@ -40,6 +40,7 @@
   import { open, ask } from "@tauri-apps/plugin-dialog";
   import { SECTIONS_ORDERED, SECTION_DISPLAY_NAMES, type Section, getErrorMessage } from "./lib/types/index.js";
   import { m } from "./paraglide/messages.js";
+  import { loadIdeHelpers } from "./lib/plugins/index.js";
 
   const MIN_SIDEBAR = 280;
   const MAX_SIDEBAR_RATIO = 0.6;
@@ -72,6 +73,12 @@
   });
 
   let showFirstRunModal = $state(false);
+
+  // Load IDE helpers file when the settings path changes
+  $effect(() => {
+    const path = settingsStore.ideHelpersPath;
+    loadIdeHelpers(path);
+  });
 
   // ERR-006 Option C: Global unhandled error/rejection safety net
   $effect(() => {

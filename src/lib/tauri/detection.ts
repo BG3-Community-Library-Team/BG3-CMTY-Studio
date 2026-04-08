@@ -29,6 +29,11 @@ export async function openPath(path: string): Promise<void> {
   return invoke("cmd_open_path", { path });
 }
 
+/** Reveal a file or directory in the native OS file manager (selecting it if it's a file). */
+export async function revealPath(path: string): Promise<void> {
+  return invoke("cmd_reveal_path", { path });
+}
+
 /** Rename (move) a directory on disk. */
 export async function renameDir(
   fromPath: string,
