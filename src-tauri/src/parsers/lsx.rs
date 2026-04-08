@@ -315,7 +315,10 @@ where
                 attr_type = String::from_utf8_lossy(&attr.value).to_string();
             }
             b"value" | b"handle" => {
-                let decoded = String::from_utf8_lossy(&attr.value).to_string();
+                let decoded = attr
+                    .unescape_value()
+                    .map(|v| v.into_owned())
+                    .unwrap_or_else(|_| String::from_utf8_lossy(&attr.value).to_string());
                 if attr.key.as_ref() == b"handle" {
                     handle = Some(decoded.clone());
                 }
@@ -749,5 +752,41 @@ mod tests {
 
         let flattened = resource_to_lsx_entries(&resource);
         assert_eq!(flattened[0].attributes["DisplayName"].value, "h123");
+    }
+
+    #[test]
+    fn test_attribute_value_xml_entity_unescaping() {
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<save>
+    <version major="4" minor="0" revision="0" build="0"/>
+    <region id="EffectInfo">
+        <node id="root">
+            <children>
+                <node id="Effect">
+                    <attribute id="TargetBone" type="FixedString" value="&lt;click to select&gt;"/>
+                    <attribute id="Escaped" type="LSString" value="A &amp; B &lt; C &gt; D &quot;E&quot; &apos;F&apos;"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>"#;
+
+        let resource = parse_lsx_resource(content).unwrap();
+        let root = &resource.regions[0].nodes[0];
+        let effect = &root.children[0];
+
+        let target_bone = effect
+            .attributes
+            .iter()
+            .find(|a| a.id == "TargetBone")
+            .unwrap();
+        assert_eq!(target_bone.value, "<click to select>");
+
+        let escaped = effect
+            .attributes
+            .iter()
+            .find(|a| a.id == "Escaped")
+            .unwrap();
+        assert_eq!(escaped.value, "A & B < C > D \"E\" 'F'");
     }
 }

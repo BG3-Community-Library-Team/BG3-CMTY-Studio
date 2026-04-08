@@ -831,7 +831,7 @@
                   />
                 </label>
               </div>
-              <div class="flex gap-2 items-end">
+              <div class="flex gap-2">
                 <label class="flex flex-col gap-1 text-xs flex-1 min-w-0">
                   <span class={labelClass}>{m.meta_lsx_dep_folder_label()}</span>
                   <input
@@ -843,7 +843,7 @@
                   />
                 </label>
                 <button
-                  class="h-8 px-2 text-xs rounded border border-transparent bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
+                  class="px-2 text-xs rounded border border-transparent bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
                   onclick={addDependency}
                   disabled={!newDepUuid.trim()}
                 >

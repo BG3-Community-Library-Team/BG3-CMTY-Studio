@@ -637,10 +637,10 @@ export const BG3_ADDITIONAL_FOLDERS: FolderNode[] = [
     name: "_GUI",
     label: "GUI",
     isGroup: true,
-    groupSections: ["GUI"],
+    groupSections: ["TextureAtlasInfo", "IconUVList"],
     children: [
-      { name: "TextureAtlasInfo", label: "Texture Atlas Info", Section: "GUI", regionId: "TextureAtlasInfo" },
-      { name: "IconUVList", label: "Icon UV Lists", Section: "GUI", regionId: "IconUVList" },
+      { name: "TextureAtlasInfo", label: "Texture Atlas Info", Section: "TextureAtlasInfo", regionId: "TextureAtlasInfo" },
+      { name: "IconUVList", label: "Icon UV Lists", Section: "IconUVList", regionId: "IconUVList" },
     ],
   },
   { name: "ItemThrowParams", label: "Item Throw Params", Section: "ItemThrowParams", regionId: "ItemThrowParams" },

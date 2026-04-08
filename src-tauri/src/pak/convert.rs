@@ -96,6 +96,9 @@ pub fn convert_loca_xml_file_to_binary(disk_path: &Path) -> Result<Vec<u8>, Stri
 }
 
 /// Convert a .lsx pak path to .lsf extension.
+///
+/// Handles the `.lsf.lsx` double-extension pattern (common in BG3 mod sources)
+/// by stripping just the `.lsx` suffix, avoiding a `.lsf.lsf` result.
 pub fn convert_pak_path_to_lsf(pak_path: &PakPath) -> PakResult<PakPath> {
     let s = pak_path.as_str();
     if !s.ends_with(".lsx") {
@@ -103,7 +106,13 @@ pub fn convert_pak_path_to_lsf(pak_path: &PakPath) -> PakResult<PakPath> {
             "cannot convert non-.lsx path to .lsf: {s}"
         )));
     }
-    let new_path = format!("{}.lsf", &s[..s.len() - 4]);
+    let base = &s[..s.len() - 4]; // strip ".lsx"
+    let new_path = if base.ends_with(".lsf") {
+        // .lsf.lsx → .lsf (just drop the .lsx)
+        base.to_string()
+    } else {
+        format!("{base}.lsf")
+    };
     PakPath::parse(&new_path)
 }
 
@@ -241,6 +250,14 @@ mod tests {
         let path = PakPath::parse("Public/MyMod/RootTemplates/foo.lsx").unwrap();
         let converted = convert_pak_path_to_lsf(&path).unwrap();
         assert_eq!(converted.as_str(), "Public/MyMod/RootTemplates/foo.lsf");
+    }
+
+    #[test]
+    fn convert_path_double_ext_lsf_lsx_to_lsf() {
+        // Source files often have .lsf.lsx (e.g. Tags, Content _merged files)
+        let path = PakPath::parse("Public/MyMod/Tags/abc-def.lsf.lsx").unwrap();
+        let converted = convert_pak_path_to_lsf(&path).unwrap();
+        assert_eq!(converted.as_str(), "Public/MyMod/Tags/abc-def.lsf");
     }
 
     #[test]

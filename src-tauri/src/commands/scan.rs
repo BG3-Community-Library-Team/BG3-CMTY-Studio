@@ -91,7 +91,14 @@ fn file_to_section(relative_path: &str) -> Option<Section> {
     } else if has("FixedHotBarSlots") {
         Some(Section::FixedHotBarSlots)
     } else if has("GUI") {
-        Some(Section::GUI)
+        // GUI folder contains two distinct region types:
+        // - TextureAtlasInfo.lsx → TextureAtlasInfo
+        // - Icons_*.lsx (e.g. Icons_Items.lsx) → IconUVList
+        if file_name.starts_with("Icons") {
+            Some(Section::IconUVList)
+        } else {
+            Some(Section::TextureAtlasInfo)
+        }
     } else if has("ItemThrowParams") {
         Some(Section::ItemThrowParams)
     } else if has("Levelmaps") {

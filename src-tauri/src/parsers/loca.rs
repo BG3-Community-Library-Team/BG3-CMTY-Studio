@@ -245,10 +245,12 @@ pub fn parse_loca_xml(xml: &str) -> Result<Vec<LocaEntry>, String> {
             }
             Ok(Event::End(ref e)) if e.name().as_ref() == b"content" && in_content => {
                 if let Some(key) = current_key.take() {
+                    // Normalise Windows line endings — BG3 loca uses \n only
+                    let text = std::mem::take(&mut current_text).replace('\r', "");
                     entries.push(LocaEntry {
                         key,
                         version: current_version,
-                        text: std::mem::take(&mut current_text),
+                        text,
                     });
                 }
                 in_content = false;

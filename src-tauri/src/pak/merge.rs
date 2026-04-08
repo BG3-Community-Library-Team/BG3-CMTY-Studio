@@ -89,9 +89,16 @@ fn fix_double_extensions(
 ) {
     for (i, (_disk, pak)) in file_entries.iter().enumerate() {
         let s = pak.as_str();
-        if s.ends_with(".lsf.lsf") {
-            let fixed = &s[..s.len() - 4]; // strip one ".lsf"
-            if let Ok(new_pak) = PakPath::parse(fixed) {
+        // Strip one redundant extension: .lsf.lsf → .lsf, .lsfx.lsfx → .lsfx
+        let fixed = if let Some(base) = s.strip_suffix(".lsf.lsf") {
+            Some(format!("{base}.lsf"))
+        } else if let Some(base) = s.strip_suffix(".lsfx.lsfx") {
+            Some(format!("{base}.lsfx"))
+        } else {
+            None
+        };
+        if let Some(fixed) = fixed {
+            if let Ok(new_pak) = PakPath::parse(&fixed) {
                 plan.path_rewrites.insert(i, new_pak);
             }
         }
@@ -200,9 +207,8 @@ fn merge_regiontype_files(
                 if let Some(region_type) = extract_region_type(&file_name, dir_name) {
                     let key = (base_dir.clone(), region_type.clone());
                     groups.entry(key).or_default().push(i);
-                } else if file_name.ends_with(".lsx") {
+                } else if let Some(stem) = file_name.strip_suffix(".lsx") {
                     // Could be the base file: e.g., Races.lsx in Races/
-                    let stem = &file_name[..file_name.len() - 4];
                     // It's a base file if it's directly in the merge dir root
                     // (no deeper subdirectory) and its stem matches a known
                     // region type name.
@@ -266,11 +272,7 @@ fn merge_regiontype_files(
 /// Lists directory has multiple region types (SpellLists, PassiveLists, etc.).
 fn extract_region_type(file_name: &str, dir_name: &str) -> Option<String> {
     // Must end with .lsx
-    if !file_name.ends_with(".lsx") {
-        return None;
-    }
-
-    let stem = &file_name[..file_name.len() - 4]; // strip .lsx
+    let stem = file_name.strip_suffix(".lsx")?;
 
     // Must contain at least one dot (Name.REGIONTYPE)
     let dot_pos = stem.rfind('.')?;
