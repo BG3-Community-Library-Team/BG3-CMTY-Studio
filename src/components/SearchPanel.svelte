@@ -18,6 +18,15 @@
   let caseSensitive = $state(false);
   let matchWholeWord = $state(false);
   let sectionFilter = $state("");
+  let filesInclude = $state(uiStore.searchFilesInclude || "");
+
+  // Watch for external changes (from Find in Folder)
+  $effect(() => {
+    if (uiStore.searchFilesInclude) {
+      filesInclude = uiStore.searchFilesInclude;
+      uiStore.searchFilesInclude = "";
+    }
+  });
 
   /** Recent search terms (persisted in memory for session) */
   let recentSearches: string[] = $state([]);
@@ -167,6 +176,7 @@
     const ww = matchWholeWord;
     const modPath = modStore.selectedModPath;
     const files = modStore.modFiles;
+    const includeFilter = filesInclude;
 
     if (!q || !modPath || files.length === 0) {
       fileResults = [];
@@ -183,6 +193,7 @@
 
       for (const file of files) {
         if (found.length >= MAX_FILE_RESULTS) break;
+        if (includeFilter && !file.rel_path.startsWith(includeFilter)) continue;
         try {
           const content = await readModFile(modPath, file.rel_path);
           const lines = content.split("\n");
@@ -275,6 +286,18 @@
         </select>
       {/if}
     </div>
+
+    <!-- Files to include filter -->
+    <div class="search-filter-row">
+      <label class="search-filter-label" for="files-include">Files to include</label>
+      <input
+        id="files-include"
+        type="text"
+        class="search-filter-input"
+        bind:value={filesInclude}
+        placeholder="e.g. Mods/MyMod/ScriptExtender/"
+      />
+    </div>
   </div>
 
   <!-- Content area -->
@@ -362,3 +385,25 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .search-filter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 8px;
+  }
+  .search-filter-label {
+    font-size: 10px;
+    color: var(--th-text-500);
+    text-transform: uppercase;
+  }
+  .search-filter-input {
+    background: var(--th-bg-700);
+    border: 1px solid var(--th-border-700);
+    border-radius: 3px;
+    color: var(--th-text-200);
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+</style>

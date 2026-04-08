@@ -1,0 +1,7 @@
+{
+    "RequiredVersion": 1,
+    "ModTable": "{{MOD_TABLE}}",
+    "FeatureFlags": [
+        "Lua"
+    ]
+}

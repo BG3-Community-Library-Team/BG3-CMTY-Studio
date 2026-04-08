@@ -49,3 +49,57 @@ export async function scriptCreateFromTemplate(
     variables,
   });
 }
+
+export async function importSeScripts(
+  dbPath: string,
+  modPath: string,
+  modFolder: string,
+): Promise<number> {
+  return invoke("cmd_import_se_scripts", { dbPath, modPath, modFolder });
+}
+
+export async function scaffoldSeStructure(
+  dbPath: string,
+  modFolder: string,
+  includeServer: boolean,
+  includeClient: boolean,
+): Promise<string[]> {
+  return invoke("cmd_scaffold_se_structure", {
+    dbPath,
+    modFolder,
+    includeServer,
+    includeClient,
+  });
+}
+
+// ── Filesystem commands ──
+
+export async function touchFile(
+  modPath: string,
+  relPath: string,
+): Promise<void> {
+  return invoke("cmd_touch_file", { modPath, relPath });
+}
+
+export async function createModDirectory(
+  modPath: string,
+  relPath: string,
+): Promise<void> {
+  return invoke("cmd_create_mod_directory", { modPath, relPath });
+}
+
+export async function moveModFile(
+  modPath: string,
+  srcRelPath: string,
+  destRelPath: string,
+): Promise<void> {
+  return invoke("cmd_move_mod_file", { modPath, srcRelPath, destRelPath });
+}
+
+export async function copyModFile(
+  modPath: string,
+  srcRelPath: string,
+  destRelPath: string,
+): Promise<void> {
+  return invoke("cmd_copy_mod_file", { modPath, srcRelPath, destRelPath });
+}

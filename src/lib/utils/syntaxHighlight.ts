@@ -66,10 +66,14 @@ export function highlightJson(raw: string): string {
 
 /**
  * Tokenize-and-render Lua. Processes raw text in one pass.
+ * Supports SE API (Ext.*), Osiris bridge (Osi.*), and same-line
+ * multi-line strings ([[...]]) and block comments (--[[...]]).
+ * NOTE: True multi-line tracking across lines is a known limitation —
+ * the editor highlights line-by-line via highlightLine().
  */
 export function highlightLua(raw: string): string {
   if (/^\s*--/.test(raw)) return hl(raw, 'comment');
-  const re = /--.*$|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(\d+(?:\.\d+)?)\b/g;
+  const re = /--\[\[.*?\]\]|--.*$|(\[\[.*?\]\])|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(Ext\.\w+(?:\.\w+)*)|(Osi\.\w+(?:\.\w+)*)|\b(local|function|end|if|then|else|elseif|do|while|for|in|repeat|until|return|break|not|and|or|nil|true|false|goto)\b|\b(\d+(?:\.\d+)?)\b/g;
   let result = '';
   let pos = 0;
   let m: RegExpExecArray | null;
@@ -81,9 +85,15 @@ export function highlightLua(raw: string): string {
     } else if (m[1] !== undefined) {
       result += hl(m[1], 'string');
     } else if (m[2] !== undefined) {
-      result += hl(m[2], 'keyword');
+      result += hl(m[2], 'string');
     } else if (m[3] !== undefined) {
-      result += hl(m[3], 'num');
+      result += hl(m[3], 'attr');
+    } else if (m[4] !== undefined) {
+      result += hl(m[4], 'key');
+    } else if (m[5] !== undefined) {
+      result += hl(m[5], 'keyword');
+    } else if (m[6] !== undefined) {
+      result += hl(m[6], 'num');
     }
     pos = m.index + m[0].length;
   }

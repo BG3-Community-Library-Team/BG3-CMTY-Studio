@@ -8,6 +8,7 @@
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Save from "@lucide/svelte/icons/save";
   import FileDown from "@lucide/svelte/icons/file-down";
+  import { markdownToBBCode } from "../lib/utils/bbcodeConverter.js";
 
   let content = $state("");
   let previewMode = $state(false);
@@ -204,6 +205,18 @@ Add installation instructions here. Example:
       >
         <FileDown size={14} />
         <span>.txt</span>
+      </button>
+      <button
+        class="readme-btn"
+        onclick={async () => {
+          const bbcode = markdownToBBCode(content);
+          await navigator.clipboard.writeText(bbcode);
+          toastStore.success("Copied BBCode to clipboard");
+        }}
+        title="Convert to BBCode and copy to clipboard"
+      >
+        <FileDown size={14} />
+        <span>BBCode</span>
       </button>
     </div>
   </div>

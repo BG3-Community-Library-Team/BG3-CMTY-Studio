@@ -264,6 +264,12 @@ class UiStore {
     });
   }
 
+  /** Search panel: pre-populated "files to include" filter (set by Find in Folder) */
+  searchFilesInclude = $state("");
+
+  /** Whether the search panel should be shown */
+  showSearchPanel = $state(false);
+
   /** Close all open tabs and clear related navigation state (e.g., on mod switch). */
   closeAllTabs(): void {
     this.openTabs = [];

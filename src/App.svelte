@@ -110,18 +110,6 @@
   $effect(() => {
     commandRegistry.registerMany([
       {
-        id: "action.toggleFormat",
-        label: m.command_label_toggle_format(),
-        category: "action",
-        icon: "⚡",
-        shortcut: "Ctrl+Shift+O",
-        enabled: () => true,
-        execute: () => {
-          projectStore.setFormat(projectStore.format === 'Yaml' ? 'Json' : 'Yaml');
-          toastStore.info(m.app_format_changed(), m.app_format_set_to({ format: projectStore.format }));
-        },
-      },
-      {
         id: "action.copyPreview",
         label: m.command_label_copy_preview(),
         category: "action",
@@ -189,18 +177,6 @@
           uiStore.showCreateModModal = true;
         },
       },
-
-      {
-        id: "action.convertConfig",
-        label: m.command_label_convert_config(),
-        category: "action",
-        icon: "⚡",
-        enabled: () => !!modStore.scanResult,
-        execute: () => {
-          projectStore.setFormat(projectStore.format === 'Yaml' ? 'Json' : 'Yaml');
-          toastStore.success(m.app_config_converted(), m.app_now_outputting({ format: projectStore.format }));
-        },
-      },
       {
         id: "action.searchEntries",
         label: m.command_label_search_entries(),
@@ -257,22 +233,6 @@
         enabled: () => true,
         execute: () => { settingsStore.setTheme(themeId); toastStore.info(m.app_theme_changed(), name); },
       })),
-      {
-        id: "setting.formatYaml",
-        label: m.command_label_set_format_yaml(),
-        category: "setting",
-        icon: "⚙",
-        enabled: () => true,
-        execute: () => { projectStore.setFormat("Yaml"); },
-      },
-      {
-        id: "setting.formatJson",
-        label: m.command_label_set_format_json(),
-        category: "setting",
-        icon: "⚙",
-        enabled: () => true,
-        execute: () => { projectStore.setFormat("Json"); },
-      },
       {
         id: "help.about",
         label: m.command_label_about(),

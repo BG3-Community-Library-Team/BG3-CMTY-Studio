@@ -20,6 +20,12 @@ fn get_script_template(template_id: &str) -> Option<&'static str> {
         "khonsu_empty" => Some("-- {{FILE_NAME}}\n-- Khonsu condition script\n\nlocal result = ConditionResult(true)\n\nreturn result\n"),
         "anubis_empty" => Some("-- {{FILE_NAME}}\n-- Anubis state script\n\nlocal State = {}\n\nfunction State:OnCreate()\n    -- Initialize state\nend\n\nfunction State:OnActivate()\n    -- Called when state becomes active\nend\n\nreturn State\n"),
         "constellations_empty" => Some("-- {{FILE_NAME}}\n-- Constellations config script\n\nlocal Config = {}\n\nfunction Config:Register()\n    -- Register handlers\nend\n\nreturn Config\n"),
+        "se_config" => Some(include_str!("../../resources/templates/se_config.json")),
+        "se_bootstrap_server" => Some(include_str!("../../resources/templates/se_bootstrap_server.lua")),
+        "se_bootstrap_client" => Some(include_str!("../../resources/templates/se_bootstrap_client.lua")),
+        "lua_se_server_module" => Some(include_str!("../../resources/templates/se_server_module.lua")),
+        "lua_se_client_module" => Some(include_str!("../../resources/templates/se_client_module.lua")),
+        "lua_se_shared_module" => Some(include_str!("../../resources/templates/se_shared_module.lua")),
         _ => None,
     }
 }
@@ -222,6 +228,121 @@ pub async fn cmd_script_create_from_template(
         ).map_err(|e| format!("Insert from template: {e}"))?;
 
         Ok(true)
+    })
+    .await
+}
+
+/// Sanitize a string to a valid Lua identifier (replace non-alphanumeric with `_`, strip leading digits).
+fn sanitize_lua_identifier(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    // Strip leading digits/underscores so the result starts with a letter
+    let trimmed = out.trim_start_matches(|c: char| c.is_ascii_digit() || c == '_');
+    if trimmed.is_empty() {
+        "ModTable".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Helper: render a template with variable substitution and insert into the staging DB.
+/// Returns `Ok(true)` if inserted, `Ok(false)` if the file already exists (skipped).
+fn insert_template_file(
+    conn: &rusqlite::Connection,
+    file_path: &str,
+    template_id: &str,
+    variables: &std::collections::HashMap<String, String>,
+) -> Result<bool, String> {
+    // Check if file already exists
+    let exists: bool = conn
+        .prepare("SELECT COUNT(*) FROM _staging_authoring WHERE key = ?1 AND _is_deleted = 0")
+        .map_err(|e| format!("Prepare check: {e}"))?
+        .query_row(rusqlite::params![file_path], |row| row.get::<_, i64>(0))
+        .map_err(|e| format!("Check existing: {e}"))? > 0;
+
+    if exists {
+        return Ok(false);
+    }
+
+    let template = get_script_template(template_id)
+        .ok_or_else(|| format!("Unknown template: {template_id}"))?;
+
+    let mut content = template.to_string();
+    for (key, value) in variables {
+        content = content.replace(&format!("{{{{{key}}}}}"), value);
+    }
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    let hash = format!("{:016x}", hasher.finish());
+
+    conn.execute(
+        "INSERT INTO _staging_authoring (key, value, _is_new, _is_modified, _is_deleted, _original_hash) VALUES (?1, ?2, 1, 0, 0, ?3)",
+        rusqlite::params![file_path, content, hash],
+    ).map_err(|e| format!("Insert template file: {e}"))?;
+
+    Ok(true)
+}
+
+/// Scaffold the SE directory structure in the staging DB.
+/// Creates Config.json and optionally BootstrapServer.lua / BootstrapClient.lua.
+#[tauri::command]
+pub async fn cmd_scaffold_se_structure(
+    db_path: String,
+    mod_folder: String,
+    include_server: bool,
+    include_client: bool,
+) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        let db = PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {db_path}"));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {e}"))?;
+
+        let mod_table = sanitize_lua_identifier(&mod_folder);
+        let base = format!("Mods/{mod_folder}/ScriptExtender");
+        let mut created: Vec<String> = Vec::new();
+
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("MOD_TABLE".to_string(), mod_table.clone());
+        vars.insert("MOD_NAME".to_string(), mod_folder.clone());
+        vars.insert("VAR_NAME".to_string(), mod_table.clone());
+
+        // 1. Config.json
+        let config_path = format!("{base}/Config.json");
+        if insert_template_file(&conn, &config_path, "se_config", &vars)? {
+            created.push(config_path);
+        }
+
+        // 2. Server bootstrap
+        if include_server {
+            vars.insert("FILE_NAME".to_string(), "BootstrapServer.lua".to_string());
+            let server_path = format!("{base}/Lua/BootstrapServer.lua");
+            if insert_template_file(&conn, &server_path, "se_bootstrap_server", &vars)? {
+                created.push(server_path);
+            }
+        }
+
+        // 3. Client bootstrap
+        if include_client {
+            vars.insert("FILE_NAME".to_string(), "BootstrapClient.lua".to_string());
+            let client_path = format!("{base}/Lua/BootstrapClient.lua");
+            if insert_template_file(&conn, &client_path, "se_bootstrap_client", &vars)? {
+                created.push(client_path);
+            }
+        }
+
+        Ok(created)
     })
     .await
 }

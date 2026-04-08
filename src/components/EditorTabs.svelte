@@ -12,6 +12,7 @@
   import LocalizationPanel from "./LocalizationPanel.svelte";
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
+  import SeConfigEditor from "./SeConfigEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
@@ -477,11 +478,15 @@
       {/if}
     {:else if activeTab.type === "script-editor"}
       {#if activeTab.filePath}
-        <ScriptEditorPanel
-          filePath={activeTab.filePath}
-          language={(activeTab.language ?? "lua") as ScriptLanguage}
-          readonly={false}
-        />
+        {#if activeTab.filePath.endsWith("ScriptExtender/Config.json")}
+          <SeConfigEditor filePath={activeTab.filePath} />
+        {:else}
+          <ScriptEditorPanel
+            filePath={activeTab.filePath}
+            language={(activeTab.language ?? "lua") as ScriptLanguage}
+            readonly={false}
+          />
+        {/if}
       {/if}
     {:else if activeTab.type === "readme"}
       <ReadmeEditor />

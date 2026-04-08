@@ -22,6 +22,8 @@
   import Cog from "@lucide/svelte/icons/cog";
   import Package from "@lucide/svelte/icons/package";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
+  import FolderPlus from "@lucide/svelte/icons/folder-plus";
+  import Search from "@lucide/svelte/icons/search";
   import Plus from "@lucide/svelte/icons/plus";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Pencil from "@lucide/svelte/icons/pencil";
@@ -35,6 +37,11 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
+  import { scriptDelete, scriptRead, scriptWrite, touchFile, createModDirectory, moveModFile, copyModFile } from "../lib/tauri/scripts.js";
+  import ScriptCreationModal from "./ScriptCreationModal.svelte";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Scissors from "@lucide/svelte/icons/scissors";
+  import ClipboardIcon from "@lucide/svelte/icons/clipboard";
 
   // ── File type badge colors ──
   const EXT_BADGE_COLORS: Record<string, string> = {
@@ -51,8 +58,22 @@
   };
   const EXT_BADGE_FALLBACK = "var(--th-badge-fallback)";
 
+  /** SE context detection for files under ScriptExtender/Lua/{Server|Client|Shared} */
+  function getSeContextBadge(path: string): { label: string; color: string } | null {
+    const parts = path.split('/');
+    const seIdx = parts.indexOf('ScriptExtender');
+    if (seIdx < 0) return null;
+    const luaIdx = parts.indexOf('Lua', seIdx);
+    if (luaIdx < 0) return null;
+    const ctx = parts[luaIdx + 1];
+    if (ctx === 'Server') return { label: 'SRV', color: 'var(--th-badge-server, var(--th-accent-500))' };
+    if (ctx === 'Client') return { label: 'CLI', color: 'var(--th-badge-client, var(--th-accent-300))' };
+    if (ctx === 'Shared') return { label: 'SHR', color: 'var(--th-badge-shared, var(--th-warning-500))' };
+    return null;
+  }
+
   /** Extensions that should open in the script editor instead of file preview */
-  const SCRIPT_EXTENSIONS = new Set(["lua", "khn", "anc", "ann", "anm", "clc", "cln", "clm"]);
+  const SCRIPT_EXTENSIONS = new Set(["lua", "khn", "anc", "ann", "anm", "clc", "cln", "clm", "json"]);
 
   /** Check if a file extension is a script type that opens in the editor */
   function isScriptFile(ext?: string): boolean {
@@ -98,10 +119,15 @@
       }
     }
 
-    // Sort: folders first, then files, alphabetically
+    // Sort: folders first, then files, alphabetically. ScriptExtender sorts first among folders.
     function sortTree(nodes: FileTreeNode[]) {
       nodes.sort((a, b) => {
         if (a.isFile !== b.isFile) return a.isFile ? 1 : -1;
+        // ScriptExtender folder sorts first
+        if (!a.isFile && !b.isFile) {
+          if (a.name === 'ScriptExtender') return -1;
+          if (b.name === 'ScriptExtender') return 1;
+        }
         return localeCompare(a.name, b.name);
       });
       for (const n of nodes) {
@@ -230,6 +256,9 @@
   let fileCtxY = $state(0);
   let fileCtxNode: FileTreeNode | null = $state(null);
 
+  /** Track which file/folder node is hovered for showing +file/+folder buttons */
+  let hoveredNode: string | null = $state(null);
+
   function showFileContextMenu(e: MouseEvent, node: FileTreeNode) {
     e.preventDefault();
     e.stopPropagation();
@@ -243,6 +272,135 @@
   function hideFileContextMenu() {
     fileCtxVisible = false;
     fileCtxNode = null;
+  }
+
+  // ── Inline file/folder creation state ──
+  let inlineCreateParent: string | null = $state(null);
+  let inlineCreateType: 'file' | 'folder' | null = $state(null);
+  let inlineCreateName = $state("");
+  let inlineCreateInput: HTMLInputElement | null = $state(null);
+
+  function startInlineCreate(parentRelPath: string, type: 'file' | 'folder') {
+    inlineCreateParent = parentRelPath;
+    inlineCreateType = type;
+    inlineCreateName = '';
+    uiStore.expandedNodes[`modfile:${parentRelPath}`] = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inlineCreateInput?.focus();
+      });
+    });
+  }
+
+  function cancelInlineCreate() {
+    inlineCreateParent = null;
+    inlineCreateType = null;
+    inlineCreateName = '';
+  }
+
+  async function commitInlineCreate() {
+    if (!inlineCreateName.trim() || !inlineCreateParent || !inlineCreateType) {
+      cancelInlineCreate();
+      return;
+    }
+    const name = inlineCreateName.trim();
+    const modPath = modStore.selectedModPath;
+    if (!modPath) { cancelInlineCreate(); return; }
+
+    if (inlineCreateType === 'file') {
+      const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
+      const dbPath = projectStore.stagingDbPath;
+      try {
+        await touchFile(modPath, relPath);
+        if (dbPath) {
+          await scriptWrite(dbPath, relPath, "");
+        }
+        await refreshModFiles();
+        uiStore.openScriptTab(relPath);
+      } catch (e) {
+        toastStore.error("Failed to create file", String(e));
+      }
+    } else {
+      const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
+      try {
+        await createModDirectory(modPath, relPath);
+        await refreshModFiles();
+      } catch (e) {
+        toastStore.error("Failed to create folder", String(e));
+      }
+    }
+    cancelInlineCreate();
+  }
+
+  // ── Clipboard state for cut/copy/paste ──
+  let clipboardNode: FileTreeNode | null = $state(null);
+  let clipboardOp: 'cut' | 'copy' | null = $state(null);
+
+  async function pasteClipboardNode(targetNode: FileTreeNode) {
+    if (!clipboardNode || !clipboardOp) return;
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
+
+    const srcRelPath = `${modsFilePrefix}${clipboardNode.relPath}`;
+    const destDir = targetNode.isFile
+      ? targetNode.relPath.substring(0, targetNode.relPath.lastIndexOf('/'))
+      : targetNode.relPath;
+    const destRelPath = `${modsFilePrefix}${destDir}/${clipboardNode.name}`;
+
+    try {
+      if (clipboardOp === 'cut') {
+        await moveModFile(modPath, srcRelPath, destRelPath);
+        const dbPath = projectStore.stagingDbPath;
+        if (dbPath) {
+          const content = await scriptRead(dbPath, srcRelPath);
+          if (content !== null) {
+            await scriptWrite(dbPath, destRelPath, content);
+            await scriptDelete(dbPath, srcRelPath);
+          }
+        }
+      } else {
+        await copyModFile(modPath, srcRelPath, destRelPath);
+        const dbPath = projectStore.stagingDbPath;
+        if (dbPath) {
+          const content = await scriptRead(dbPath, srcRelPath);
+          if (content !== null) {
+            await scriptWrite(dbPath, destRelPath, content);
+          }
+        }
+      }
+      await refreshModFiles();
+      if (clipboardOp === 'cut') { clipboardNode = null; clipboardOp = null; }
+    } catch (e) {
+      toastStore.error("Paste failed", String(e));
+    }
+  }
+
+  // ── Script creation modal state ──
+  let showCreateScript = $state(false);
+  let createScriptDefaultContext: 'Server' | 'Client' | 'Shared' | 'Other' = $state('Other');
+
+  function deriveContextFromPath(relPath: string): 'Server' | 'Client' | 'Shared' | 'Other' {
+    if (relPath.includes('Server')) return 'Server';
+    if (relPath.includes('Client')) return 'Client';
+    if (relPath.includes('Shared')) return 'Shared';
+    return 'Other';
+  }
+
+  async function deleteScriptFile(node: FileTreeNode) {
+    if (!node.isFile) return;
+    if (!isScriptFile(node.extension) && node.extension !== 'json') return;
+    const fullPath = `${modsFilePrefix}${node.relPath}`;
+    const dbPath = projectStore.stagingDbPath;
+    if (!dbPath) return;
+    try {
+      await scriptDelete(dbPath, fullPath);
+      const tabId = `script:${fullPath}`;
+      if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
+      await refreshModFiles();
+      toastStore.success(m.file_explorer_delete_script(), node.name);
+    } catch (e) {
+      toastStore.error(m.file_explorer_delete_script(), String(e));
+    }
   }
 
   /** Whether the context-menu target has a filesystem path that maps to a real directory */
@@ -977,17 +1135,54 @@
                       onclick={() => openFilePreview(node)}
                       ondblclick={() => openFilePreview(node, false)}
                       oncontextmenu={(e) => showFileContextMenu(e, node)}
+                      onkeydown={(e) => { if (e.key === 'Delete') { deleteScriptFile(node); } }}
+                      onmouseenter={() => { hoveredNode = node.relPath; }}
+                      onmouseleave={() => { hoveredNode = null; }}
                     >
                       <span class="w-3.5 shrink-0"></span>
                       <File size={14} class="text-[var(--th-text-emerald-400)]" />
                       <span class="node-label truncate">{node.name}</span>
-                      {#if node.extension}
-                        <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                      {#if hoveredNode === node.relPath}
+                        <span class="hover-actions">
+                          <span
+                            role="button"
+                            tabindex="0"
+                            class="hover-action-btn"
+                            title="New File"
+                            onclick={(e) => { e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'file'); }}
+                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'file'); } }}
+                          >
+                            <FilePlus2 size={12} />
+                          </span>
+                          <span
+                            role="button"
+                            tabindex="0"
+                            class="hover-action-btn"
+                            title="New Folder"
+                            onclick={(e) => { e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'folder'); }}
+                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'folder'); } }}
+                          >
+                            <FolderPlus size={12} />
+                          </span>
+                        </span>
+                      {:else}
+                        {#if node.extension}
+                          <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                        {/if}
+                        {#if getSeContextBadge(node.relPath)}
+                          {@const seBadge = getSeContextBadge(node.relPath)!}
+                          <span class="se-ctx-badge" style="background: {seBadge.color}">{seBadge.label}</span>
+                        {/if}
                       {/if}
                     </button>
                   {:else}
                     {@const expanded = uiStore.expandedNodes[`modfile:${node.relPath}`] ?? false}
-                    <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`modfile:${node.relPath}`)}>
+                    <button class="tree-node has-files"
+                      onclick={() => uiStore.toggleNode(`modfile:${node.relPath}`)}
+                      oncontextmenu={(e) => showFileContextMenu(e, node)}
+                      onmouseenter={() => { hoveredNode = node.relPath; }}
+                      onmouseleave={() => { hoveredNode = null; }}
+                    >
                       <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
                       {#if expanded}
                         <FolderOpen size={14} class="text-[var(--th-text-indigo-400)]" />
@@ -995,9 +1190,54 @@
                         <Folder size={14} class="text-[var(--th-text-indigo-400)]" />
                       {/if}
                       <span class="node-label truncate">{node.name}</span>
+                      {#if hoveredNode === node.relPath}
+                        <span class="hover-actions">
+                          <span
+                            role="button"
+                            tabindex="0"
+                            class="hover-action-btn"
+                            title="New File"
+                            onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'file'); }}
+                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'file'); } }}
+                          >
+                            <FilePlus2 size={12} />
+                          </span>
+                          <span
+                            role="button"
+                            tabindex="0"
+                            class="hover-action-btn"
+                            title="New Folder"
+                            onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); }}
+                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); } }}
+                          >
+                            <FolderPlus size={12} />
+                          </span>
+                        </span>
+                      {/if}
                     </button>
                     {#if expanded && node.children}
                       <div class="tree-children">
+                        {#if inlineCreateParent === node.relPath}
+                          <div class="tree-node inline-create">
+                            <span class="w-3.5 shrink-0"></span>
+                            {#if inlineCreateType === 'folder'}
+                              <Folder size={14} class="text-[var(--th-text-indigo-400)]" />
+                            {:else}
+                              <File size={14} class="text-[var(--th-text-emerald-400)]" />
+                            {/if}
+                            <input
+                              bind:this={inlineCreateInput}
+                              bind:value={inlineCreateName}
+                              class="inline-create-input"
+                              placeholder={inlineCreateType === 'folder' ? 'folder name' : 'filename.lua'}
+                              onkeydown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); }
+                                if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); }
+                              }}
+                              onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
+                            />
+                          </div>
+                        {/if}
                         {#each node.children as child (child.relPath)}
                           {@render modFileNode(child)}
                         {/each}
@@ -1143,6 +1383,10 @@
                     <span class="node-label truncate">{node.name}</span>
                     {#if node.extension}
                       <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
+                    {/if}
+                    {#if getSeContextBadge(node.relPath)}
+                      {@const seBadge = getSeContextBadge(node.relPath)!}
+                      <span class="se-ctx-badge" style="background: {seBadge.color}">{seBadge.label}</span>
                     {/if}
                   </button>
                 {:else}
@@ -1321,13 +1565,104 @@
       </button>
       <button
         class="ctx-item"
-        onclick={() => { /* TODO: soft-delete in Sprint 23 */ hideFileContextMenu(); }}
+        onclick={async () => {
+          const node = fileCtxNode;
+          if (!node) return;
+          await deleteScriptFile(node);
+          hideFileContextMenu();
+        }}
         role="menuitem"
       >
         <Trash2 size={12} class="shrink-0" />
         {m.file_explorer_delete_script()}
       </button>
     {/if}
+    {#if !fileCtxNode.isFile}
+      <button
+        class="ctx-item"
+        onclick={() => { startInlineCreate(fileCtxNode!.relPath, 'file'); hideFileContextMenu(); }}
+        role="menuitem"
+      >
+        <FilePlus2 size={12} class="shrink-0" />
+        New File
+      </button>
+      <button
+        class="ctx-item"
+        onclick={() => { startInlineCreate(fileCtxNode!.relPath, 'folder'); hideFileContextMenu(); }}
+        role="menuitem"
+      >
+        <FolderPlus size={12} class="shrink-0" />
+        New Folder
+      </button>
+      <button
+        class="ctx-item"
+        onclick={() => {
+          showCreateScript = true;
+          createScriptDefaultContext = deriveContextFromPath(fileCtxNode!.relPath);
+          hideFileContextMenu();
+        }}
+        role="menuitem"
+      >
+        <FileCode size={12} class="shrink-0" />
+        New File from Template...
+      </button>
+      <button
+        class="ctx-item"
+        onclick={() => {
+          const folderPath = `${modsFilePrefix}${fileCtxNode!.relPath}`;
+          uiStore.searchFilesInclude = folderPath;
+          uiStore.showSearchPanel = true;
+          uiStore.activeView = "search";
+          hideFileContextMenu();
+        }}
+        role="menuitem"
+      >
+        <Search size={12} class="shrink-0" />
+        Find in Folder...
+      </button>
+    {:else}
+      <div class="ctx-separator"></div>
+      <button
+        class="ctx-item"
+        onclick={() => {
+          const parentPath = fileCtxNode!.relPath.substring(0, fileCtxNode!.relPath.lastIndexOf('/'));
+          startInlineCreate(parentPath, 'file');
+          hideFileContextMenu();
+        }}
+        role="menuitem"
+      >
+        <FilePlus2 size={12} class="shrink-0" />
+        New File
+      </button>
+    {/if}
+    <div class="ctx-separator"></div>
+    <button
+      class="ctx-item"
+      onclick={() => { clipboardNode = fileCtxNode; clipboardOp = 'cut'; hideFileContextMenu(); }}
+      role="menuitem"
+    >
+      <Scissors size={12} class="shrink-0" />
+      Cut
+    </button>
+    <button
+      class="ctx-item"
+      onclick={() => { clipboardNode = fileCtxNode; clipboardOp = 'copy'; hideFileContextMenu(); }}
+      role="menuitem"
+    >
+      <Copy size={12} class="shrink-0" />
+      Copy
+    </button>
+    {#if clipboardNode}
+      <button
+        class="ctx-item"
+        onclick={async () => { await pasteClipboardNode(fileCtxNode!); hideFileContextMenu(); }}
+        role="menuitem"
+      >
+        <ClipboardIcon size={12} class="shrink-0" />
+        Paste
+      </button>
+    {/if}
+    <div class="ctx-separator"></div>
     <button
       class="ctx-item"
       onclick={async () => {
@@ -1340,10 +1675,47 @@
       }}
       role="menuitem"
     >
-      <File size={12} class="shrink-0" />
-      {m.file_explorer_open_in_file_manager()}
+      <FolderOpen size={12} class="shrink-0" />
+      Reveal in File Manager
+    </button>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        const modPath = modStore.selectedModPath;
+        if (modPath && fileCtxNode) {
+          const fullPath = `${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`;
+          await navigator.clipboard.writeText(fullPath.replace(/\//g, '\\'));
+        }
+        hideFileContextMenu();
+      }}
+      role="menuitem"
+    >
+      <Copy size={12} class="shrink-0" />
+      Copy Path
+    </button>
+    <button
+      class="ctx-item"
+      onclick={async () => {
+        if (fileCtxNode) {
+          await navigator.clipboard.writeText(`${modsFilePrefix}${fileCtxNode.relPath}`);
+        }
+        hideFileContextMenu();
+      }}
+      role="menuitem"
+    >
+      <Copy size={12} class="shrink-0" />
+      Copy Relative Path
     </button>
   </ContextMenu>
+{/if}
+
+{#if showCreateScript && modFolder}
+  <ScriptCreationModal
+    {modFolder}
+    defaultContext={createScriptDefaultContext}
+    onClose={() => { showCreateScript = false; }}
+    onCreated={async () => { showCreateScript = false; await refreshModFiles(); }}
+  />
 {/if}
 
 <style>
@@ -1459,6 +1831,18 @@
     opacity: 0.7;
   }
 
+  .se-ctx-badge {
+    font-size: 8px;
+    padding: 0 3px;
+    border-radius: 2px;
+    color: white;
+    font-weight: 700;
+    line-height: 13px;
+    flex-shrink: 0;
+    opacity: 0.8;
+    letter-spacing: 0.5px;
+  }
+
   .separator-node {
     margin-top: 4px;
     padding-top: 4px;
@@ -1525,5 +1909,57 @@
     cursor: pointer;
     text-align: left;
     padding: 0;
+  }
+
+  .hover-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .hover-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0;
+  }
+
+  .hover-action-btn:hover {
+    background: var(--th-bg-600);
+    color: var(--th-text-200);
+  }
+
+  .inline-create {
+    gap: 4px;
+  }
+
+  .inline-create-input {
+    flex: 1;
+    background: var(--th-bg-700);
+    border: 1px solid var(--th-accent-500);
+    border-radius: 2px;
+    color: var(--th-text-200);
+    font-size: 11px;
+    padding: 1px 4px;
+    outline: none;
+    font-family: inherit;
+  }
+
+  .inline-create-input:focus {
+    border-color: var(--th-accent-400);
+  }
+
+  :global(.ctx-separator) {
+    height: 1px;
+    background: var(--th-border-700);
+    margin: 4px 8px;
   }
 </style>

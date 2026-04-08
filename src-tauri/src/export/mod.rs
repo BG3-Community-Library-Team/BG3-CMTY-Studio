@@ -3,6 +3,8 @@ pub mod loca_handler;
 pub mod lsx_handler;
 pub mod meta_handler;
 pub mod osiris_handler;
+pub mod se_config_handler;
+pub mod se_lua_handler;
 pub mod stats_handler;
 pub mod writer;
 
@@ -129,6 +131,8 @@ pub static HANDLER_REGISTRY: LazyLock<Vec<Box<dyn FileTypeHandler>>> = LazyLock:
         Box::new(stats_handler::StatsHandler),
         Box::new(loca_handler::LocaHandler),
         Box::new(osiris_handler::OsirisHandler),
+        Box::new(se_config_handler::SeConfigHandler),
+        Box::new(se_lua_handler::SeLuaHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 });
@@ -143,6 +147,8 @@ pub fn default_handlers() -> Vec<Box<dyn FileTypeHandler>> {
         Box::new(stats_handler::StatsHandler),
         Box::new(loca_handler::LocaHandler),
         Box::new(osiris_handler::OsirisHandler),
+        Box::new(se_config_handler::SeConfigHandler),
+        Box::new(se_lua_handler::SeLuaHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 }
@@ -237,7 +243,7 @@ pub fn build_export_plan(
 // ---------------------------------------------------------------------------
 
 /// File extensions considered export artifacts when walking the mod directory.
-const EXPORT_EXTENSIONS: &[&str] = &["lsx", "txt", "xml"];
+const EXPORT_EXTENSIONS: &[&str] = &["lsx", "txt", "xml", "lua", "json"];
 
 /// Filenames excluded from orphan detection (managed externally).
 const ORPHAN_EXCLUSIONS: &[&str] = &[];

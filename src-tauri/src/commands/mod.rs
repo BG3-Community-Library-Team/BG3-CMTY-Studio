@@ -1,6 +1,7 @@
 pub mod db;
 pub mod diff;
 pub mod export;
+pub mod filesystem;
 pub mod generate;
 pub mod mod_import;
 pub mod package;

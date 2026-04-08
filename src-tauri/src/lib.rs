@@ -1859,6 +1859,66 @@ r#"<?xml version="1.0" encoding="utf-8"?>
             let lua_dir = se_dir.join("Lua");
             fs::create_dir_all(&lua_dir)
                 .map_err(|e| format!("Failed to create ScriptExtender dir: {e}"))?;
+
+            // Sanitize folder name into a valid Lua identifier for ModTable
+            let mod_table: String = folder_name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                .collect();
+            let mod_table = if mod_table.starts_with(|c: char| c.is_ascii_digit()) {
+                format!("_{mod_table}")
+            } else {
+                mod_table
+            };
+
+            // Config.json
+            let config_content = format!(
+                r#"{{
+    "RequiredVersion": 1,
+    "ModTable": "{mod_table}",
+    "FeatureFlags": [
+        "Lua"
+    ]
+}}"#
+            );
+            fs::write(se_dir.join("Config.json"), &config_content)
+                .map_err(|e| format!("Failed to write Config.json: {e}"))?;
+
+            // BootstrapServer.lua
+            let server_content = format!(
+                "-- BootstrapServer.lua\n\
+                 -- Script Extender server bootstrap for {folder_name}\n\
+                 -- This file is loaded first in the SERVER context.\n\
+                 -- Register event listeners, Osiris callbacks, and server-side logic here.\n\
+                 -- Do NOT call Osi functions at the top level \u{2014} use Ext.Osiris.RegisterListener instead.\n\
+                 \n\
+                 Ext.Vars.RegisterModVariable(\n\
+                 \x20   ModuleUUID,\n\
+                 \x20   \"{mod_table}\",\n\
+                 \x20   {{\n\
+                 \x20       Server = true,\n\
+                 \x20       Client = true,\n\
+                 \x20       SyncToClient = true,\n\
+                 \x20   }}\n\
+                 )\n\
+                 \n\
+                 Ext.Utils.Print(\"[{folder_name}] Server bootstrap loaded\")\n"
+            );
+            fs::write(lua_dir.join("BootstrapServer.lua"), &server_content)
+                .map_err(|e| format!("Failed to write BootstrapServer.lua: {e}"))?;
+
+            // BootstrapClient.lua
+            let client_content = format!(
+                "-- BootstrapClient.lua\n\
+                 -- Script Extender client bootstrap for {folder_name}\n\
+                 -- This file is loaded first in the CLIENT context.\n\
+                 -- Register UI hooks, IMGUI panels, and client-side logic here.\n\
+                 -- Ext.Entity and Ext.IMGUI are available in this context.\n\
+                 \n\
+                 Ext.Utils.Print(\"[{folder_name}] Client bootstrap loaded\")\n"
+            );
+            fs::write(lua_dir.join("BootstrapClient.lua"), &client_content)
+                .map_err(|e| format!("Failed to write BootstrapClient.lua: {e}"))?;
         }
 
         Ok(CreateModResult {
@@ -1982,6 +2042,12 @@ pub fn run() {
             commands::scripts::cmd_script_delete,
             commands::scripts::cmd_script_list,
             commands::scripts::cmd_script_create_from_template,
+            commands::scripts::cmd_scaffold_se_structure,
+            commands::scan::cmd_import_se_scripts,
+            commands::filesystem::cmd_touch_file,
+            commands::filesystem::cmd_create_mod_directory,
+            commands::filesystem::cmd_move_mod_file,
+            commands::filesystem::cmd_copy_mod_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
