@@ -112,6 +112,7 @@
   "settings_nav_data_handling": "Data Handling",
   "settings_nav_mod_config": "Mod Integration",
   "settings_nav_notifications": "Notifications",
+  "settings_nav_scripts": "Scripts",
   "settings_empty_state": "Select a category from the sidebar to configure settings.",
 
   "settings_theme_title": "Theme",
@@ -193,6 +194,12 @@
   "settings_notifications_error_5s": "5 seconds",
   "settings_notifications_error_8s": "8 seconds (default)",
   "settings_notifications_error_15s": "15 seconds",
+
+  "settings_scripts_title": "Scripts",
+  "settings_scripts_ide_helpers_heading": "IDE Helpers File",
+  "settings_scripts_ide_helpers_desc": "Provide a Lua file containing helper definitions to supplement intellisense. The file is parsed for function signatures, global variables, and table fields.",
+  "settings_scripts_ide_helpers_placeholder": "Path to IDE helpers .lua file",
+  "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers File",
 
   "localization_title": "Localization",
   "localization_title_count": "({count} files)",
