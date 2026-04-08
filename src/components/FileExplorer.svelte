@@ -10,7 +10,7 @@
     SECTIONS_EXCLUDED_FROM_DISCOVERY,
     type FolderNode,
   } from "../lib/data/bg3FolderStructure.js";
-  import { openPath } from "../lib/utils/tauri.js";
+  import { openPath, listModFiles } from "../lib/utils/tauri.js";
   import { localeCompare } from "../lib/utils/localeSort.js";
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import ContextMenu from "./ContextMenu.svelte";
@@ -125,6 +125,17 @@
 
   let scanResult = $derived(modStore.scanResult);
   let refreshingAll = $state(false);
+
+  /** Re-scan the mod directory to refresh file-based trees (Localization, Scripts, etc.). */
+  async function refreshModFiles(): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
+    try {
+      modStore.modFiles = await listModFiles(modPath);
+    } catch (err) {
+      console.warn("Failed to refresh mod files:", err);
+    }
+  }
   let modName = $derived(scanResult?.mod_meta?.name ?? m.file_explorer_no_mod());
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
   let sections = $derived(scanResult?.sections ?? []);
@@ -201,7 +212,17 @@
     ctxVisible = false;
     fileCtxVisible = false;
     fileCtxNode = null;
+    locaCtxVisible = false;
+    scriptsCtxVisible = false;
   }
+
+  // ── Localization / Scripts context menu state ──
+  let locaCtxVisible = $state(false);
+  let locaCtxX = $state(0);
+  let locaCtxY = $state(0);
+  let scriptsCtxVisible = $state(false);
+  let scriptsCtxX = $state(0);
+  let scriptsCtxY = $state(0);
 
   // ── File tree context menu state ──
   let fileCtxVisible = $state(false);
@@ -644,7 +665,7 @@
         aria-label="Refresh all sections"
         onclick={async () => {
           refreshingAll = true;
-          try { await projectStore.refreshAllSections(); }
+          try { await Promise.all([projectStore.refreshAllSections(), refreshModFiles()]); }
           finally { refreshingAll = false; }
         }}
       >
@@ -1011,7 +1032,17 @@
             class="tree-node"
             class:active-node={activeNodeKey === 'localization-root'}
             role="treeitem"
+            tabindex="-1"
+            aria-selected={activeNodeKey === 'localization-root'}
             aria-expanded={isLocalizationExpanded}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+              locaCtxX = e.clientX / zoom;
+              locaCtxY = e.clientY / zoom;
+              locaCtxVisible = true;
+            }}
           >
             <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Localization'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Localization'); } }} role="button" tabindex="0" aria-label="Toggle Localization">
               <ChevronRight size={14} class="chevron {isLocalizationExpanded ? 'expanded' : ''}" />
@@ -1074,7 +1105,17 @@
           <div
             class="tree-node"
             role="treeitem"
+            tabindex="-1"
+            aria-selected={false}
             aria-expanded={isScriptsExpanded}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+              scriptsCtxX = e.clientX / zoom;
+              scriptsCtxY = e.clientY / zoom;
+              scriptsCtxVisible = true;
+            }}
           >
             <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Scripts'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Scripts'); } }} role="button" tabindex="0" aria-label="Toggle Scripts">
               <ChevronRight size={14} class="chevron {isScriptsExpanded ? 'expanded' : ''}" />
@@ -1130,7 +1171,7 @@
                   <!-- Lua (SE) - expandable folder tree -->
                   {@const luaExpanded = uiStore.expandedNodes['_Scripts_lua-se'] ?? false}
                   <div>
-                    <div class="tree-node" class:has-files={count > 0} role="treeitem" aria-expanded={luaExpanded}>
+                    <div class="tree-node" class:has-files={count > 0} role="treeitem" tabindex="-1" aria-selected={false} aria-expanded={luaExpanded}>
                       <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Scripts_lua-se'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Scripts_lua-se'); } }} role="button" tabindex="0" aria-label="Toggle Lua (SE)">
                         <ChevronRight size={14} class="chevron {luaExpanded ? 'expanded' : ''}" />
                       </span>
@@ -1235,6 +1276,34 @@
         {m.file_explorer_copy_path()}
       </button>
     {/if}
+  </ContextMenu>
+{/if}
+
+<!-- Localization root context menu -->
+{#if locaCtxVisible}
+  <ContextMenu x={locaCtxX} y={locaCtxY} header="Localization" onclose={hideContextMenu}>
+    <button
+      class="ctx-item"
+      onclick={async () => { locaCtxVisible = false; await refreshModFiles(); }}
+      role="menuitem"
+    >
+      <RefreshCw size={12} class="shrink-0" />
+      Refresh
+    </button>
+  </ContextMenu>
+{/if}
+
+<!-- Scripts root context menu -->
+{#if scriptsCtxVisible}
+  <ContextMenu x={scriptsCtxX} y={scriptsCtxY} header="Scripts" onclose={hideContextMenu}>
+    <button
+      class="ctx-item"
+      onclick={async () => { scriptsCtxVisible = false; await refreshModFiles(); }}
+      role="menuitem"
+    >
+      <RefreshCw size={12} class="shrink-0" />
+      Refresh
+    </button>
   </ContextMenu>
 {/if}
 

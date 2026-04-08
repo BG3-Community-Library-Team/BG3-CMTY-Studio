@@ -8,6 +8,15 @@ const LSF_REQUIRED_DIRS: &[&str] = &[
     "RootTemplates",
     "GameObjects",
     "TimelineTemplates",
+    "Voice",
+    "Timeline",
+    "MultiEffectInfos",
+    "Localization",
+    "Generated",
+    "Flags",
+    "Animation",
+    "Tags",
+    "Content",
 ];
 
 /// Determine whether a pak entry should be converted from LSX to LSF binary.
@@ -30,6 +39,12 @@ pub fn should_convert_to_lsf(pak_path: &PakPath) -> bool {
 
     // Check if the file is under a directory that requires binary format
     let lower = pak_path.as_str().to_ascii_lowercase();
+
+    // Exclude Stats/Generated — only top-level Generated/ should convert
+    if lower.contains("/stats/generated/") {
+        return false;
+    }
+
     for dir in LSF_REQUIRED_DIRS {
         if lower.contains(&format!("/{}/", dir.to_ascii_lowercase())) {
             return true;
@@ -37,6 +52,47 @@ pub fn should_convert_to_lsf(pak_path: &PakPath) -> bool {
     }
 
     false
+}
+
+/// Determine whether an XML file under Mods/*/Localization/ should be converted
+/// to binary `.loca`.
+///
+/// Returns true if the file has a `.xml` extension and its pak path is under
+/// `Mods/<something>/Localization/`. Files under `Public/Localization/` are NOT
+/// converted (those use LSF, not loca binary).
+pub fn should_convert_loca_xml(pak_path: &PakPath) -> bool {
+    let s = pak_path.as_str();
+    if !s.ends_with(".xml") {
+        return false;
+    }
+    let lower = s.to_ascii_lowercase();
+    lower.starts_with("mods/") && lower.contains("/localization/")
+}
+
+/// Convert an XML pak path under Mods/*/Localization/ to `.loca`.
+///
+/// - `.loca.xml` → `.loca` (strips the trailing `.xml`)
+/// - `.xml`      → `.loca` (replaces `.xml` with `.loca`)
+pub fn convert_pak_path_loca(pak_path: &PakPath) -> PakResult<PakPath> {
+    let s = pak_path.as_str();
+    if !s.ends_with(".xml") {
+        return Err(PakError::invalid_path(format!(
+            "cannot convert non-.xml path: {s}"
+        )));
+    }
+    let new_path = if s.ends_with(".loca.xml") {
+        // .loca.xml → .loca (strip ".xml")
+        s[..s.len() - 4].to_string()
+    } else {
+        // .xml → .loca (replace ".xml" with ".loca")
+        format!("{}.loca", &s[..s.len() - 4])
+    };
+    PakPath::parse(&new_path)
+}
+
+/// Read a `.loca.xml` file from disk and convert it to binary `.loca` bytes.
+pub fn convert_loca_xml_file_to_binary(disk_path: &Path) -> Result<Vec<u8>, String> {
+    crate::parsers::loca::convert_loca_xml_to_binary(disk_path)
 }
 
 /// Convert a .lsx pak path to .lsf extension.
@@ -92,6 +148,48 @@ mod tests {
     }
 
     #[test]
+    fn should_convert_voice() {
+        let path = PakPath::parse("Public/MyMod/Voice/some_dialog.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_convert_tags() {
+        let path = PakPath::parse("Public/MyMod/Tags/MyTag.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_convert_content() {
+        let path = PakPath::parse("Public/MyMod/Content/Items/MyItem.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_convert_generated() {
+        let path = PakPath::parse("Public/MyMod/Generated/foo.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_not_convert_stats_generated() {
+        let path = PakPath::parse("Public/MyMod/Stats/Generated/Data/foo.lsx").unwrap();
+        assert!(!should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_convert_flags() {
+        let path = PakPath::parse("Public/MyMod/Flags/MyFlag.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
+    fn should_convert_animation() {
+        let path = PakPath::parse("Public/MyMod/Animation/some_anim.lsx").unwrap();
+        assert!(should_convert_to_lsf(&path));
+    }
+
+    #[test]
     fn should_not_convert_meta_lsx() {
         let path = PakPath::parse("Mods/MyMod/meta.lsx").unwrap();
         assert!(!should_convert_to_lsf(&path));
@@ -120,5 +218,55 @@ mod tests {
     fn convert_path_non_lsx_fails() {
         let path = PakPath::parse("Public/MyMod/RootTemplates/foo.xml").unwrap();
         assert!(convert_pak_path_to_lsf(&path).is_err());
+    }
+
+    #[test]
+    fn should_convert_loca_xml_true() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/Strings.loca.xml").unwrap();
+        assert!(should_convert_loca_xml(&path));
+    }
+
+    #[test]
+    fn should_convert_plain_xml_under_mods_localization() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/SomeFile.xml").unwrap();
+        assert!(should_convert_loca_xml(&path));
+    }
+
+    #[test]
+    fn should_not_convert_xml_under_public_localization() {
+        let path = PakPath::parse("Public/MyMod/Localization/English/SomeFile.xml").unwrap();
+        assert!(!should_convert_loca_xml(&path));
+    }
+
+    #[test]
+    fn should_not_convert_loca_binary() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/Strings.loca").unwrap();
+        assert!(!should_convert_loca_xml(&path));
+    }
+
+    #[test]
+    fn should_not_convert_xml_outside_localization() {
+        let path = PakPath::parse("Mods/MyMod/foo.xml").unwrap();
+        assert!(!should_convert_loca_xml(&path));
+    }
+
+    #[test]
+    fn convert_loca_xml_path() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/Strings.loca.xml").unwrap();
+        let converted = convert_pak_path_loca(&path).unwrap();
+        assert_eq!(converted.as_str(), "Mods/MyMod/Localization/English/Strings.loca");
+    }
+
+    #[test]
+    fn convert_plain_xml_to_loca() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/SomeFile.xml").unwrap();
+        let converted = convert_pak_path_loca(&path).unwrap();
+        assert_eq!(converted.as_str(), "Mods/MyMod/Localization/English/SomeFile.loca");
+    }
+
+    #[test]
+    fn convert_loca_xml_path_non_xml_fails() {
+        let path = PakPath::parse("Mods/MyMod/Localization/English/Strings.loca").unwrap();
+        assert!(convert_pak_path_loca(&path).is_err());
     }
 }

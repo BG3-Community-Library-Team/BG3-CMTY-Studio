@@ -10,6 +10,9 @@
   import Info from "@lucide/svelte/icons/info";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import X from "@lucide/svelte/icons/x";
+  import Copy from "@lucide/svelte/icons/copy";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronUp from "@lucide/svelte/icons/chevron-up";
 
   let {
     onclose,
@@ -47,6 +50,23 @@
   $effect(() => {
     toastStore.markAllRead();
   });
+
+  /** Track which history entries are expanded. */
+  let expandedEntries = $state(new Set<number>());
+
+  function toggleExpand(id: number) {
+    const next = new Set(expandedEntries);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedEntries = next;
+  }
+
+  async function copyMessage(entry: { title: string; message?: string }) {
+    const text = `${entry.title}${entry.message ? "\n" + entry.message : ""}`;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* ignore */ }
+  }
 </script>
 
 <!-- Backdrop to close on outside click -->
@@ -99,9 +119,31 @@
                   ×{entry.count}
                 </span>
               {/if}
+              {#if entry.level === "error" && entry.message}
+                <button
+                  class="text-[var(--th-text-500)] hover:text-[var(--th-text-300)] cursor-pointer shrink-0 ml-auto"
+                  onclick={() => copyMessage(entry)}
+                  aria-label="Copy error message"
+                  title="Copy to clipboard"
+                >
+                  <Copy size={12} />
+                </button>
+              {/if}
             </div>
             {#if entry.message}
-              <p class="text-[11px] text-[var(--th-text-500)] mt-0.5 line-clamp-1">{entry.message}</p>
+              <p class="text-[11px] text-[var(--th-text-500)] mt-0.5" class:line-clamp-1={!expandedEntries.has(entry.id)}>{entry.message}</p>
+              {#if entry.message.length > 60}
+                <button
+                  class="text-[10px] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] mt-0.5 cursor-pointer inline-flex items-center gap-0.5"
+                  onclick={() => toggleExpand(entry.id)}
+                >
+                  {#if expandedEntries.has(entry.id)}
+                    <ChevronUp size={10} /> Less
+                  {:else}
+                    <ChevronDown size={10} /> More
+                  {/if}
+                </button>
+              {/if}
             {/if}
             <span class="text-[10px] text-[var(--th-text-600)] mt-0.5 block">{relativeTime(entry.createdAt)}</span>
           </div>

@@ -16,6 +16,17 @@
   let locaEntries: LocaFileEntry[] = $state([]);
   let locaLoaded = $state(false);
 
+  // Reset locaLoaded when the mod path changes so data reloads for the new mod
+  let prevLocaModPath = $state(modStore.selectedModPath ?? "");
+  $effect(() => {
+    const current = modStore.selectedModPath ?? "";
+    if (current !== prevLocaModPath) {
+      prevLocaModPath = current;
+      locaLoaded = false;
+      locaEntries = [];
+    }
+  });
+
   // Load loca entries from staging meta on mount
   $effect(() => {
     if (locaLoaded) return;
@@ -252,7 +263,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each existingEntries as e (e.handle)}
+              {#each existingEntries as e, i (i)}
                 <tr>
                   <td class="handle-col">
                     <code class="text-[10px] text-violet-400 select-all">{e.handle}</code>

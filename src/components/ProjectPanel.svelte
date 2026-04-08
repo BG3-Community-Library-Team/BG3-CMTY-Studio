@@ -221,13 +221,13 @@
     <div class="action-list" class:scanning={modStore.isScanning} role="list" inert={modStore.isScanning ? true : undefined}>
       <button class="action-item" onclick={handleValidate} aria-label="Validate mod files">
         <ShieldCheck size={16} />
-        <span>Validate Mod Files</span>
+        <span>{m.project_panel_validate()}</span>
       </button>
 
       <div class="action-item-group">
         <button class="action-item action-item-main" onclick={handlePackageMod} aria-label="Package mod">
           <PackageIcon size={16} />
-          <span>Package Mod</span>
+          <span>{m.project_panel_package()}</span>
         </button>
         <button
           class="action-item-chevron"
@@ -247,11 +247,11 @@
       {#if showPackagingDrawer}
         <div class="packaging-drawer" role="group" aria-label="Packaging options">
           <div class="drawer-header text-[10px] font-semibold tracking-widest uppercase text-[var(--th-text-500)]">
-            Packaging Options
+            {m.project_panel_packaging_options()}
           </div>
 
           <label class="drawer-field">
-            <span class="drawer-label">Output path</span>
+            <span class="drawer-label">{m.project_panel_output_path()}</span>
             <div class="drawer-row">
               <input
                 type="text"
@@ -268,7 +268,7 @@
 
           <div class="drawer-row">
             <label class="drawer-field" style="flex:1">
-              <span class="drawer-label">Compression</span>
+              <span class="drawer-label">{m.project_panel_compression()}</span>
               <select class="drawer-select" bind:value={compression} aria-label="Compression method">
                 {#each compressionOptions as opt}
                   <option value={opt}>{opt}</option>
@@ -277,16 +277,16 @@
             </label>
 
             <label class="drawer-field" style="flex:1">
-              <span class="drawer-label">Speed</span>
+              <span class="drawer-label">{m.project_panel_speed()}</span>
               <select class="drawer-select" bind:value={compressionLevel} aria-label="Compression speed">
-                <option value="fast">Fast</option>
-                <option value="default">Default</option>
-                <option value="max">Max</option>
+                <option value="fast">{m.project_panel_speed_fast()}</option>
+                <option value="default">{m.project_panel_speed_default()}</option>
+                <option value="max">{m.project_panel_speed_max()}</option>
               </select>
             </label>
 
-            <label class="drawer-field" style="flex:1">
-              <span class="drawer-label">Priority</span>
+            <label class="drawer-field" style="width: 4ch; flex: 1">
+              <span class="drawer-label">{m.project_panel_priority()}</span>
               <input
                 type="number"
                 class="drawer-input"
@@ -300,26 +300,26 @@
 
       <button class="action-item" onclick={handleOpenProjectFolder} aria-label="Open folder in file manager">
         <ExternalLink size={16} />
-        <span>Open Folder in File Manager</span>
+        <span>{m.project_panel_open_folder()}</span>
       </button>
 
       <button class="action-item" onclick={handleExportToToolkit} aria-label="Export to toolkit">
         <Upload size={16} />
-        <span>Export to Toolkit</span>
+        <span>{m.project_panel_export_toolkit()}</span>
       </button>
 
       <button class="action-item" onclick={handleTestMod} aria-label="Test mod">
         <FlaskConical size={16} />
-        <span>Test Mod</span>
+        <span>{m.project_panel_test_mod()}</span>
       </button>
     </div>
   {:else}
     <!-- Empty state -->
     <div class="empty-state">
-      <p class="text-sm text-[var(--th-text-400)]">No project loaded</p>
+      <p class="text-sm text-[var(--th-text-400)]">{m.project_panel_no_project()}</p>
       <button class="open-project-btn" onclick={handleOpenProject} aria-label="Open project">
         <FolderOpen size={16} />
-        <span>Open Project</span>
+        <span>{m.project_panel_open_project()}</span>
       </button>
     </div>
   {/if}

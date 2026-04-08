@@ -264,6 +264,13 @@ class UiStore {
     });
   }
 
+  /** Close all open tabs and clear related navigation state (e.g., on mod switch). */
+  closeAllTabs(): void {
+    this.openTabs = [];
+    this.activeTabId = "";
+    this.expandedNodes = {};
+  }
+
   /** Reset UI state (e.g., when closing a mod) */
   reset(): void {
     this.openTabs = [

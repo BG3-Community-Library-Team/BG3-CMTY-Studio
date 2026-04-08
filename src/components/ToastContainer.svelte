@@ -14,8 +14,6 @@
   import X from "@lucide/svelte/icons/x";
   import Info from "@lucide/svelte/icons/info";
   import Copy from "@lucide/svelte/icons/copy";
-  import ChevronDown from "@lucide/svelte/icons/chevron-down";
-  import ChevronUp from "@lucide/svelte/icons/chevron-up";
 
   const LEVEL_STYLES: Record<ToastLevel, { border: string; icon: typeof Check }> = {
     success: {
@@ -40,16 +38,6 @@
    *  by the CSS !important overrides, so we must disable them explicitly. */
   function flyDuration(): number {
     return document.documentElement.classList.contains("reduced-motion") ? 0 : 200;
-  }
-
-  /** Track which toasts have their message expanded. */
-  let expandedToasts = $state(new Set<number>());
-
-  function toggleExpand(id: number) {
-    const next = new Set(expandedToasts);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    expandedToasts = next;
   }
 
   async function copyMessage(toast: { title: string; message?: string }) {
@@ -92,42 +80,30 @@
                 {toast.count}
               </span>
             {/if}
-          </div>
-          {#if toast.message}
-            <p class="text-xs text-[var(--th-text-400)] mt-0.5" class:line-clamp-2={!expandedToasts.has(toast.id)}>{toast.message}</p>
-            {#if toast.message.length > 100}
+            {#if toast.level === "error" && toast.message}
               <button
-                class="text-[10px] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] mt-0.5 cursor-pointer inline-flex items-center gap-0.5"
-                onclick={() => toggleExpand(toast.id)}
+                class="text-[var(--th-text-500)] hover:text-[var(--th-text-300)] cursor-pointer shrink-0 ml-auto"
+                onclick={() => copyMessage(toast)}
+                aria-label="Copy error message"
+                title="Copy to clipboard"
               >
-                {#if expandedToasts.has(toast.id)}
-                  <ChevronUp size={10} /> Less
-                {:else}
-                  <ChevronDown size={10} /> More
-                {/if}
+                <Copy size={12} />
               </button>
             {/if}
+          </div>
+          {#if toast.message}
+            <p class="text-xs text-[var(--th-text-400)] mt-0.5 line-clamp-2">{toast.message}</p>
           {/if}
-          <div class="flex items-center gap-1 mt-0.5">
-            {#if toast.action}
+          {#if toast.action}
+            <div class="flex items-center gap-1 mt-0.5">
               <button
                 class="text-xs text-[var(--th-text-sky-400)] hover:underline cursor-pointer"
                 onclick={() => toastStore.executeToastAction(toast.action!.actionId)}
               >
                 {toast.action.label}
               </button>
-            {/if}
-            {#if toast.level === "error" && toast.message}
-              <button
-                class="text-[10px] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] cursor-pointer inline-flex items-center gap-0.5 ml-auto"
-                onclick={() => copyMessage(toast)}
-                aria-label="Copy error message"
-                title="Copy to clipboard"
-              >
-                <Copy size={10} /> Copy
-              </button>
-            {/if}
-          </div>
+            </div>
+          {/if}
         </div>
 
         <!-- Dismiss -->

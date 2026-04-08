@@ -96,6 +96,16 @@
     };
   });
 
+  // MOD-SWITCH: Close all tabs when switching between mods (non-empty → different non-empty)
+  let prevModPath = $state(modStore.selectedModPath ?? "");
+  $effect(() => {
+    const current = modStore.selectedModPath ?? "";
+    if (current && prevModPath && current !== prevModPath) {
+      uiStore.closeAllTabs();
+    }
+    prevModPath = current;
+  });
+
   // PF-034: Register static commands
   $effect(() => {
     commandRegistry.registerMany([

@@ -4,7 +4,7 @@ use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::error::AppError;
-use crate::pak::convert::{convert_lsx_file_to_lsf_bytes, convert_pak_path_to_lsf, should_convert_to_lsf};
+use crate::pak::convert::{convert_lsx_file_to_lsf_bytes, convert_pak_path_to_lsf, should_convert_to_lsf, should_convert_loca_xml, convert_pak_path_loca, convert_loca_xml_file_to_binary};
 use crate::pak::format::{CompressionLevel, PakCompression, PakPackageFlags};
 use crate::pak::path::PakPath;
 use crate::pak::writer::{PakWriteResult, PakWriter, PakWriterOptions};
@@ -153,6 +153,13 @@ pub async fn cmd_package_mod(
                 let lsf_bytes = convert_lsx_file_to_lsf_bytes(disk_path)?;
                 writer.add_bytes(&lsf_path, &lsf_bytes)
                     .map_err(|e| format!("Failed to add {pak_path} as LSF: {e}"))?;
+            } else if should_convert_loca_xml(pak_path) {
+                // .loca.xml → binary .loca conversion
+                let loca_path = convert_pak_path_loca(pak_path)
+                    .map_err(|e| format!("Path conversion failed for {pak_path}: {e}"))?;
+                let loca_bytes = convert_loca_xml_file_to_binary(disk_path)?;
+                writer.add_bytes(&loca_path, &loca_bytes)
+                    .map_err(|e| format!("Failed to add {pak_path} as LOCA: {e}"))?;
             } else {
                 writer.add_file(disk_path, pak_path)
                     .map_err(|e| format!("Failed to add {pak_path}: {e}"))?;

@@ -4,6 +4,7 @@ import { settingsStore } from "../stores/settingsStore.svelte.js";
 import { toastStore } from "../stores/toastStore.svelte.js";
 import { schemaStore } from "../stores/schemaStore.svelte.js";
 import { undoStore } from "../stores/undoStore.svelte.js";
+import { uiStore } from "../stores/uiStore.svelte.js";
 import { migrateLocalStorageProject } from "../utils/migration.js";
 import { m } from "../../paraglide/messages.js";
 import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
@@ -194,6 +195,12 @@ export async function loadVanillaData(): Promise<void> {
  */
 export async function scanAndImport(modPath: string, extraScanPaths?: string[]): Promise<void> {
   const gen = ++scanGeneration;
+
+  // Reset UI and stale mod data before starting a new scan to prevent
+  // duplicate-key errors and stale state when switching between mods.
+  uiStore.reset();
+  modStore.reset();
+
   modStore.isScanning = true;
   modStore.error = "";
   modStore.selectedModPath = modPath;

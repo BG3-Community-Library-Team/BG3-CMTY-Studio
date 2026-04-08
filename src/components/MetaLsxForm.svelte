@@ -832,16 +832,18 @@
                 </label>
               </div>
               <div class="flex gap-2 items-end">
-                <label class="flex flex-col gap-1 text-xs flex-1">
-                  <span class={labelClass}>{m.meta_lsx_dep_folder_label()}</span>
-                  <input
-                    type="text"
-                    class={inputClass}
-                    placeholder={m.meta_lsx_dep_folder_placeholder()}
-                    bind:value={newDepFolder}
-                    onkeydown={(e) => { if (e.key === "Enter") addDependency(); }}
-                  />
-                </label>
+                <div class="flex flex-col  min-w-0 w-full">
+                  <label class="text-xs flex flex-col ">
+                    <span class={labelClass}>{m.meta_lsx_dep_folder_label()}</span>
+                    <input
+                      type="text"
+                      class={inputClass}
+                      placeholder={m.meta_lsx_dep_folder_placeholder()}
+                      bind:value={newDepFolder}
+                      onkeydown={(e) => { if (e.key === "Enter") addDependency(); }}
+                    />
+                  </label>
+                </div>
                 <button
                   class="h-8 px-2 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] text-white hover:opacity-90 transition-colors shrink-0 flex items-center gap-1"
                   onclick={addDependency}
@@ -850,6 +852,7 @@
                   <Plus size={12} />
                   {m.common_add()}
                 </button>
+
               </div>
             {:else}
               <!-- Simple mode: Mod combobox only -->

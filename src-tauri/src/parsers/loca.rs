@@ -124,6 +124,150 @@ fn read_u32<R: Read>(reader: &mut R) -> Result<u32, String> {
     Ok(u32::from_le_bytes(buf))
 }
 
+// ── Binary .loca writer ─────────────────────────────────────────────────────
+
+/// Write localization entries to binary .loca format.
+///
+/// Format:
+///   Header: signature (u32) | num_entries (u32) | texts_offset (u32)
+///   Entry table: key (64 bytes, null-padded) | version (u16) | text_length (u32)
+///   Text section: concatenated null-terminated UTF-8 strings
+pub fn write_loca(entries: &[LocaEntry]) -> Result<Vec<u8>, String> {
+    let num_entries = entries.len() as u32;
+    let texts_offset = HEADER_SIZE as u32 + ENTRY_SIZE as u32 * num_entries;
+
+    // Pre-compute text bytes (each null-terminated)
+    let text_bytes: Vec<Vec<u8>> = entries.iter().map(|e| {
+        let mut bytes = e.text.as_bytes().to_vec();
+        bytes.push(0); // null terminator
+        bytes
+    }).collect();
+
+    let total_text_len: usize = text_bytes.iter().map(|b| b.len()).sum();
+    let total_size = texts_offset as usize + total_text_len;
+    let mut buf = Vec::with_capacity(total_size);
+
+    // Header
+    buf.extend_from_slice(&LOCA_SIGNATURE.to_le_bytes());
+    buf.extend_from_slice(&num_entries.to_le_bytes());
+    buf.extend_from_slice(&texts_offset.to_le_bytes());
+
+    // Entry table
+    for (entry, text_b) in entries.iter().zip(&text_bytes) {
+        let mut key_bytes = [0u8; KEY_SIZE];
+        let key_src = entry.key.as_bytes();
+        let copy_len = key_src.len().min(KEY_SIZE);
+        key_bytes[..copy_len].copy_from_slice(&key_src[..copy_len]);
+        buf.extend_from_slice(&key_bytes);
+        buf.extend_from_slice(&entry.version.to_le_bytes());
+        buf.extend_from_slice(&(text_b.len() as u32).to_le_bytes());
+    }
+
+    // Text section
+    for text_b in &text_bytes {
+        buf.extend_from_slice(text_b);
+    }
+
+    Ok(buf)
+}
+
+// ── .loca.xml parser ────────────────────────────────────────────────────────
+
+/// Parse a `.loca.xml` file (Larian localization XML format) into LocaEntry items.
+///
+/// Expected format:
+/// ```xml
+/// <contentList>
+///   <content contentuid="handle" version="1">Text here</content>
+/// </contentList>
+/// ```
+pub fn parse_loca_xml(xml: &str) -> Result<Vec<LocaEntry>, String> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut reader = Reader::from_str(xml);
+    let mut entries = Vec::new();
+    let mut current_key: Option<String> = None;
+    let mut current_version: u16 = 1;
+    let mut current_text = String::new();
+    let mut in_content = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"content" => {
+                current_key = None;
+                current_version = 1;
+                current_text.clear();
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"contentuid" => {
+                            current_key = Some(
+                                String::from_utf8_lossy(&attr.value).to_string()
+                            );
+                        }
+                        b"version" => {
+                            if let Ok(v) = String::from_utf8_lossy(&attr.value).parse::<u16>() {
+                                current_version = v;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                in_content = true;
+            }
+            Ok(Event::Text(ref e)) if in_content => {
+                if let Ok(text) = e.decode() {
+                    current_text.push_str(&text);
+                }
+            }
+            Ok(Event::End(ref e)) if e.name().as_ref() == b"content" && in_content => {
+                if let Some(key) = current_key.take() {
+                    entries.push(LocaEntry {
+                        key,
+                        version: current_version,
+                        text: std::mem::take(&mut current_text),
+                    });
+                }
+                in_content = false;
+            }
+            Ok(Event::Empty(ref e)) if e.name().as_ref() == b"content" => {
+                // Self-closing <content contentuid="..." version="1" />
+                let mut key = None;
+                let mut version: u16 = 1;
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"contentuid" => {
+                            key = Some(String::from_utf8_lossy(&attr.value).to_string());
+                        }
+                        b"version" => {
+                            if let Ok(v) = String::from_utf8_lossy(&attr.value).parse::<u16>() {
+                                version = v;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(k) = key {
+                    entries.push(LocaEntry { key: k, version, text: String::new() });
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(format!("XML parse error in .loca.xml: {e}")),
+            _ => {}
+        }
+    }
+
+    Ok(entries)
+}
+
+/// Read a `.loca.xml` file from disk and convert it to binary `.loca` bytes.
+pub fn convert_loca_xml_to_binary(disk_path: &Path) -> Result<Vec<u8>, String> {
+    let xml = std::fs::read_to_string(disk_path)
+        .map_err(|e| format!("Failed to read {}: {e}", disk_path.display()))?;
+    let entries = parse_loca_xml(&xml)?;
+    write_loca(&entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +390,63 @@ mod tests {
         } else {
             preview
         }
+    }
+
+    #[test]
+    fn write_loca_roundtrips() {
+        let entries = vec![
+            LocaEntry { key: "h1234".into(), version: 1, text: "Hello World".into() },
+            LocaEntry { key: "h5678".into(), version: 3, text: "".into() },
+        ];
+        let bytes = write_loca(&entries).unwrap();
+        let parsed = parse_loca(Cursor::new(bytes)).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].key, "h1234");
+        assert_eq!(parsed[0].version, 1);
+        assert_eq!(parsed[0].text, "Hello World");
+        assert_eq!(parsed[1].key, "h5678");
+        assert_eq!(parsed[1].version, 3);
+        assert_eq!(parsed[1].text, "");
+    }
+
+    #[test]
+    fn parse_loca_xml_basic() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<contentList>
+  <content contentuid="hABC123" version="1">DeathKnight</content>
+  <content contentuid="hDEF456" version="2">Some text here</content>
+</contentList>"#;
+        let entries = parse_loca_xml(xml).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "hABC123");
+        assert_eq!(entries[0].version, 1);
+        assert_eq!(entries[0].text, "DeathKnight");
+        assert_eq!(entries[1].key, "hDEF456");
+        assert_eq!(entries[1].version, 2);
+        assert_eq!(entries[1].text, "Some text here");
+    }
+
+    #[test]
+    fn parse_loca_xml_empty_content() {
+        let xml = r#"<contentList>
+  <content contentuid="h000" version="1" />
+</contentList>"#;
+        let entries = parse_loca_xml(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "");
+    }
+
+    #[test]
+    fn loca_xml_to_binary_roundtrip() {
+        let xml = r#"<contentList>
+  <content contentuid="hTestKey001" version="1">Hello</content>
+</contentList>"#;
+        let entries = parse_loca_xml(xml).unwrap();
+        let binary = write_loca(&entries).unwrap();
+        let parsed = parse_loca(Cursor::new(binary)).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].key, "hTestKey001");
+        assert_eq!(parsed[0].text, "Hello");
     }
 
 }
