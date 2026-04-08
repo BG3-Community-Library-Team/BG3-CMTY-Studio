@@ -106,8 +106,7 @@ impl FileTypeHandler for KhonsuHandler {
                             warnings.push(HandlerWarning {
                                 handler_name: self.name().to_string(),
                                 message: format!(
-                                    "Function '{}' in {} conflicts with vanilla CommonConditions builtin",
-                                    fn_name, key
+                                    "Function '{fn_name}' in {key} conflicts with vanilla CommonConditions builtin"
                                 ),
                                 severity: WarningSeverity::Warning,
                             });

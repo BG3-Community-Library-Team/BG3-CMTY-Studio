@@ -297,13 +297,13 @@ pub fn validate_osiris_goal(content: &str) -> Vec<Diagnostic> {
     if if_count > then_count {
         diagnostics.push(Diagnostic {
             line: last_if_line,
-            message: format!("Unmatched IF: found {} IF(s) but only {} THEN(s)", if_count, then_count),
+            message: format!("Unmatched IF: found {if_count} IF(s) but only {then_count} THEN(s)"),
             severity: DiagnosticSeverity::Error,
         });
     } else if then_count > if_count {
         diagnostics.push(Diagnostic {
             line: 1,
-            message: format!("Extra THEN: found {} THEN(s) but only {} IF(s)", then_count, if_count),
+            message: format!("Extra THEN: found {then_count} THEN(s) but only {if_count} IF(s)"),
             severity: DiagnosticSeverity::Error,
         });
     }
@@ -350,8 +350,7 @@ pub fn cross_validate_parent_edges(goals: &[(&str, &str)]) -> Vec<Diagnostic> {
                             diagnostics.push(Diagnostic {
                                 line: i + 1,
                                 message: format!(
-                                    "Goal '{}': ParentTargetEdge references unknown goal '{}'",
-                                    goal_name, parent
+                                    "Goal '{goal_name}': ParentTargetEdge references unknown goal '{parent}'"
                                 ),
                                 severity: DiagnosticSeverity::Warning,
                             });

@@ -681,7 +681,7 @@ fn import_se_scripts(
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, _is_modified = 0, _is_deleted = 0, _original_hash = excluded._original_hash",
             rusqlite::params![relative, content, hash],
         )
-        .map_err(|e| format!("Insert SE script '{}': {e}", relative))?;
+        .map_err(|e| format!("Insert SE script '{relative}': {e}"))?;
 
         imported += 1;
     }
@@ -837,7 +837,7 @@ fn import_osiris_goals(
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, _is_modified = 0, _is_deleted = 0, _original_hash = excluded._original_hash",
             rusqlite::params![relative, content, hash],
         )
-        .map_err(|e| format!("Insert Osiris goal '{}': {e}", relative))?;
+        .map_err(|e| format!("Insert Osiris goal '{relative}': {e}"))?;
 
         imported += 1;
     }
