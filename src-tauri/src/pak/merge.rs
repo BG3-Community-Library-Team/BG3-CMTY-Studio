@@ -93,13 +93,8 @@ fn fix_double_extensions(
     for (i, (_disk, pak)) in file_entries.iter().enumerate() {
         let s = pak.as_str();
         // Strip one redundant extension: .lsf.lsf → .lsf, .lsfx.lsfx → .lsfx
-        let fixed = if let Some(base) = s.strip_suffix(".lsf.lsf") {
-            Some(format!("{base}.lsf"))
-        } else if let Some(base) = s.strip_suffix(".lsfx.lsfx") {
-            Some(format!("{base}.lsfx"))
-        } else {
-            None
-        };
+        let fixed = s.strip_suffix(".lsf.lsf").map(|base| format!("{base}.lsf"))
+            .or_else(|| s.strip_suffix(".lsfx.lsfx").map(|base| format!("{base}.lsfx")));
         if let Some(fixed) = fixed {
             if let Ok(new_pak) = PakPath::parse(&fixed) {
                 plan.path_rewrites.insert(i, new_pak);
@@ -237,7 +232,7 @@ fn merge_regiontype_files(
                 let file_name = pak.file_name();
 
                 // Check if this is: Name.REGIONTYPE.lsx
-                if let Some(region_type) = extract_region_type(&file_name, dir_name) {
+                if let Some(region_type) = extract_region_type(file_name, dir_name) {
                     let key = (base_dir.clone(), region_type.clone());
                     groups.entry(key).or_default().push(i);
                 } else if let Some(stem) = file_name.strip_suffix(".lsx") {
