@@ -1353,14 +1353,14 @@ async fn cmd_open_path(path: String) -> Result<(), AppError> {
         std::process::Command::new("open")
             .arg(&path)
             .spawn()
-            .map_err(|e| format!("Failed to open path: {}", e))?;
+            .map_err(|e| format!("Failed to open path: {e}"))?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
             .arg(&path)
             .spawn()
-            .map_err(|e| format!("Failed to open path: {}", e))?;
+            .map_err(|e| format!("Failed to open path: {e}"))?;
     }
 
     Ok(())
