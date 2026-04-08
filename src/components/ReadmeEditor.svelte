@@ -1,7 +1,7 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
-  import { readTextFile, writeTextFile } from "../lib/tauri/readme.js";
+  import { findReadme, readTextFile, writeTextFile } from "../lib/tauri/readme.js";
   import { getErrorMessage } from "../lib/types/index.js";
   import { onMount } from "svelte";
   import Eye from "@lucide/svelte/icons/eye";
@@ -15,9 +15,8 @@
   let isSaving = $state(false);
   let loaded = $state(false);
 
-  let readmePath = $derived(
-    modStore.selectedModPath ? `${modStore.selectedModPath}/README.md` : "",
-  );
+  /** Resolved path to the README file (found on disk, or default for new). */
+  let readmePath = $state("");
 
   function buildTemplate(): string {
     const meta = modStore.scanResult?.mod_meta;
@@ -48,15 +47,23 @@ Add installation instructions here. Example:
   }
 
   onMount(async () => {
-    if (!readmePath) {
+    const modPath = modStore.selectedModPath;
+    if (!modPath) {
       content = buildTemplate();
       loaded = true;
       return;
     }
-    const existing = await readTextFile(readmePath);
-    if (existing !== null) {
-      content = existing;
+
+    // Search parent directory (project root) and mod folder for existing readme
+    const foundPath = await findReadme(modPath);
+    if (foundPath) {
+      readmePath = foundPath;
+      const existing = await readTextFile(foundPath);
+      content = existing ?? buildTemplate();
     } else {
+      // Default: save new README to parent directory (project root)
+      const parent = modPath.replace(/[\\/][^\\/]+$/, "");
+      readmePath = parent !== modPath ? `${parent}/README.md` : `${modPath}/README.md`;
       content = buildTemplate();
     }
     loaded = true;

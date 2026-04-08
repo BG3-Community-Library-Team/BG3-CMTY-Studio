@@ -351,3 +351,68 @@ pub async fn cmd_scaffold_se_structure(
     })
     .await
 }
+
+/// Scaffold the Khonsu Scripts/ directory structure in the staging DB.
+/// Creates a starter `.khn` condition file.
+#[tauri::command]
+pub async fn cmd_scaffold_khonsu_structure(
+    db_path: String,
+    mod_folder: String,
+) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        let db = PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {db_path}"));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {e}"))?;
+
+        let base = format!("Mods/{mod_folder}/Scripts");
+        let mut created: Vec<String> = Vec::new();
+
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("MOD_NAME".to_string(), mod_folder.clone());
+        vars.insert("FILE_NAME".to_string(), "basic_condition.khn".to_string());
+
+        let file_path = format!("{base}/basic_condition.khn");
+        if insert_template_file(&conn, &file_path, "khonsu_basic_condition", &vars)? {
+            created.push(file_path);
+        }
+
+        Ok(created)
+    })
+    .await
+}
+
+/// Scaffold the Osiris Story/RawFiles/Goals/ directory structure in the staging DB.
+/// Creates a starter goal file.
+#[tauri::command]
+pub async fn cmd_scaffold_osiris_structure(
+    db_path: String,
+    mod_folder: String,
+) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        let db = PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {db_path}"));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {e}"))?;
+
+        let base = format!("Mods/{mod_folder}/Story/RawFiles/Goals");
+        let mut created: Vec<String> = Vec::new();
+
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("MOD_NAME".to_string(), mod_folder.clone());
+        vars.insert("FILE_NAME".to_string(), "MyGoal.txt".to_string());
+        vars.insert("GOAL_NAME".to_string(), "MyGoal".to_string());
+
+        let file_path = format!("{base}/MyGoal.txt");
+        if insert_template_file(&conn, &file_path, "osiris_basic_goal", &vars)? {
+            created.push(file_path);
+        }
+
+        Ok(created)
+    })
+    .await
+}

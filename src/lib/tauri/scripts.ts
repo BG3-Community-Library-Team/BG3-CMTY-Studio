@@ -66,6 +66,14 @@ export async function importOsirisGoals(
   return invoke("cmd_import_osiris_goals", { dbPath, modPath, modFolder });
 }
 
+export async function importKhonsuScripts(
+  dbPath: string,
+  modPath: string,
+  modFolder: string,
+): Promise<number> {
+  return invoke("cmd_import_khonsu_scripts", { dbPath, modPath, modFolder });
+}
+
 export async function scaffoldSeStructure(
   dbPath: string,
   modFolder: string,
@@ -78,6 +86,20 @@ export async function scaffoldSeStructure(
     includeServer,
     includeClient,
   });
+}
+
+export async function scaffoldKhonsuStructure(
+  dbPath: string,
+  modFolder: string,
+): Promise<string[]> {
+  return invoke("cmd_scaffold_khonsu_structure", { dbPath, modFolder });
+}
+
+export async function scaffoldOsirisStructure(
+  dbPath: string,
+  modFolder: string,
+): Promise<string[]> {
+  return invoke("cmd_scaffold_osiris_structure", { dbPath, modFolder });
 }
 
 // ── Filesystem commands ──

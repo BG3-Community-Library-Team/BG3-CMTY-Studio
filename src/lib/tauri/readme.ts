@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
+/** Find an existing README file in the mod folder or its parent directory. */
+export async function findReadme(modPath: string): Promise<string | null> {
+  return invoke<string | null>("cmd_find_readme", { modPath });
+}
+
 /** Read a text file from an absolute path. Returns null if the file does not exist. */
 export async function readTextFile(path: string): Promise<string | null> {
   try {

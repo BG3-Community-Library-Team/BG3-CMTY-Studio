@@ -423,6 +423,44 @@ async fn cmd_file_exists(path: String) -> bool {
     PathBuf::from(&path).is_file()
 }
 
+/// Search for an existing README file in the mod folder and its parent directory.
+///
+/// Checks the parent directory first (typical project root for Git repos), then
+/// the mod folder itself. Tries common casing variants and both `.md` / `.txt`.
+/// Returns the absolute path if found, or `None`.
+#[tauri::command]
+async fn cmd_find_readme(mod_path: String) -> Option<String> {
+    let mod_dir = PathBuf::from(&mod_path);
+    let candidates = [
+        "README.md",
+        "readme.md",
+        "Readme.md",
+        "README.txt",
+        "readme.txt",
+        "Readme.txt",
+    ];
+
+    // Check parent directory first (project root typically holds the readme)
+    if let Some(parent) = mod_dir.parent() {
+        for name in &candidates {
+            let p = parent.join(name);
+            if p.is_file() {
+                return Some(p.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    // Then check mod directory itself
+    for name in &candidates {
+        let p = mod_dir.join(name);
+        if p.is_file() {
+            return Some(p.to_string_lossy().into_owned());
+        }
+    }
+
+    None
+}
+
 #[tauri::command]
 async fn cmd_read_text_file(path: String) -> Result<String, AppError> {
     let p = PathBuf::from(&path);
@@ -2033,6 +2071,7 @@ pub fn run() {
             cmd_reveal_path,
             cmd_copy_file,
             cmd_file_exists,
+            cmd_find_readme,
             cmd_read_text_file,
             cmd_write_text_file,
             cmd_preview_lsx,
@@ -2090,8 +2129,11 @@ pub fn run() {
             commands::scripts::cmd_script_list,
             commands::scripts::cmd_script_create_from_template,
             commands::scripts::cmd_scaffold_se_structure,
+            commands::scripts::cmd_scaffold_khonsu_structure,
+            commands::scripts::cmd_scaffold_osiris_structure,
             commands::scan::cmd_import_se_scripts,
             commands::scan::cmd_import_osiris_goals,
+            commands::scan::cmd_import_khonsu_scripts,
             commands::filesystem::cmd_touch_file,
             commands::filesystem::cmd_create_mod_directory,
             commands::filesystem::cmd_move_mod_file,

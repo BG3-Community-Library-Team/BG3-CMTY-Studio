@@ -249,6 +249,8 @@
   let scriptsCtxVisible = $state(false);
   let scriptsCtxX = $state(0);
   let scriptsCtxY = $state(0);
+  /** Which script category the context menu was opened from (null = root Scripts node). */
+  let scriptsCtxCategory: string | null = $state(null);
 
   // ── File tree context menu state ──
   let fileCtxVisible = $state(false);
@@ -620,6 +622,24 @@
     const seDir = modFileTree.find(n => !n.isFile && n.name === "ScriptExtender");
     if (!seDir?.children) return [];
     return filterTree(seDir.children, LUA_SE_EXTENSIONS);
+  });
+
+  /** Khonsu tree: folder structure of Scripts/ with .khn files. */
+  let khonsuTree = $derived.by((): FileTreeNode[] => {
+    const scriptsDir = modFileTree.find(n => !n.isFile && n.name === "Scripts");
+    if (!scriptsDir?.children) return [];
+    return filterTree(scriptsDir.children, new Set(["khn"]));
+  });
+
+  /** Osiris tree: Story/RawFiles/Goals/ with .txt goal files. */
+  let osirisTree = $derived.by((): FileTreeNode[] => {
+    const storyDir = modFileTree.find(n => !n.isFile && n.name === "Story");
+    if (!storyDir?.children) return [];
+    const rawDir = storyDir.children.find(n => !n.isFile && n.name === "RawFiles");
+    if (!rawDir?.children) return [];
+    const goalsDir = rawDir.children.find(n => !n.isFile && n.name === "Goals");
+    if (!goalsDir?.children) return [];
+    return filterTree(goalsDir.children, new Set(["txt"]));
   });
 
   /** Script sub-categories derived from the mod file tree. */
@@ -1354,6 +1374,7 @@
               const zoom = getComputedZoom(e.currentTarget as HTMLElement);
               scriptsCtxX = e.clientX / zoom;
               scriptsCtxY = e.clientY / zoom;
+              scriptsCtxCategory = null;
               scriptsCtxVisible = true;
             }}
           >
@@ -1490,15 +1511,27 @@
               {/snippet}
               {#each SCRIPT_CATEGORIES as cat (cat.key)}
                 {@const count = scriptCounts.get(cat.key) ?? 0}
-                {#if cat.key === 'lua-se'}
-                  <!-- Lua (SE) - expandable folder tree -->
-                  {@const luaExpanded = uiStore.expandedNodes['_Scripts_lua-se'] ?? false}
+                {#if cat.key === 'lua-se' || cat.key === 'khonsu' || cat.key === 'osiris'}
+                  <!-- Expandable folder tree for SE / Khonsu / Osiris -->
+                  {@const treeData = cat.key === 'lua-se' ? luaSeTree : cat.key === 'khonsu' ? khonsuTree : osirisTree}
+                  {@const nodeKey = `_Scripts_${cat.key}`}
+                  {@const isExpanded = uiStore.expandedNodes[nodeKey] ?? false}
                   <div>
-                    <div class="tree-node" class:has-files={count > 0} role="treeitem" tabindex="-1" aria-selected={false} aria-expanded={luaExpanded}>
-                      <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Scripts_lua-se'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Scripts_lua-se'); } }} role="button" tabindex="0" aria-label="Toggle Lua (SE)">
-                        <ChevronRight size={14} class="chevron {luaExpanded ? 'expanded' : ''}" />
+                    <div class="tree-node" class:has-files={count > 0} role="treeitem" tabindex="-1" aria-selected={false} aria-expanded={isExpanded}
+                      oncontextmenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+                        scriptsCtxX = e.clientX / zoom;
+                        scriptsCtxY = e.clientY / zoom;
+                        scriptsCtxCategory = cat.key;
+                        scriptsCtxVisible = true;
+                      }}
+                    >
+                      <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(nodeKey); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(nodeKey); } }} role="button" tabindex="0" aria-label="Toggle {cat.label}">
+                        <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
                       </span>
-                      <button class="tree-node-label" onclick={() => uiStore.toggleNode('_Scripts_lua-se')}>
+                      <button class="tree-node-label" onclick={() => uiStore.toggleNode(nodeKey)}>
                         <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                         <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
                         {#if count > 0}
@@ -1506,9 +1539,9 @@
                         {/if}
                       </button>
                     </div>
-                    {#if luaExpanded && luaSeTree.length > 0}
+                    {#if isExpanded && treeData.length > 0}
                       <div class="tree-children">
-                        {#each luaSeTree as node (node.relPath)}
+                        {#each treeData as node (node.relPath)}
                           {@render scriptNode(node)}
                         {/each}
                       </div>
@@ -1616,12 +1649,22 @@
   </ContextMenu>
 {/if}
 
-<!-- Scripts root context menu -->
+<!-- Scripts context menu (category-aware) -->
 {#if scriptsCtxVisible}
-  <ContextMenu x={scriptsCtxX} y={scriptsCtxY} header="Scripts" onclose={hideContextMenu}>
+  {@const ctxDir = scriptsCtxCategory === 'khonsu' ? 'Scripts'
+    : scriptsCtxCategory === 'osiris' ? 'Story/RawFiles/Goals'
+    : 'ScriptExtender'}
+  {@const ctxNodeKey = scriptsCtxCategory ? `_Scripts_${scriptsCtxCategory}` : '_Scripts_lua-se'}
+  {@const ctxLabel = scriptsCtxCategory === 'khonsu' ? 'Khonsu'
+    : scriptsCtxCategory === 'osiris' ? 'Osiris'
+    : 'Scripts'}
+  {@const ctxPlaceholder = scriptsCtxCategory === 'khonsu' ? 'filename.khn'
+    : scriptsCtxCategory === 'osiris' ? 'GoalName.txt'
+    : 'filename.lua'}
+  <ContextMenu x={scriptsCtxX} y={scriptsCtxY} header={ctxLabel} onclose={hideContextMenu}>
     <button
       class="ctx-item"
-      onclick={() => { startInlineCreate('ScriptExtender', 'file'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode('_Scripts_lua-se'); }}
+      onclick={() => { startInlineCreate(ctxDir, 'file'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode(ctxNodeKey); }}
       role="menuitem"
     >
       <FilePlus2 size={12} class="shrink-0" />
@@ -1629,7 +1672,7 @@
     </button>
     <button
       class="ctx-item"
-      onclick={() => { startInlineCreate('ScriptExtender', 'folder'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode('_Scripts_lua-se'); }}
+      onclick={() => { startInlineCreate(ctxDir, 'folder'); scriptsCtxVisible = false; uiStore.expandNode('_Scripts'); uiStore.expandNode(ctxNodeKey); }}
       role="menuitem"
     >
       <FolderPlus size={12} class="shrink-0" />

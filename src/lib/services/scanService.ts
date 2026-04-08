@@ -10,7 +10,7 @@ import { m } from "../../paraglide/messages.js";
 import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
 import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
 import { parseExistingConfig } from "../utils/configParser.js";
-import { importSeScripts } from "../tauri/scripts.js";
+import { importSeScripts, importOsirisGoals, importKhonsuScripts } from "../tauri/scripts.js";
 
 /**
  * Rehydrate the staging database from a mod's on-disk files.
@@ -226,15 +226,17 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Hydrate projectStore from the freshly-populated staging DB
     await projectStore.hydrate();
 
-    // Import SE scripts from disk into the staging DB (non-blocking)
+    // Import script files from disk into the staging DB
     try {
       const dbPath = projectStore.stagingDbPath;
       const folder = result.mod_meta?.folder;
       if (dbPath && folder) {
         await importSeScripts(dbPath, modPath, folder);
+        await importOsirisGoals(dbPath, modPath, folder);
+        await importKhonsuScripts(dbPath, modPath, folder);
       }
-    } catch (seErr) {
-      console.warn("[Scan] Failed to import SE scripts:", seErr);
+    } catch (scriptErr) {
+      console.warn("[Scan] Failed to import script files:", scriptErr);
     }
 
     // Import existing config entries into the staging DB
