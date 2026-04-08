@@ -125,6 +125,35 @@ pub fn convert_lsx_file_to_lsf_bytes(disk_path: &Path) -> Result<Vec<u8>, String
     Ok(buf)
 }
 
+/// Determine whether a pak entry is an `.lsfx.lsx` file that should be
+/// converted to binary `.lsfx` during packaging.
+///
+/// These are effect bank XML files that the game expects in binary LSF format
+/// with the `.lsfx` extension.
+pub fn should_convert_to_lsfx(pak_path: &PakPath) -> bool {
+    pak_path.as_str().ends_with(".lsfx.lsx")
+}
+
+/// Convert an `.lsfx.lsx` pak path to `.lsfx` extension.
+pub fn convert_pak_path_to_lsfx(pak_path: &PakPath) -> PakResult<PakPath> {
+    let s = pak_path.as_str();
+    if !s.ends_with(".lsfx.lsx") {
+        return Err(PakError::invalid_path(format!(
+            "cannot convert non-.lsfx.lsx path to .lsfx: {s}"
+        )));
+    }
+    // Strip the trailing ".lsx" to get ".lsfx"
+    PakPath::parse(&s[..s.len() - 4])
+}
+
+/// Read an `.lsfx.lsx` file from disk and convert it to binary LSFX bytes.
+///
+/// The binary format is identical to LSF.
+pub fn convert_lsfx_lsx_file_to_binary(disk_path: &Path) -> Result<Vec<u8>, String> {
+    // LSFX binary format is identical to LSF
+    convert_lsx_file_to_lsf_bytes(disk_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +297,36 @@ mod tests {
     fn convert_loca_xml_path_non_xml_fails() {
         let path = PakPath::parse("Mods/MyMod/Localization/English/Strings.loca").unwrap();
         assert!(convert_pak_path_loca(&path).is_err());
+    }
+
+    #[test]
+    fn should_convert_lsfx_lsx() {
+        let path = PakPath::parse("Public/MyMod/Content/Assets/Effects/MyEffect.lsfx.lsx").unwrap();
+        assert!(should_convert_to_lsfx(&path));
+    }
+
+    #[test]
+    fn should_not_convert_plain_lsx_as_lsfx() {
+        let path = PakPath::parse("Public/MyMod/Content/Assets/Effects/MyEffect.lsx").unwrap();
+        assert!(!should_convert_to_lsfx(&path));
+    }
+
+    #[test]
+    fn should_not_convert_binary_lsfx() {
+        let path = PakPath::parse("Public/MyMod/Content/Assets/Effects/MyEffect.lsfx").unwrap();
+        assert!(!should_convert_to_lsfx(&path));
+    }
+
+    #[test]
+    fn convert_lsfx_path() {
+        let path = PakPath::parse("Public/MyMod/Content/Assets/Effects/MyEffect.lsfx.lsx").unwrap();
+        let converted = convert_pak_path_to_lsfx(&path).unwrap();
+        assert_eq!(converted.as_str(), "Public/MyMod/Content/Assets/Effects/MyEffect.lsfx");
+    }
+
+    #[test]
+    fn convert_lsfx_path_non_lsfx_fails() {
+        let path = PakPath::parse("Public/MyMod/Content/foo.lsx").unwrap();
+        assert!(convert_pak_path_to_lsfx(&path).is_err());
     }
 }

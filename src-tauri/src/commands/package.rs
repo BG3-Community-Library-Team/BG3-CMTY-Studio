@@ -4,8 +4,9 @@ use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::error::AppError;
-use crate::pak::convert::{convert_lsx_file_to_lsf_bytes, convert_pak_path_to_lsf, should_convert_to_lsf, should_convert_loca_xml, convert_pak_path_loca, convert_loca_xml_file_to_binary};
+use crate::pak::convert::{convert_lsx_file_to_lsf_bytes, convert_pak_path_to_lsf, should_convert_to_lsf, should_convert_loca_xml, convert_pak_path_loca, convert_loca_xml_file_to_binary, should_convert_to_lsfx, convert_pak_path_to_lsfx, convert_lsfx_lsx_file_to_binary};
 use crate::pak::format::{CompressionLevel, PakCompression, PakPackageFlags};
+use crate::pak::merge::compute_merges;
 use crate::pak::path::PakPath;
 use crate::pak::writer::{PakWriteResult, PakWriter, PakWriterOptions};
 
@@ -144,24 +145,50 @@ pub async fn cmd_package_mod(
         // Sort by pak path for deterministic output
         file_entries.sort_by(|a, b| a.1.as_str().cmp(b.1.as_str()));
 
-        // Add files to the writer
-        for (disk_path, pak_path) in &file_entries {
-            if should_convert_to_lsf(pak_path) {
+        // Compute merge plan (RootTemplates, REGIONTYPE.lsx, Stats condensation)
+        let merge_plan = compute_merges(&file_entries)
+            .map_err(|e| format!("Merge planning failed: {e}"))?;
+
+        // Add merged entries first
+        for (pak_path, bytes) in &merge_plan.merged_entries {
+            writer.add_bytes(pak_path, bytes)
+                .map_err(|e| format!("Failed to add merged entry {pak_path}: {e}"))?;
+        }
+
+        // Add non-merged files to the writer
+        for (i, (disk_path, pak_path)) in file_entries.iter().enumerate() {
+            // Skip entries consumed by merges
+            if merge_plan.skip_indices.contains(&i) {
+                continue;
+            }
+
+            // Apply path rewrites (e.g., .lsf.lsf → .lsf)
+            let effective_pak = merge_plan.path_rewrites.get(&i)
+                .unwrap_or(pak_path);
+
+            if should_convert_to_lsfx(effective_pak) {
+                // .lsfx.lsx → binary .lsfx conversion
+                let lsfx_path = convert_pak_path_to_lsfx(effective_pak)
+                    .map_err(|e| format!("Path conversion failed for {pak_path}: {e}"))?;
+                let lsfx_bytes = convert_lsfx_lsx_file_to_binary(disk_path)?;
+                writer.add_bytes(&lsfx_path, &lsfx_bytes)
+                    .map_err(|e| format!("Failed to add {pak_path} as LSFX: {e}"))?;
+            } else if should_convert_to_lsf(effective_pak) {
                 // LSX → LSF conversion
-                let lsf_path = convert_pak_path_to_lsf(pak_path)
+                let lsf_path = convert_pak_path_to_lsf(effective_pak)
                     .map_err(|e| format!("Path conversion failed for {pak_path}: {e}"))?;
                 let lsf_bytes = convert_lsx_file_to_lsf_bytes(disk_path)?;
                 writer.add_bytes(&lsf_path, &lsf_bytes)
                     .map_err(|e| format!("Failed to add {pak_path} as LSF: {e}"))?;
-            } else if should_convert_loca_xml(pak_path) {
+            } else if should_convert_loca_xml(effective_pak) {
                 // .loca.xml → binary .loca conversion
-                let loca_path = convert_pak_path_loca(pak_path)
+                let loca_path = convert_pak_path_loca(effective_pak)
                     .map_err(|e| format!("Path conversion failed for {pak_path}: {e}"))?;
                 let loca_bytes = convert_loca_xml_file_to_binary(disk_path)?;
                 writer.add_bytes(&loca_path, &loca_bytes)
                     .map_err(|e| format!("Failed to add {pak_path} as LOCA: {e}"))?;
             } else {
-                writer.add_file(disk_path, pak_path)
+                writer.add_file(disk_path, effective_pak)
                     .map_err(|e| format!("Failed to add {pak_path}: {e}"))?;
             }
         }

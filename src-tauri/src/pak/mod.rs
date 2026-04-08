@@ -5,6 +5,7 @@ pub mod error;
 pub mod filter;
 pub mod format;
 pub mod manifest;
+pub mod merge;
 pub mod path;
 pub mod reader;
 pub mod stream;

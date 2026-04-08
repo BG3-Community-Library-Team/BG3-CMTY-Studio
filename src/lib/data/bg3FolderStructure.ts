@@ -633,7 +633,16 @@ export const BG3_ADDITIONAL_FOLDERS: FolderNode[] = [
   },
 
   { name: "FixedHotBarSlots", label: "Fixed Hotbar Slots", Section: "FixedHotBarSlots", regionId: "FixedHotBarSlots" },
-  { name: "GUI", label: "GUI", Section: "GUI", regionId: "GUI" },
+  {
+    name: "_GUI",
+    label: "GUI",
+    isGroup: true,
+    groupSections: ["GUI"],
+    children: [
+      { name: "TextureAtlasInfo", label: "Texture Atlas Info", Section: "GUI", regionId: "TextureAtlasInfo" },
+      { name: "IconUVList", label: "Icon UV Lists", Section: "GUI", regionId: "IconUVList" },
+    ],
+  },
   { name: "ItemThrowParams", label: "Item Throw Params", Section: "ItemThrowParams", regionId: "ItemThrowParams" },
   { name: "Levelmaps", label: "Level Maps", Section: "Levelmaps", regionId: "LevelMapValues" },
   { name: "LimbsMapping", label: "Limbs Mapping", Section: "LimbsMapping", regionId: "LimbsMapping" },

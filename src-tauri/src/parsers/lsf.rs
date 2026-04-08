@@ -858,14 +858,24 @@ fn read_f64<R: Read>(reader: &mut R) -> Result<f64, String> {
 //  LsxResource → binary LSF writer
 // ═══════════════════════════════════════════════════════════════════
 
-const WRITE_VERSION: u32 = 6;
-/// BG3 engine version: major=4, minor=0, rev=0, build=39 → packed as 4<<32|39
-const WRITE_ENGINE_VERSION: i64 = (4i64 << 32) | 39;
+const WRITE_VERSION: u32 = 7;
+
+/// Pack a BG3 engine version into the i64 format used by LSlib/divine (v5+ header).
+/// Layout: major(bits 55-62) | minor(bits 47-54) | revision(bits 31-46) | build(bits 0-30)
+const fn pack_engine_version(major: u32, minor: u32, revision: u32, build: u32) -> i64 {
+    ((major as i64) << 55)
+        | ((minor as i64) << 47)
+        | ((revision as i64) << 31)
+        | (build as i64)
+}
+
+/// Default engine version: 4.0.9.328 (BG3 Patch 7 HF6)
+const WRITE_ENGINE_VERSION: i64 = pack_engine_version(4, 0, 9, 328);
 
 /// Write an `LsxResource` as a BG3 binary `.lsf` / `.lsfx` file.
 ///
-/// Uses version 6 with LZ4 compression and `KeysAndAdjacency` metadata format
-/// (matching vanilla output). The keys section is left empty.
+/// Uses version 7 with no compression and `MetadataFormat::None` (V2 12-byte
+/// node/attribute records), matching divine.exe / LSlib output.
 pub fn write_lsf<W: Write>(writer: &mut W, resource: &LsxResource) -> Result<(), String> {
     // ── 1. Flatten the tree into parallel node/attribute/value arrays ───
 
@@ -875,14 +885,6 @@ pub fn write_lsf<W: Write>(writer: &mut W, resource: &LsxResource) -> Result<(),
     let mut name_table = NameTable::new();
 
     for region in &resource.regions {
-        // The region's nodes are the direct children of the region root.
-        // In binary LSF, region roots are top-level nodes (parent = -1).
-        // The reader's `build_resource` reconstructs regions from these roots:
-        //   - If root.id == "root", the root's children become region.nodes
-        //   - Otherwise, the root itself becomes the sole item in region.nodes
-        //
-        // So for writing, each region.nodes[i] should become a root node
-        // (parent = -1) that the reader will wrap back into a region.
         for node in &region.nodes {
             flatten_node(
                 node,
@@ -903,55 +905,40 @@ pub fn write_lsf<W: Write>(writer: &mut W, resource: &LsxResource) -> Result<(),
         }
     }
 
-    // Build next_sibling_index for each node
-    let sibling_indices = build_sibling_indices(&flat_nodes);
-
-    // Build next_attribute_index chains
-    let next_attr_indices = build_next_attr_indices(&flat_attrs);
-
-    // ── 2. Serialize sections ──────────────────────────────────────
+    // ── 2. Serialize sections (V2 format — 12-byte records, no adjacency) ──
 
     let names_raw = name_table.serialize();
-    let nodes_raw = serialize_nodes_v3(&flat_nodes, &sibling_indices);
-    let attrs_raw = serialize_attrs_v3(&flat_attrs, &next_attr_indices);
+    let nodes_raw = serialize_nodes_v2(&flat_nodes);
+    let attrs_raw = serialize_attrs_v2(&flat_attrs);
     let values_raw = values_buf;
 
-    // ── 3. Compress sections (LZ4) ─────────────────────────────────
-
-    let names_disk = lz4_block_compress(&names_raw)?;
-    let nodes_disk = lz4_frame_compress(&nodes_raw)?;
-    let attrs_disk = lz4_frame_compress(&attrs_raw)?;
-    let values_disk = lz4_frame_compress(&values_raw)?;
-
-    let compression_flags: u8 = 2; // LZ4
-
-    // ── 4. Write header ────────────────────────────────────────────
+    // ── 3. Write header ────────────────────────────────────────────
 
     write_u32(writer, LSF_SIGNATURE)?;
     write_u32(writer, WRITE_VERSION)?;
     write_i64(writer, WRITE_ENGINE_VERSION)?;
 
-    // Metadata
-    write_u32(writer, names_raw.len() as u32)?;   // strings_uncompressed
-    write_u32(writer, names_disk.len() as u32)?;   // strings_size_on_disk
-    write_u32(writer, 0)?;                         // keys_uncompressed (v6)
-    write_u32(writer, 0)?;                         // keys_size_on_disk (v6)
-    write_u32(writer, nodes_raw.len() as u32)?;    // nodes_uncompressed
-    write_u32(writer, nodes_disk.len() as u32)?;   // nodes_size_on_disk
-    write_u32(writer, attrs_raw.len() as u32)?;    // attrs_uncompressed
-    write_u32(writer, attrs_disk.len() as u32)?;   // attrs_size_on_disk
-    write_u32(writer, values_raw.len() as u32)?;   // values_uncompressed
-    write_u32(writer, values_disk.len() as u32)?;  // values_size_on_disk
-    write_u8_val(writer, compression_flags)?;       // compression_flags
+    // Metadata (LSFMetadataV6 layout — uncompressed, no keys, no adjacency)
+    write_u32(writer, names_raw.len() as u32)?;    // strings_uncompressed
+    write_u32(writer, 0)?;                          // strings_size_on_disk (0 = uncompressed)
+    write_u32(writer, 0)?;                          // keys_uncompressed
+    write_u32(writer, 0)?;                          // keys_size_on_disk
+    write_u32(writer, nodes_raw.len() as u32)?;     // nodes_uncompressed
+    write_u32(writer, 0)?;                          // nodes_size_on_disk
+    write_u32(writer, attrs_raw.len() as u32)?;     // attrs_uncompressed
+    write_u32(writer, 0)?;                          // attrs_size_on_disk
+    write_u32(writer, values_raw.len() as u32)?;    // values_uncompressed
+    write_u32(writer, 0)?;                          // values_size_on_disk
+    write_u8_val(writer, 0)?;                       // compression_flags = None
     write_u8_val(writer, 0)?;                       // unknown2
     write_u16_val(writer, 0)?;                      // unknown3
-    write_u32(writer, 1)?;                          // metadata_format = KeysAndAdjacency
+    write_u32(writer, 0)?;                          // metadata_format = None
 
-    // Sections (order: names, nodes, attrs, values — keys omitted as size is 0)
-    writer.write_all(&names_disk).map_err(|e| format!("Failed to write names: {e}"))?;
-    writer.write_all(&nodes_disk).map_err(|e| format!("Failed to write nodes: {e}"))?;
-    writer.write_all(&attrs_disk).map_err(|e| format!("Failed to write attrs: {e}"))?;
-    writer.write_all(&values_disk).map_err(|e| format!("Failed to write values: {e}"))?;
+    // Sections (order: names, nodes, attrs, values — all raw, no keys)
+    writer.write_all(&names_raw).map_err(|e| format!("Failed to write names: {e}"))?;
+    writer.write_all(&nodes_raw).map_err(|e| format!("Failed to write nodes: {e}"))?;
+    writer.write_all(&attrs_raw).map_err(|e| format!("Failed to write attrs: {e}"))?;
+    writer.write_all(&values_raw).map_err(|e| format!("Failed to write values: {e}"))?;
 
     Ok(())
 }
@@ -977,37 +964,51 @@ struct FlatAttr {
     name_hash: u32,
     type_id: u32,
     owner_node: i32,
-    data_offset: u32,
     data_length: u32,
 }
 
-// ── Name table builder ─────────────────────────────────────────────
+// ── Name table builder (512-bucket hash map matching LSlib/divine) ──
+
+/// Number of hash buckets for the string table, matching LSlib's `StringHashMapSize`.
+const NAME_HASH_BUCKET_COUNT: usize = 0x200; // 512
 
 struct NameTable {
-    /// All unique strings, in insertion order
-    strings: Vec<String>,
-    /// string → index in `strings`
-    index_map: std::collections::HashMap<String, usize>,
+    /// 512-entry hash map: each bucket holds a list of (string, global_index) pairs.
+    buckets: Vec<Vec<String>>,
+    /// Maps string → packed name_hash (bucket << 16 | offset)
+    lookup: std::collections::HashMap<String, u32>,
 }
 
 impl NameTable {
     fn new() -> Self {
         Self {
-            strings: Vec::new(),
-            index_map: std::collections::HashMap::new(),
+            buckets: vec![Vec::new(); NAME_HASH_BUCKET_COUNT],
+            lookup: std::collections::HashMap::new(),
         }
     }
 
     /// Intern a string and return its name_hash (bucket_index << 16 | offset).
-    /// All strings go into bucket 0 for simplicity.
     fn intern(&mut self, name: &str) -> u32 {
-        if let Some(&idx) = self.index_map.get(name) {
-            return idx as u32; // bucket 0, offset = idx
+        if let Some(&hash) = self.lookup.get(name) {
+            return hash;
         }
-        let idx = self.strings.len();
-        self.strings.push(name.to_string());
-        self.index_map.insert(name.to_string(), idx);
-        idx as u32 // (0 << 16) | idx
+        let bucket = Self::compute_bucket(name);
+        let offset = self.buckets[bucket].len();
+        self.buckets[bucket].push(name.to_string());
+        let hash = ((bucket as u32) << 16) | (offset as u32);
+        self.lookup.insert(name.to_string(), hash);
+        hash
+    }
+
+    /// Hash a string name to a bucket index (0..511).
+    /// Uses FNV-1a then folds to 9 bits via LSlib's xor-fold pattern.
+    fn compute_bucket(name: &str) -> usize {
+        let mut h: u32 = 0x811c_9dc5; // FNV offset basis
+        for b in name.as_bytes() {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x0100_0193); // FNV prime
+        }
+        ((h & 0x1ff) ^ ((h >> 9) & 0x1ff) ^ ((h >> 18) & 0x1ff) ^ ((h >> 27) & 0x1ff)) as usize
     }
 
     /// Serialize as the name table binary format:
@@ -1015,13 +1016,14 @@ impl NameTable {
     /// then for each string: len (u16) + bytes.
     fn serialize(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        // 1 bucket containing all strings
-        buf.extend_from_slice(&1u32.to_le_bytes());
-        buf.extend_from_slice(&(self.strings.len() as u16).to_le_bytes());
-        for s in &self.strings {
-            let bytes = s.as_bytes();
-            buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-            buf.extend_from_slice(bytes);
+        buf.extend_from_slice(&(NAME_HASH_BUCKET_COUNT as u32).to_le_bytes());
+        for bucket in &self.buckets {
+            buf.extend_from_slice(&(bucket.len() as u16).to_le_bytes());
+            for s in bucket {
+                let bytes = s.as_bytes();
+                buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+                buf.extend_from_slice(bytes);
+            }
         }
         buf
     }
@@ -1047,15 +1049,14 @@ fn flatten_node(
     // Serialize attributes
     for attr in &node.attributes {
         let type_id = type_name_to_id(&attr.attr_type)?;
-        let data_offset = values_buf.len() as u32;
+        let len_before = values_buf.len() as u32;
         write_typed_value(values_buf, type_id, attr)?;
-        let data_length = values_buf.len() as u32 - data_offset;
+        let data_length = values_buf.len() as u32 - len_before;
 
         flat_attrs.push(FlatAttr {
             name_hash: names.intern(&attr.id),
             type_id,
             owner_node: my_index,
-            data_offset,
             data_length,
         });
     }
@@ -1068,61 +1069,29 @@ fn flatten_node(
     Ok(())
 }
 
-// ── Sibling / attribute chain builders ─────────────────────────────
+// ── Section serializers (V2 — 12-byte records, no adjacency) ───────
 
-fn build_sibling_indices(nodes: &[FlatNode]) -> Vec<i32> {
-    let mut result = vec![-1i32; nodes.len()];
-    // Group children by parent, then link each child to the next one
-    let mut children_of: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
-    for (i, node) in nodes.iter().enumerate() {
-        if node.parent_index >= 0 {
-            children_of.entry(node.parent_index).or_default().push(i);
-        }
-    }
-    for children in children_of.values() {
-        for window in children.windows(2) {
-            result[window[0]] = window[1] as i32;
-        }
-    }
-    result
-}
-
-fn build_next_attr_indices(attrs: &[FlatAttr]) -> Vec<i32> {
-    let mut result = vec![-1i32; attrs.len()];
-    // Group attributes by owner node, link sequentially
-    let mut attrs_of: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::new();
-    for (i, attr) in attrs.iter().enumerate() {
-        attrs_of.entry(attr.owner_node).or_default().push(i);
-    }
-    for attrs in attrs_of.values() {
-        for window in attrs.windows(2) {
-            result[window[0]] = window[1] as i32;
-        }
-    }
-    result
-}
-
-// ── Section serializers ────────────────────────────────────────────
-
-fn serialize_nodes_v3(nodes: &[FlatNode], siblings: &[i32]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(nodes.len() * 16);
-    for (i, node) in nodes.iter().enumerate() {
+/// V2 node entry: name_hash (u32), first_attribute_index (i32), parent_index (i32) = 12 bytes.
+/// Note: field order differs from V3 — first_attribute comes before parent in V2.
+fn serialize_nodes_v2(nodes: &[FlatNode]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(nodes.len() * 12);
+    for node in nodes {
         buf.extend_from_slice(&node.name_hash.to_le_bytes());
-        buf.extend_from_slice(&node.parent_index.to_le_bytes());
-        buf.extend_from_slice(&siblings[i].to_le_bytes());
         buf.extend_from_slice(&node.first_attribute_index.to_le_bytes());
+        buf.extend_from_slice(&node.parent_index.to_le_bytes());
     }
     buf
 }
 
-fn serialize_attrs_v3(attrs: &[FlatAttr], next_indices: &[i32]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(attrs.len() * 16);
-    for (i, attr) in attrs.iter().enumerate() {
+/// V2 attribute entry: name_hash (u32), type_and_length (u32), node_index (i32) = 12 bytes.
+/// The owning node index lets the reader reconstruct which attributes belong to which node.
+fn serialize_attrs_v2(attrs: &[FlatAttr]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(attrs.len() * 12);
+    for attr in attrs {
         let type_and_length = (attr.type_id & 0x3f) | (attr.data_length << 6);
         buf.extend_from_slice(&attr.name_hash.to_le_bytes());
         buf.extend_from_slice(&type_and_length.to_le_bytes());
-        buf.extend_from_slice(&next_indices[i].to_le_bytes());
-        buf.extend_from_slice(&attr.data_offset.to_le_bytes());
+        buf.extend_from_slice(&attr.owner_node.to_le_bytes());
     }
     buf
 }
@@ -1339,28 +1308,6 @@ fn type_name_to_id(type_name: &str) -> Result<u32, String> {
         "TranslatedFSString" => Ok(33),
         _ => Err(format!("Unknown LSX attribute type '{type_name}'")),
     }
-}
-
-// ── Compression helpers ────────────────────────────────────────────
-
-fn lz4_block_compress(data: &[u8]) -> Result<Vec<u8>, String> {
-    if data.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(block::compress(data))
-}
-
-fn lz4_frame_compress(data: &[u8]) -> Result<Vec<u8>, String> {
-    if data.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
-    encoder
-        .write_all(data)
-        .map_err(|e| format!("LZ4 frame compress write: {e}"))?;
-    encoder
-        .finish()
-        .map_err(|e| format!("LZ4 frame compress finish: {e}"))
 }
 
 // ── Write helpers ──────────────────────────────────────────────────
@@ -2425,5 +2372,90 @@ mod tests {
         let val = visible_prop.attributes.iter().find(|a| a.id == "Value").unwrap();
         assert_eq!(val.value, "True");
         assert_eq!(val.attr_type, "bool");
+    }
+
+    #[test]
+    fn write_lsf_v7_matches_divine_section_sizes() {
+        // Parse the same LSX that divine.exe converted, write via our writer,
+        // then compare header/section sizes with divine's output.
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures");
+        let lsx_path = fixtures.join("divine_charvisuals.lsx");
+        let divine_lsf_path = fixtures.join("divine_charvisuals.lsf");
+
+        if !lsx_path.exists() || !divine_lsf_path.exists() {
+            eprintln!("Skipping divine comparison — fixtures not found");
+            return;
+        }
+
+        let lsx_content = fs::read_to_string(&lsx_path).unwrap();
+        let resource = parse_lsx_resource(&lsx_content).unwrap();
+
+        let mut our_output = Vec::new();
+        write_lsf(&mut our_output, &resource).unwrap();
+
+        let divine_bytes = fs::read(&divine_lsf_path).unwrap();
+
+        // Both should start with LSOF signature
+        assert_eq!(&our_output[0..4], b"LSOF");
+        assert_eq!(&divine_bytes[0..4], b"LSOF");
+
+        // Both should be version 7
+        let our_ver = u32::from_le_bytes(our_output[4..8].try_into().unwrap());
+        let div_ver = u32::from_le_bytes(divine_bytes[4..8].try_into().unwrap());
+        assert_eq!(our_ver, 7, "our version should be 7");
+        assert_eq!(div_ver, 7, "divine version should be 7");
+
+        // Compare section sizes from headers (offset 16 onwards, u32 pairs)
+        let read_u32_at = |buf: &[u8], off: usize| -> u32 {
+            u32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
+        };
+
+        // strings_uncompressed at offset 16, strings_on_disk at offset 20
+        let our_strings_uncmp = read_u32_at(&our_output, 16);
+        let div_strings_uncmp = read_u32_at(&divine_bytes, 16);
+        let our_strings_disk = read_u32_at(&our_output, 20);
+        let div_strings_disk = read_u32_at(&divine_bytes, 20);
+        assert_eq!(our_strings_disk, 0, "our strings_on_disk should be 0 (uncompressed)");
+        assert_eq!(div_strings_disk, 0, "divine strings_on_disk should be 0");
+        assert_eq!(
+            our_strings_uncmp, div_strings_uncmp,
+            "strings section size mismatch: ours={our_strings_uncmp} divine={div_strings_uncmp}"
+        );
+
+        // nodes at offset 32/36
+        let our_nodes = read_u32_at(&our_output, 32);
+        let div_nodes = read_u32_at(&divine_bytes, 32);
+        assert_eq!(our_nodes, div_nodes, "nodes section size mismatch: ours={our_nodes} divine={div_nodes}");
+
+        // attrs at offset 40/44
+        let our_attrs = read_u32_at(&our_output, 40);
+        let div_attrs = read_u32_at(&divine_bytes, 40);
+        assert_eq!(our_attrs, div_attrs, "attrs section size mismatch: ours={our_attrs} divine={div_attrs}");
+
+        // values at offset 48/52
+        let our_values = read_u32_at(&our_output, 48);
+        let div_values = read_u32_at(&divine_bytes, 48);
+        assert_eq!(our_values, div_values, "values section size mismatch: ours={our_values} divine={div_values}");
+
+        // Total file size
+        assert_eq!(
+            our_output.len(),
+            divine_bytes.len(),
+            "total file size mismatch: ours={} divine={}",
+            our_output.len(),
+            divine_bytes.len()
+        );
+
+        // Verify our output is readable and round-trips correctly
+        let parsed = parse_lsf(Cursor::new(&our_output)).unwrap();
+        assert!(!parsed.regions.is_empty(), "parsed output should have regions");
+
+        println!(
+            "DIVINE_COMPARE: our_size={} divine_size={} strings={} nodes={} attrs={} values={}",
+            our_output.len(), divine_bytes.len(),
+            our_strings_uncmp, our_nodes, our_attrs, our_values
+        );
     }
 }

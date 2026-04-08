@@ -677,7 +677,7 @@ impl Section {
             Section::EquipmentTypes => &["EquipmentTypes"],
             Section::Flags => &["Flags"],
             Section::FixedHotBarSlots => &["FixedHotBarSlots"],
-            Section::GUI => &["GUI"],
+            Section::GUI => &["TextureAtlasInfo", "IconUVList"],
             Section::ItemThrowParams => &["ItemThrowParams"],
             Section::LimbsMapping => &["LimbsMapping"],
             Section::MultiEffectInfos => &["MultiEffectInfos"],

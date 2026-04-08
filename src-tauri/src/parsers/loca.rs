@@ -220,6 +220,29 @@ pub fn parse_loca_xml(xml: &str) -> Result<Vec<LocaEntry>, String> {
                     current_text.push_str(&text);
                 }
             }
+            Ok(Event::GeneralRef(ref e)) if in_content => {
+                // Resolve XML entity references (e.g. &lt; &gt; &amp; &apos; &quot;)
+                // and character references (e.g. &#60; &#x3C;) back into characters.
+                let name = e.decode()
+                    .map_err(|err| format!("Encoding error in entity ref: {err}"))?;
+                match name.as_ref() {
+                    "lt" => current_text.push('<'),
+                    "gt" => current_text.push('>'),
+                    "amp" => current_text.push('&'),
+                    "apos" => current_text.push('\''),
+                    "quot" => current_text.push('"'),
+                    _ => {
+                        if let Ok(Some(ch)) = e.resolve_char_ref() {
+                            current_text.push(ch);
+                        } else {
+                            // Unknown entity — preserve as-is
+                            current_text.push('&');
+                            current_text.push_str(&name);
+                            current_text.push(';');
+                        }
+                    }
+                }
+            }
             Ok(Event::End(ref e)) if e.name().as_ref() == b"content" && in_content => {
                 if let Some(key) = current_key.take() {
                     entries.push(LocaEntry {
@@ -434,6 +457,33 @@ mod tests {
         let entries = parse_loca_xml(xml).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].text, "");
+    }
+
+    #[test]
+    fn parse_loca_xml_entity_references() {
+        let xml = r#"<contentList>
+  <content contentuid="h001" version="1">Use proficiency actions.&lt;br&gt;Equal to &lt;LSTag Tooltip="ProficiencyBonus"&gt;Proficiency Bonus&lt;/LSTag&gt;.</content>
+  <content contentuid="h002" version="1">A &amp; B &apos;quoted&apos; &quot;text&quot;</content>
+</contentList>"#;
+        let entries = parse_loca_xml(xml).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0].text,
+            r#"Use proficiency actions.<br>Equal to <LSTag Tooltip="ProficiencyBonus">Proficiency Bonus</LSTag>."#
+        );
+        assert_eq!(entries[1].text, "A & B 'quoted' \"text\"");
+    }
+
+    #[test]
+    fn loca_xml_entity_roundtrip() {
+        let xml = r#"<contentList>
+  <content contentuid="hEntTest" version="1">Text with &lt;br&gt; and &amp; entities</content>
+</contentList>"#;
+        let entries = parse_loca_xml(xml).unwrap();
+        assert_eq!(entries[0].text, "Text with <br> and & entities");
+        let binary = write_loca(&entries).unwrap();
+        let parsed = parse_loca(Cursor::new(binary)).unwrap();
+        assert_eq!(parsed[0].text, "Text with <br> and & entities");
     }
 
     #[test]
