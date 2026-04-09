@@ -158,7 +158,7 @@
   <!-- Preview area -->
   <div class="flex-1 min-h-0 overflow-y-auto p-4 scrollbar-thin" aria-live="polite">
     {#if lsxHighlightedHtml}
-      <pre class="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words">{@html lsxHighlightedHtml}</pre>
+      <pre class="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words" data-selectable="true">{@html lsxHighlightedHtml}</pre>
     {:else}
       <div class="flex items-center justify-center h-full text-zinc-600 text-sm">
         <p>{m.output_scan_mod_hint()}</p>

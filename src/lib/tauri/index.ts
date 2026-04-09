@@ -16,3 +16,4 @@ export * from "./packaging.js";
 export * from "./scripts.js";
 export * from "./http.js";
 export * from "./git.js";
+export * from "./project-settings.js";

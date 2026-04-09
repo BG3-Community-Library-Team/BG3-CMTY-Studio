@@ -68,7 +68,7 @@
         <GitCommitIcon size={18} />
         <span class="commit-header-label">Commit</span>
       </div>
-      <div class="commit-oid-full" title="Click to select">
+      <div class="commit-oid-full" title="Click to select" data-selectable="true">
         {detail.commit.oid}
       </div>
 

@@ -396,6 +396,13 @@
   "file_explorer_delete_script": "Delete",
   "file_explorer_new_script": "New Script File…",
 
+  "explorer_header_title": "Explorer",
+  "explorer_view_mode_studio": "Studio View",
+  "explorer_view_mode_file_tree": "File Tree",
+  "explorer_drawer_data": "Data",
+  "explorer_drawer_localization": "Localization",
+  "explorer_drawer_scripts": "Scripts",
+
   "help_section_header": "Help",
   "help_bg3_discord": "BG3 Modding CMTY Discord",
   "help_cf_github": "CF GitHub Repo",
@@ -442,6 +449,7 @@
 
   "editor_tabs_close_aria": "Close {label}",
   "editor_tabs_tablist_aria": "Open editors",
+  "tab_welcome": "Welcome",
 
   "output_preview_heading": "Output Preview",
   "output_scan_mod_hint": "Load a mod to see LSX preview",
@@ -694,6 +702,7 @@
   "app_persist_failed": "Save failed",
   "app_persist_failed_desc": "Project data could not be saved to local storage. Your changes may be lost if you close the app.",
   "app_cut": "Cut",
+  "app_copy": "Copy",
   "app_paste": "Paste",
   "app_select_all": "Select All",
   "app_skip_to_sections": "Skip to sections",
@@ -746,7 +755,9 @@
   "welcome_app_subtitle": "Community Mod Authoring Studio for Baldur's Gate 3",
   "welcome_app_title": "BG3 CMTY Studio",
   "welcome_new_desc": "Create a new mod project",
+  "welcome_new_title": "New Project",
   "welcome_open_desc": "Select a project folder containing your mod",
+  "welcome_open_title": "Open Project",
   "welcome_folder_help_title": "Which folder should I open?",
   "welcome_folder_help_body": "Select the folder that contains your mod folder. Your mod folder is the one with Mods/ and Public/ inside it.",
   "welcome_folder_help_auto_correct": "If you select your mod folder directly, CMTY Studio will automatically set up the project structure around it.",
@@ -1127,5 +1138,20 @@
   "settings_scripts_ide_helpers_heading": "IDE Helpers Folder",
   "settings_scripts_ide_helpers_desc": "Select a folder containing Lua helper definition files to supplement intellisense. All .lua files in the folder are parsed for function signatures, global variables, and table fields.",
   "settings_scripts_ide_helpers_placeholder": "Path to IDE helpers folder",
-  "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers Folder"
+  "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers Folder",
+
+  "settings_project_scope": "Project",
+  "settings_global_scope": "Global",
+  "settings_reset_to_global": "Reset to Global",
+  "settings_no_project_open": "No project open — settings are global",
+  "settings_set_at_project": "Set at project level",
+  "settings_inherited_from_global": "Inherited from global settings",
+
+  "readme_export_txt": "Export as .txt",
+  "readme_copy_plain_text": "Copy as Plain Text",
+  "readme_export_txt_success": "Exported to {path}",
+  "readme_copy_plain_text_success": "Plain text copied to clipboard",
+  "explorer_context_menu_reveal_in_file_explorer": "Reveal in File Explorer",
+  "explorer_context_menu_pin_to_top": "Pin to Top",
+  "explorer_context_menu_unpin": "Unpin"
 }

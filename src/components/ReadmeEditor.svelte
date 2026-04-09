@@ -8,7 +8,11 @@
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Save from "@lucide/svelte/icons/save";
   import FileDown from "@lucide/svelte/icons/file-down";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import ClipboardCopy from "@lucide/svelte/icons/clipboard-copy";
   import { markdownToBBCode } from "../lib/utils/bbcodeConverter.js";
+  import { markdownToPlainText } from "../lib/utils/markdownToPlainText.js";
+  import { save } from "@tauri-apps/plugin-dialog";
 
   let content = $state("");
   let previewMode = $state(false);
@@ -85,8 +89,29 @@ Add installation instructions here. Example:
     }
   }
 
-  function handleConvertTxt() {
-    toastStore.info("Coming soon", "Text conversion will be available in a future update");
+  async function handleExportTxt() {
+    try {
+      const plainText = markdownToPlainText(content);
+      const filePath = await save({
+        defaultPath: "README.txt",
+        filters: [{ name: "Text Files", extensions: ["txt"] }],
+      });
+      if (!filePath) return;
+      await writeTextFile(filePath, plainText);
+      toastStore.success("Exported to " + filePath);
+    } catch (e: unknown) {
+      toastStore.error("Export failed", getErrorMessage(e));
+    }
+  }
+
+  async function handleCopyPlainText() {
+    try {
+      const plainText = markdownToPlainText(content);
+      await navigator.clipboard.writeText(plainText);
+      toastStore.success("Plain text copied to clipboard");
+    } catch (e: unknown) {
+      toastStore.error("Copy failed", getErrorMessage(e));
+    }
   }
 
   /** Basic markdown → HTML renderer. Strips <script> tags for safety. */
@@ -207,11 +232,19 @@ Add installation instructions here. Example:
       </button>
       <button
         class="readme-btn"
-        onclick={handleConvertTxt}
-        title="Convert to .txt"
+        onclick={handleExportTxt}
+        title="Export as .txt"
       >
-        <FileDown size={14} />
+        <FileText size={14} />
         <span>.txt</span>
+      </button>
+      <button
+        class="readme-btn"
+        onclick={handleCopyPlainText}
+        title="Copy as Plain Text"
+      >
+        <ClipboardCopy size={14} />
+        <span>Plain Text</span>
       </button>
       <button
         class="readme-btn"
@@ -233,7 +266,7 @@ Add installation instructions here. Example:
     {#if !loaded}
       <div class="readme-loading">Loading…</div>
     {:else if previewMode}
-      <div class="readme-preview">
+      <div class="readme-preview" data-selectable="true">
         {@html previewHtml}
       </div>
     {:else}

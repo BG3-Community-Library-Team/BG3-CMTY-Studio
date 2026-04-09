@@ -56,7 +56,7 @@
   let paired = $derived(splitLines(hunk.lines));
 </script>
 
-<div class="diff-hunk">
+<div class="diff-hunk" data-selectable="true">
   <div class="hunk-header">{hunk.header}</div>
 
   {#if viewMode === "unified"}

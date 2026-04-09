@@ -92,7 +92,7 @@
       <p class="text-[10px] text-[var(--th-text-600)] mt-1 max-w-[300px]">{error}</p>
     </div>
   {:else if content != null}
-    <div class="file-preview-content">
+    <div class="file-preview-content" data-selectable="true">
       <VirtualList items={lines} itemHeight={16} threshold={200} role="none">
         {#snippet children({ item: line, index: i })}
           <div class="preview-line"><span class="line-number">{String(i + 1).padStart(lineNumWidth, " ")}</span>  {@html highlightLine(line, extension)}</div>

@@ -21,6 +21,21 @@ html, body {
   height: 100%;
 }
 
+/* EX-9: Prevent text selection on non-editable UI chrome (matches VS Code behavior) */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* EX-9: Re-enable selection in editor areas, inputs, and copyable content */
+input, textarea, [contenteditable="true"],
+.code-editor, .cm-editor, .monaco-editor,
+.editable-content, .preview-content,
+[data-selectable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* UX-031: Enable keyword interpolation for smooth <details> transitions.
    Chromium (Tauri WebView) supports interpolate-size: allow-keywords,
    enabling height transitions on elements that use auto sizing. */

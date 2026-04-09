@@ -2,6 +2,8 @@
   import { uiStore, type EditorTab } from "../lib/stores/uiStore.svelte.js";
   import { m } from "../paraglide/messages.js";
   import X from "@lucide/svelte/icons/x";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import FileCode from "@lucide/svelte/icons/file-code";
   import FileCode2 from "@lucide/svelte/icons/file-code-2";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
@@ -39,20 +41,80 @@
   let dragFromIndex = $state(-1);
   let dragOverIndex = $state(-1);
 
+  /** Tab container element for scroll management */
+  let tabContainerEl: HTMLDivElement | undefined = $state(undefined);
+
+  /** Whether the container has overflow on each side */
+  let canScrollLeft = $state(false);
+  let canScrollRight = $state(false);
+
+  /** Map of tab id → element ref for scrollIntoView */
+  let tabElements = new Map<string, HTMLElement>();
+
+  function updateScrollState(): void {
+    if (!tabContainerEl) return;
+    canScrollLeft = tabContainerEl.scrollLeft > 0;
+    canScrollRight =
+      tabContainerEl.scrollLeft + tabContainerEl.clientWidth < tabContainerEl.scrollWidth - 1;
+  }
+
+  /** Scroll active tab into view when activeTabId changes */
+  $effect(() => {
+    const id = activeTabId;
+    // Tick to let DOM update
+    requestAnimationFrame(() => {
+      const el = tabElements.get(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      }
+      updateScrollState();
+    });
+  });
+
+  /** Update overflow indicators on scroll */
+  function handleScroll(): void {
+    updateScrollState();
+  }
+
+  /** Convert vertical mouse wheel into horizontal scroll */
+  function handleWheel(e: WheelEvent): void {
+    if (!tabContainerEl) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      tabContainerEl.scrollLeft += e.deltaY;
+      updateScrollState();
+    }
+  }
+
+  /** Scroll arrows */
+  function scrollLeft(): void {
+    tabContainerEl?.scrollBy({ left: -120, behavior: "smooth" });
+  }
+  function scrollRight(): void {
+    tabContainerEl?.scrollBy({ left: 120, behavior: "smooth" });
+  }
+
   function handleClose(e: MouseEvent, tabId: string): void {
     e.stopPropagation();
     uiStore.closeTab(tabId);
   }
 
-  /** Middle-click to close */
-  function handleAuxClick(e: MouseEvent, tabId: string): void {
+  /** Middle-click to close (not for welcome tab) */
+  function handleAuxClick(e: MouseEvent, tab: EditorTab): void {
     if (e.button === 1) {
       e.preventDefault();
-      uiStore.closeTab(tabId);
+      if (tab.type !== "welcome") {
+        uiStore.closeTab(tab.id);
+      }
     }
   }
 
-  function handleDragStart(e: DragEvent, index: number): void {
+  function handleDragStart(e: DragEvent, index: number, tab: EditorTab): void {
+    // Welcome tab cannot be dragged
+    if (tab.type === "welcome") {
+      e.preventDefault();
+      return;
+    }
     dragFromIndex = index;
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
@@ -79,69 +141,160 @@
     dragFromIndex = -1;
     dragOverIndex = -1;
   }
+
+  /** Register / unregister tab element refs (Svelte action) */
+  function tabRef(el: HTMLElement, id: string) {
+    tabElements.set(id, el);
+    return {
+      destroy() {
+        tabElements.delete(id);
+      },
+    };
+  }
 </script>
 
 {#if tabs.length > 0}
-  <div class="tab-bar" role="tablist" aria-label={m.editor_tabs_tablist_aria()}>
-    {#each tabs as tab, i (tab.id)}
-      {@const isActive = tab.id === activeTabId}
-      {@const TabIcon = TAB_ICONS[tab.type]}
-      <button
-        role="tab"
-        class="tab"
-        class:active={isActive}
-        class:dirty={tab.dirty}
-        class:preview={tab.preview}
-        class:drag-over={dragOverIndex === i && dragFromIndex !== i}
-        aria-selected={isActive}
-        title={tab.label}
-        draggable="true"
-        onclick={() => uiStore.activeTabId = tab.id}
-        ondblclick={() => uiStore.pinTab(tab.id)}
-        onauxclick={(e: MouseEvent) => handleAuxClick(e, tab.id)}
-        ondragstart={(e: DragEvent) => handleDragStart(e, i)}
-        ondragover={(e: DragEvent) => handleDragOver(e, i)}
-        ondrop={(e: DragEvent) => handleDrop(e, i)}
-        ondragend={handleDragEnd}
-      >
-        {#if TabIcon}
-          <TabIcon size={13} class="tab-icon shrink-0" />
-        {/if}
-        <span class="tab-label truncate">{tab.label}</span>
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span
-          class="tab-close"
-          role="button"
-          tabindex={-1}
-          aria-label={m.editor_tabs_close_aria({ label: tab.label })}
-          onclick={(e: MouseEvent) => handleClose(e, tab.id)}
-          onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); uiStore.closeTab(tab.id); } }}
-        >
-          {#if tab.dirty}
-            <span class="dirty-dot"></span>
-          {:else}
-            <X size={12} />
-          {/if}
-        </span>
+  <div class="tab-bar-outer" role="tablist" aria-label={m.editor_tabs_tablist_aria()}>
+    <!-- Left scroll arrow (visible when overflow) -->
+    {#if canScrollLeft}
+      <button class="scroll-arrow scroll-arrow-left" aria-hidden="true" tabindex={-1} onclick={scrollLeft}>
+        <ChevronLeft size={14} />
       </button>
-    {/each}
+    {/if}
+
+    <!-- Tab container with scroll -->
+    <div
+      class="tab-bar"
+      class:fade-left={canScrollLeft}
+      class:fade-right={canScrollRight}
+      bind:this={tabContainerEl}
+      onscroll={handleScroll}
+      onwheel={handleWheel}
+    >
+      {#each tabs as tab, i (tab.id)}
+        {@const isActive = tab.id === activeTabId}
+        {@const TabIcon = TAB_ICONS[tab.type]}
+        {@const isWelcome = tab.type === "welcome"}
+        <button
+          role="tab"
+          class="tab"
+          class:active={isActive}
+          class:dirty={tab.dirty}
+          class:preview={tab.preview}
+          class:tab-welcome={isWelcome}
+          class:drag-over={dragOverIndex === i && dragFromIndex !== i}
+          aria-selected={isActive}
+          title={isWelcome ? m.tab_welcome() : tab.label}
+          draggable={!isWelcome}
+          onclick={() => uiStore.activeTabId = tab.id}
+          ondblclick={() => uiStore.pinTab(tab.id)}
+          onauxclick={(e: MouseEvent) => handleAuxClick(e, tab)}
+          ondragstart={(e: DragEvent) => handleDragStart(e, i, tab)}
+          ondragover={(e: DragEvent) => handleDragOver(e, i)}
+          ondrop={(e: DragEvent) => handleDrop(e, i)}
+          ondragend={handleDragEnd}
+          use:tabRef={tab.id}
+        >
+          {#if TabIcon}
+            <TabIcon size={13} class="tab-icon shrink-0" />
+          {/if}
+          {#if !isWelcome}
+            <span class="tab-label truncate">{tab.label}</span>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <span
+              class="tab-close"
+              role="button"
+              tabindex={-1}
+              aria-label={m.editor_tabs_close_aria({ label: tab.label })}
+              onclick={(e: MouseEvent) => handleClose(e, tab.id)}
+              onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); uiStore.closeTab(tab.id); } }}
+            >
+              {#if tab.dirty}
+                <span class="dirty-dot"></span>
+              {:else}
+                <X size={12} />
+              {/if}
+            </span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+
+    <!-- Right scroll arrow (visible when overflow) -->
+    {#if canScrollRight}
+      <button class="scroll-arrow scroll-arrow-right" aria-hidden="true" tabindex={-1} onclick={scrollRight}>
+        <ChevronRight size={14} />
+      </button>
+    {/if}
   </div>
 {/if}
 
 <style>
-  .tab-bar {
+  .tab-bar-outer {
     display: flex;
+    align-items: stretch;
     background: var(--th-bg-900);
     border-bottom: 1px solid var(--th-border-800, var(--th-bg-700));
-    overflow-x: auto;
-    overflow-y: hidden;
     min-height: 32px;
     max-height: 32px;
+    position: relative;
+  }
+
+  .tab-bar {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
   }
 
   .tab-bar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Edge fade gradients for overflow indication */
+  .tab-bar.fade-left {
+    mask-image: linear-gradient(to right, transparent, black 24px);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 24px);
+  }
+
+  .tab-bar.fade-right {
+    mask-image: linear-gradient(to left, transparent, black 24px);
+    -webkit-mask-image: linear-gradient(to left, transparent, black 24px);
+  }
+
+  .tab-bar.fade-left.fade-right {
+    mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  }
+
+  .scroll-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    flex-shrink: 0;
+    border: none;
+    background: var(--th-bg-900);
+    color: var(--th-text-500);
+    cursor: pointer;
+    z-index: 1;
+    padding: 0;
+    transition: color 0.1s, background 0.1s;
+  }
+
+  .scroll-arrow:hover {
+    color: var(--th-text-200);
+    background: var(--th-bg-800);
+  }
+
+  .scroll-arrow-left {
+    border-right: 1px solid var(--th-border-800, var(--th-bg-700));
+  }
+
+  .scroll-arrow-right {
+    border-left: 1px solid var(--th-border-800, var(--th-bg-700));
   }
 
   .tab {
@@ -157,10 +310,18 @@
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
-    min-width: 0;
+    min-width: 120px;
     max-width: 160px;
+    flex-shrink: 0;
     transition: background 0.1s, color 0.1s;
     user-select: none;
+  }
+
+  .tab.tab-welcome {
+    min-width: 36px;
+    max-width: 36px;
+    padding: 0;
+    justify-content: center;
   }
 
   .tab:hover {

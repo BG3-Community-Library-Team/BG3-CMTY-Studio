@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import type { ContextMenuItemDef } from '../lib/types/contextMenu.js';
+  import ContextMenuItem from './ContextMenuItem.svelte';
+  import ContextMenuSeparator from './ContextMenuSeparator.svelte';
 
   let {
     x,
@@ -8,17 +11,32 @@
     headerTitle = '',
     onclose,
     children,
+    items,
   }: {
     x: number;
     y: number;
     header?: string;
     headerTitle?: string;
     onclose: () => void;
-    children: Snippet;
+    children?: Snippet;
+    items?: ContextMenuItemDef[];
   } = $props();
 
   let menuEl: HTMLDivElement | undefined = $state(undefined);
   let menuStyle = $state('visibility: hidden');
+  let focusIdx = $state(-1);
+
+  // Filtered items for keyboard navigation (skip disabled)
+  let navigableIndices = $derived.by(() => {
+    if (!items) return [];
+    return items.reduce<number[]>((acc, item, i) => {
+      if (!item.disabled) acc.push(i);
+      return acc;
+    }, []);
+  });
+
+  // Track which item has an open submenu
+  let openSubmenuIdx = $state(-1);
 
   $effect(() => {
     // Re-run when x, y, or the menu element changes
@@ -39,6 +57,85 @@
       menuStyle = `left: ${Math.max(4, clampedX)}px; top: ${Math.max(4, clampedY)}px`;
     });
   });
+
+  // Auto-focus menu on mount for keyboard navigation
+  $effect(() => {
+    if (menuEl) menuEl.focus();
+  });
+
+  function moveFocus(delta: number) {
+    if (!navigableIndices.length) return;
+    const currentPos = navigableIndices.indexOf(focusIdx);
+    let nextPos: number;
+    if (currentPos === -1) {
+      nextPos = delta > 0 ? 0 : navigableIndices.length - 1;
+    } else {
+      nextPos = (currentPos + delta + navigableIndices.length) % navigableIndices.length;
+    }
+    focusIdx = navigableIndices[nextPos];
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!items?.length) {
+      if (e.key === 'Escape') onclose();
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        moveFocus(1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        moveFocus(-1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        if (navigableIndices.length) focusIdx = navigableIndices[0];
+        break;
+      case 'End':
+        e.preventDefault();
+        if (navigableIndices.length) focusIdx = navigableIndices[navigableIndices.length - 1];
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (focusIdx >= 0 && items[focusIdx]) {
+          const item = items[focusIdx];
+          if (!item.disabled) {
+            if (item.submenu?.length) {
+              openSubmenuIdx = focusIdx;
+            } else {
+              item.action?.();
+              onclose();
+            }
+          }
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (focusIdx >= 0 && items[focusIdx]?.submenu?.length) {
+          openSubmenuIdx = focusIdx;
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (openSubmenuIdx >= 0) {
+          openSubmenuIdx = -1;
+        } else {
+          onclose();
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        if (openSubmenuIdx >= 0) {
+          openSubmenuIdx = -1;
+        } else {
+          onclose();
+        }
+        break;
+    }
+  }
 </script>
 
 <!-- Backdrop -->
@@ -51,13 +148,15 @@
 ></div>
 
 <!-- Context menu -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={menuEl}
-  class="ctx-container fixed z-[151] min-w-[180px] py-1 rounded-lg shadow-xl shadow-black/40
-         bg-[var(--th-bg-800,#1f1f23)] border border-[var(--th-border-700,#3f3f46)] text-sm select-none"
-  style={menuStyle}
+  class="ctx-container fixed z-[151] min-w-[160px] max-w-[280px] py-1 rounded-md select-none
+         bg-[var(--th-bg-600,#27272a)] border border-[var(--th-border-700,#3f3f46)] text-sm"
+  style="{menuStyle}; box-shadow: 0 2px 8px rgba(0,0,0,0.25);"
   role="menu"
   tabindex="-1"
+  onkeydown={handleKeydown}
   onmousedown={(e) => e.stopPropagation()}
   oncontextmenu={(e) => { e.preventDefault(); onclose(); }}
 >
@@ -66,36 +165,56 @@
       {header}
     </div>
   {/if}
-  {@render children()}
+  {#if items?.length}
+    {#each items as item, i}
+      {#if item.separator === "before"}
+        <ContextMenuSeparator />
+      {/if}
+      <ContextMenuItem
+        {item}
+        focused={focusIdx === i}
+        onactivate={onclose}
+        onsubmenuopen={() => { openSubmenuIdx = i; }}
+        onsubmenuclose={() => { if (openSubmenuIdx === i) openSubmenuIdx = -1; }}
+        onpointermove={() => { focusIdx = i; }}
+      />
+      {#if item.separator === "after"}
+        <ContextMenuSeparator />
+      {/if}
+    {/each}
+  {:else if children}
+    {@render children()}
+  {/if}
 </div>
 
 <style>
   .ctx-header {
-    padding: 6px 12px 4px;
+    padding: 4px 10px 3px;
     font-size: 10px;
     color: var(--th-text-500);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 240px;
+    max-width: 260px;
     border-bottom: 1px solid var(--th-border-700);
     margin-bottom: 2px;
   }
+  /* Legacy snippet-based API: ctx-item class support */
   .ctx-container :global(.ctx-item) {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
-    padding: 6px 12px;
+    padding: 4px 10px;
     border: none;
     background: transparent;
     color: var(--th-text-200);
     font-size: 12px;
     cursor: pointer;
     text-align: left;
-    transition: background-color 0.15s;
+    transition: background-color 0.1s;
   }
   .ctx-container :global(.ctx-item:hover) {
-    background: var(--th-bg-700, #27272a);
+    background: var(--th-bg-500, #3f3f46);
   }
 </style>

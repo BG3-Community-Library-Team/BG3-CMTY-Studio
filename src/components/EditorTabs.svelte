@@ -357,7 +357,7 @@
               >
                 <FolderOpen size={18} class="text-[var(--th-accent-500,#0ea5e9)] shrink-0" />
                 <div>
-                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.command_label_open_project()}</div>
+                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.welcome_open_title()}</div>
                   <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">{m.welcome_open_desc()}</div>
                 </div>
               </button>
@@ -370,7 +370,7 @@
               >
                 <FilePlus2 size={18} class="text-emerald-400 shrink-0" />
                 <div>
-                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.command_label_new_project()}</div>
+                  <div class="text-xs font-medium text-[var(--th-text-200)]">{m.welcome_new_title()}</div>
                   <div class="text-[10px] text-[var(--th-text-500)] mt-0.5">{m.welcome_new_desc()}</div>
                 </div>
               </button>

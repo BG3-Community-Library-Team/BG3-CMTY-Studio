@@ -9,6 +9,7 @@ pub mod http;
 pub mod mod_import;
 pub mod package;
 pub mod paths;
+pub mod project_settings;
 pub mod rediff;
 pub mod scan;
 pub mod scripts;

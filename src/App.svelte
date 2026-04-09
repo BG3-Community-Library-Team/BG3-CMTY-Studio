@@ -49,6 +49,8 @@
   import { pluginHost } from "./lib/plugins/pluginHost.svelte.js";
   import { gitPlugin } from "./lib/plugins/builtins/gitPlugin.svelte.js";
   import { contextKeys } from "./lib/plugins/contextKeyService.svelte.js";
+  import ContextMenu from "./components/ContextMenu.svelte";
+  import type { ContextMenuItemDef } from "./lib/types/contextMenu.js";
 
   const MIN_SIDEBAR = 280;
   const MAX_SIDEBAR_RATIO = 0.6;
@@ -823,10 +825,10 @@
   });
 
   // ── Global context menu ──
-  let ctxMenuVisible = $state(false);
-  let ctxMenuX = $state(0);
-  let ctxMenuY = $state(0);
-  let ctxMenuTarget: HTMLElement | null = $state(null);
+  let globalCtxVisible = $state(false);
+  let globalCtxX = $state(0);
+  let globalCtxY = $state(0);
+  let globalCtxItems: ContextMenuItemDef[] = $state([]);
 
   function isTextInput(el: HTMLElement): boolean {
     if (el instanceof HTMLInputElement) {
@@ -842,42 +844,32 @@
     e.preventDefault();
 
     const target = e.target as HTMLElement;
-    ctxMenuTarget = target;
-    ctxMenuX = Math.min(e.clientX, window.innerWidth - 200);
-    ctxMenuY = Math.min(e.clientY, window.innerHeight - 150);
-    ctxMenuVisible = true;
+    const isInput = isTextInput(target);
+    const hasSelection = !!window.getSelection()?.toString();
+
+    const items: ContextMenuItemDef[] = [];
+    if (isInput) {
+      items.push({ label: m.app_cut(), shortcut: "Ctrl+X", action: () => { document.execCommand('cut'); hideGlobalCtx(); }, disabled: !hasSelection });
+    }
+    items.push({ label: m.app_copy(), shortcut: "Ctrl+C", action: () => { document.execCommand('copy'); hideGlobalCtx(); }, disabled: !hasSelection });
+    if (isInput) {
+      items.push({ label: m.app_paste(), shortcut: "Ctrl+V", action: () => { document.execCommand('paste'); hideGlobalCtx(); } });
+      items.push({ label: m.app_select_all(), shortcut: "Ctrl+A", action: () => { document.execCommand('selectAll'); hideGlobalCtx(); }, separator: "before" });
+    }
+
+    // Don't show menu if all items are disabled
+    if (items.every(i => i.disabled)) return;
+
+    // TODO: Future plugin integration — allow menuRegistry to contribute items here
+    globalCtxItems = items;
+    globalCtxX = e.clientX;
+    globalCtxY = e.clientY;
+    globalCtxVisible = true;
   }
 
-  function hideCtxMenu() {
-    ctxMenuVisible = false;
-    ctxMenuTarget = null;
-  }
-
-  async function ctxCut() {
-    document.execCommand("cut");
-    hideCtxMenu();
-  }
-  async function ctxCopy() {
-    const selection = window.getSelection()?.toString();
-    if (selection) {
-      await navigator.clipboard.writeText(selection);
-    }
-    hideCtxMenu();
-  }
-  async function ctxPaste() {
-    if (ctxMenuTarget && isTextInput(ctxMenuTarget)) {
-      const text = await navigator.clipboard.readText();
-      document.execCommand("insertText", false, text);
-    }
-    hideCtxMenu();
-  }
-  async function ctxSelectAll() {
-    if (ctxMenuTarget && isTextInput(ctxMenuTarget)) {
-      (ctxMenuTarget as HTMLInputElement | HTMLTextAreaElement).select();
-    } else {
-      document.execCommand("selectAll");
-    }
-    hideCtxMenu();
+  function hideGlobalCtx() {
+    globalCtxVisible = false;
+    globalCtxItems = [];
   }
 </script>
 
@@ -1133,33 +1125,8 @@
 <ToastContainer />
 
 <!-- Global context menu -->
-{#if ctxMenuVisible}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-[200]" onclick={hideCtxMenu} onkeydown={(e) => { if (e.key === "Escape") hideCtxMenu(); }} role="none"></div>
-  <div
-    class="fixed z-[201] min-w-[160px] py-1 rounded-md shadow-xl
-           bg-[var(--th-bg-900)] border border-[var(--th-border-600)]"
-    style="left: {ctxMenuX}px; top: {ctxMenuY}px;"
-    role="menu"
-  >
-    {#if ctxMenuTarget && isTextInput(ctxMenuTarget)}
-      <button class="ctx-item" onclick={ctxCut} role="menuitem">
-        <span>{m.app_cut()}</span><span class="ctx-shortcut">Ctrl+X</span>
-      </button>
-    {/if}
-    <button class="ctx-item" onclick={ctxCopy} role="menuitem">
-      <span>Copy</span><span class="ctx-shortcut">Ctrl+C</span>
-    </button>
-    {#if ctxMenuTarget && isTextInput(ctxMenuTarget)}
-      <button class="ctx-item" onclick={ctxPaste} role="menuitem">
-        <span>{m.app_paste()}</span><span class="ctx-shortcut">Ctrl+V</span>
-      </button>
-    {/if}
-    <div class="my-0.5 border-t border-[var(--th-border-700)]"></div>
-    <button class="ctx-item" onclick={ctxSelectAll} role="menuitem">
-      <span>{m.app_select_all()}</span><span class="ctx-shortcut">Ctrl+A</span>
-    </button>
-  </div>
+{#if globalCtxVisible}
+  <ContextMenu x={globalCtxX} y={globalCtxY} items={globalCtxItems} onclose={hideGlobalCtx} />
 {/if}
 
 <style>
@@ -1237,29 +1204,6 @@
     width: auto;
     height: auto;
     overflow: visible;
-  }
-
-  .ctx-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 0.375rem 0.75rem;
-    font-size: 0.75rem;
-    color: var(--th-text-200);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.1s;
-  }
-  .ctx-item:hover {
-    background: var(--th-bg-700);
-  }
-  .ctx-shortcut {
-    font-size: 0.625rem;
-    color: var(--th-text-500);
-    margin-left: 1.5rem;
   }
 </style>
 

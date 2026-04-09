@@ -7,6 +7,8 @@ import { m } from "../../paraglide/messages.js";
 export type ActivityView = "project" | "explorer" | "editor" | "search" | "git" | "settings" | "loaded-data" | "help";
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
+const EXPLORER_DRAWERS_STORAGE_KEY = "bg3-cmty-explorer-drawers";
+const EXPLORER_VIEW_MODE_STORAGE_KEY = "bg3-cmty-explorer-view-mode";
 const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "git", "loaded-data", "settings", "help"];
 
 export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts" | "git";
@@ -184,6 +186,8 @@ class UiStore {
 
   /** Close a tab by ID. If it was active, activate an adjacent tab. */
   closeTab(tabId: string): void {
+    // Welcome tab cannot be closed
+    if (tabId === "welcome") return;
     const idx = this.openTabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
 
@@ -211,6 +215,9 @@ class UiStore {
     if (fromIndex === toIndex) return;
     if (fromIndex < 0 || toIndex < 0) return;
     if (fromIndex >= this.openTabs.length || toIndex >= this.openTabs.length) return;
+    // Welcome tab is pinned to position 0 — cannot be moved or displaced
+    if (this.openTabs[fromIndex]?.type === "welcome") return;
+    if (toIndex === 0 && this.openTabs[0]?.type === "welcome") return;
     const tabs = [...this.openTabs];
     const [moved] = tabs.splice(fromIndex, 1);
     tabs.splice(toIndex, 0, moved);
@@ -303,6 +310,58 @@ class UiStore {
     this.activeView = "explorer";
     this.settingsSection = "";
     this.sidebarVisible = true;
+    this.explorerViewMode = "studio";
+    this.explorerDrawers = {};
+  }
+
+  // ── Explorer Drawer System ────────────────────────────────────
+  /** Explorer sidebar view mode */
+  explorerViewMode: "studio" | "file-tree" = $state(UiStore.#loadExplorerViewMode());
+
+  /** Per-drawer collapsed/height state (keyed by drawer id) */
+  explorerDrawers: Record<string, { collapsed: boolean; height: number | null }> = $state(UiStore.#loadExplorerDrawers());
+
+  static #loadExplorerViewMode(): "studio" | "file-tree" {
+    try {
+      const raw = localStorage.getItem(EXPLORER_VIEW_MODE_STORAGE_KEY);
+      if (raw === "studio" || raw === "file-tree") return raw;
+    } catch { /* fallback */ }
+    return "studio";
+  }
+
+  static #loadExplorerDrawers(): Record<string, { collapsed: boolean; height: number | null }> {
+    try {
+      const raw = localStorage.getItem(EXPLORER_DRAWERS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch { /* fallback */ }
+    return {};
+  }
+
+  setExplorerViewMode(mode: "studio" | "file-tree"): void {
+    this.explorerViewMode = mode;
+    localStorage.setItem(EXPLORER_VIEW_MODE_STORAGE_KEY, mode);
+  }
+
+  toggleDrawer(drawerId: string): void {
+    const current = this.explorerDrawers[drawerId];
+    if (current) {
+      this.explorerDrawers[drawerId] = { ...current, collapsed: !current.collapsed };
+    } else {
+      this.explorerDrawers[drawerId] = { collapsed: true, height: null };
+    }
+    this.#persistExplorerDrawers();
+  }
+
+  setDrawerHeight(drawerId: string, height: number): void {
+    const current = this.explorerDrawers[drawerId];
+    this.explorerDrawers[drawerId] = { ...(current || { collapsed: false }), height };
+    this.#persistExplorerDrawers();
+  }
+
+  #persistExplorerDrawers(): void {
+    try {
+      localStorage.setItem(EXPLORER_DRAWERS_STORAGE_KEY, JSON.stringify(this.explorerDrawers));
+    } catch { /* quota exceeded — silently ignore */ }
   }
 
   // ── Command Palette programmatic open ─────────────────────────

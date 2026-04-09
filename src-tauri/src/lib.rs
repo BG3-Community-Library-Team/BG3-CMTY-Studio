@@ -2204,6 +2204,9 @@ pub fn run() {
             commands::git_branch::cmd_git_create_branch,
             commands::git_branch::cmd_git_delete_branch,
             commands::git_branch::cmd_git_merge,
+            commands::project_settings::cmd_ensure_cmtystudio_dir,
+            commands::project_settings::cmd_read_project_file,
+            commands::project_settings::cmd_write_project_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
