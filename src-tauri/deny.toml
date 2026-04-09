@@ -103,6 +103,8 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "Unlicense",
+    "ISC",
+    "CDLA-Permissive-2.0"
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
