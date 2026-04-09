@@ -3,8 +3,10 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import GitToolbar from "./GitToolbar.svelte";
+  import GitBranchPicker from "./GitBranchPicker.svelte";
   import GitCommitBox from "./GitCommitBox.svelte";
   import GitFileList from "./GitFileList.svelte";
+  import GitHistoryPanel from "./GitHistoryPanel.svelte";
   import GitInitPrompt from "./GitInitPrompt.svelte";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
@@ -33,6 +35,7 @@
     <GitInitPrompt modPath={gitPath} />
   {:else}
     <GitToolbar modPath={gitPath} />
+    <GitBranchPicker modPath={gitPath} />
     <GitCommitBox modPath={gitPath} />
 
     <!-- Staged Changes -->
@@ -61,6 +64,11 @@
           <p class="git-no-changes">{m.git_no_changes()}</p>
         {/if}
       {/if}
+    </div>
+
+    <!-- History -->
+    <div class="git-section git-history-section">
+      <GitHistoryPanel modPath={gitPath} />
     </div>
   {/if}
 </div>
@@ -139,5 +147,13 @@
     font-size: 0.8rem;
     color: var(--th-text-500);
     font-style: italic;
+  }
+
+  .git-history-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 </style>

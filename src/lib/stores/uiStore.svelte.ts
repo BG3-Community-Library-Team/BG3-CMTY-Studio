@@ -40,7 +40,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme" | "git-diff" | "git-commit";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
@@ -51,6 +51,10 @@ export interface EditorTab {
   preview?: boolean;
   /** Script language for script-editor tabs */
   language?: string;
+  /** For git-diff tabs: whether the diff is staged */
+  staged?: boolean;
+  /** For git-diff/git-commit tabs: the commit OID */
+  commitOid?: string;
 }
 
 class UiStore {

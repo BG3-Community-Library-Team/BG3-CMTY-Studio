@@ -199,6 +199,30 @@ export async function gitLog(modPath: string, limit: number, offset: number): Pr
   return invoke("cmd_git_log", { modPath, limit, offset });
 }
 
+// ── Branch Commands ─────────────────────────────────────────
+
+export async function gitBranches(modPath: string): Promise<GitBranchInfo[]> {
+  return invoke("cmd_git_branches", { modPath });
+}
+
+export async function gitCheckout(modPath: string, branch: string): Promise<void> {
+  return invoke("cmd_git_checkout", { modPath, branch });
+}
+
+export async function gitCreateBranch(modPath: string, name: string, from?: string): Promise<GitBranchInfo> {
+  return invoke("cmd_git_create_branch", { modPath, name, from: from ?? null });
+}
+
+export async function gitDeleteBranch(modPath: string, name: string): Promise<void> {
+  return invoke("cmd_git_delete_branch", { modPath, name });
+}
+
+export async function gitMerge(modPath: string, branch: string): Promise<GitMergeResult> {
+  return invoke("cmd_git_merge", { modPath, branch });
+}
+
+// ── Commit Detail Command ───────────────────────────────────
+
 export async function gitShow(modPath: string, commitOid: string): Promise<GitCommitDetail> {
   return invoke("cmd_git_show", { modPath, commitOid });
 }

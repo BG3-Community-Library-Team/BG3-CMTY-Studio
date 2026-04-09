@@ -10,10 +10,19 @@ import {
   gitAmend,
   gitLog,
   gitDiffFile,
+  gitBranches,
+  gitCheckout,
+  gitCreateBranch,
+  gitDeleteBranch,
+  gitMerge,
+  gitShow,
   type GitRepoInfo,
   type GitFileStatus,
   type GitFileDiff,
   type GitCommitInfo,
+  type GitBranchInfo,
+  type GitCommitDetail,
+  type GitMergeResult,
 } from "../tauri/git.js";
 
 class GitStore {
@@ -38,6 +47,17 @@ class GitStore {
   // ── Diff ──────────────────────────────────────────────────
   selectedFileDiff = $state<GitFileDiff | null>(null);
   diffViewMode = $state<"unified" | "split">("unified");
+
+  // ── Branches ──────────────────────────────────────────────
+  branches = $state<GitBranchInfo[]>([]);
+  currentBranch = $state<string | null>(null);
+
+  // ── History pagination ────────────────────────────────────
+  commitsLoading = $state(false);
+  commitsHasMore = $state(true);
+  selectedCommit = $state<GitCommitDetail | null>(null);
+  private _historyOffset = 0;
+  private _historyLimit = 50;
 
   // ── Polling ───────────────────────────────────────────────
   private _pollActive = false;
@@ -68,6 +88,7 @@ class GitStore {
       }
       this.isRepo = true;
       this.repoInfo = info;
+      this.currentBranch = info.headBranch ?? null;
 
       const statuses = await gitStatus(modPath);
       this.stagedFiles = statuses.filter(
@@ -85,6 +106,9 @@ class GitStore {
       this.conflictedFiles = statuses.filter(
         (f) => f.status === "conflicted",
       );
+
+      // Also refresh branch list
+      this.refreshBranches(modPath);
     } catch (err) {
       console.error("Git refresh failed:", err);
       this.isRepo = false;
@@ -153,16 +177,23 @@ class GitStore {
     }
   }
 
-  /** Load commit history */
+  /** Load commit history (resets pagination) */
   async loadHistory(
     modPath: string,
     limit = 50,
     offset = 0,
   ): Promise<void> {
+    this.commitsLoading = true;
+    this._historyOffset = offset;
+    this._historyLimit = limit;
     try {
       this.commits = await gitLog(modPath, limit, offset);
+      this.commitsHasMore = this.commits.length >= limit;
     } catch {
       this.commits = [];
+      this.commitsHasMore = false;
+    } finally {
+      this.commitsLoading = false;
     }
   }
 
@@ -177,6 +208,80 @@ class GitStore {
     } catch (err) {
       console.error("Failed to load diff:", err);
       this.selectedFileDiff = null;
+    }
+  }
+
+  // ── Branch operations ─────────────────────────────────────
+
+  /** Refresh the branch list and current branch */
+  async refreshBranches(modPath: string): Promise<void> {
+    try {
+      this.branches = await gitBranches(modPath);
+      const current = this.branches.find(b => b.isCurrent && !b.isRemote);
+      this.currentBranch = current?.name ?? this.repoInfo?.headBranch ?? null;
+    } catch (err) {
+      console.error("Failed to refresh branches:", err);
+      this.branches = [];
+    }
+  }
+
+  /** Switch to a different branch */
+  async checkout(modPath: string, branch: string): Promise<void> {
+    await gitCheckout(modPath, branch);
+    await this.refresh(modPath);
+    await this.refreshBranches(modPath);
+    await this.loadHistory(modPath);
+  }
+
+  /** Create a new branch, optionally from a specific commit */
+  async createBranch(modPath: string, name: string, from?: string): Promise<GitBranchInfo> {
+    const info = await gitCreateBranch(modPath, name, from);
+    await this.refreshBranches(modPath);
+    return info;
+  }
+
+  /** Delete a branch */
+  async deleteBranch(modPath: string, name: string): Promise<void> {
+    await gitDeleteBranch(modPath, name);
+    await this.refreshBranches(modPath);
+  }
+
+  /** Merge a branch into the current branch */
+  async merge(modPath: string, branch: string): Promise<GitMergeResult> {
+    const result = await gitMerge(modPath, branch);
+    await this.refresh(modPath);
+    await this.refreshBranches(modPath);
+    await this.loadHistory(modPath);
+    return result;
+  }
+
+  // ── History with pagination ───────────────────────────────
+
+  /** Load more history (append to existing commits) */
+  async loadMore(modPath: string): Promise<void> {
+    if (this.commitsLoading || !this.commitsHasMore) return;
+    this.commitsLoading = true;
+    try {
+      this._historyOffset += this._historyLimit;
+      const more = await gitLog(modPath, this._historyLimit, this._historyOffset);
+      if (more.length < this._historyLimit) {
+        this.commitsHasMore = false;
+      }
+      this.commits = [...this.commits, ...more];
+    } catch {
+      this.commitsHasMore = false;
+    } finally {
+      this.commitsLoading = false;
+    }
+  }
+
+  /** Select a commit and load its full detail */
+  async selectCommit(modPath: string, oid: string): Promise<void> {
+    try {
+      this.selectedCommit = await gitShow(modPath, oid);
+    } catch (err) {
+      console.error("Failed to load commit detail:", err);
+      this.selectedCommit = null;
     }
   }
 

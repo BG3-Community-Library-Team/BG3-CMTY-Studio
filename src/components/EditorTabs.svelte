@@ -16,6 +16,8 @@
   import McmBlueprintEditor from "./McmBlueprintEditor.svelte";
   import LocalizationFileEditor from "./LocalizationFileEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
+  import GitDiffView from "./git/GitDiffView.svelte";
+  import GitCommitDetailView from "./git/GitCommitDetailView.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
@@ -567,6 +569,32 @@
       {/if}
     {:else if activeTab.type === "readme"}
       <ReadmeEditor />
+    {:else if activeTab.type === "git-diff"}
+      {#if activeTab.filePath}
+        <GitDiffView
+          filePath={activeTab.filePath}
+          modPath={modStore.projectPath || modStore.selectedModPath || ""}
+          staged={activeTab.staged}
+          commitOid={activeTab.commitOid}
+        />
+      {/if}
+    {:else if activeTab.type === "git-commit"}
+      {#if activeTab.commitOid}
+        <GitCommitDetailView
+          commitOid={activeTab.commitOid}
+          modPath={modStore.projectPath || modStore.selectedModPath || ""}
+          ondiffopen={(detail) => {
+            uiStore.openTab({
+              id: `git-diff:${detail.path}:${detail.commitOid}`,
+              label: `${detail.path.split("/").pop() ?? detail.path} (${detail.commitOid.slice(0, 7)})`,
+              type: "git-diff",
+              filePath: detail.path,
+              commitOid: detail.commitOid,
+              icon: "📝",
+            });
+          }}
+        />
+      {/if}
     {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
       <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />
     {/if}
