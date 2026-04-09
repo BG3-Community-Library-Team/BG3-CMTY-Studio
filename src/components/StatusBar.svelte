@@ -62,6 +62,10 @@
     if (dataOperationStore.isRunning) {
       return { kind: "running" as const, text: dataOperationStore.phase };
     }
+    // Show mod scanning phase
+    if (modStore.isScanning && modStore.scanPhase) {
+      return { kind: "running" as const, text: modStore.scanPhase };
+    }
     // Show mod import/ingestion activity
     const importEntries = Object.entries(modImportService.modImportStatus);
     if (importEntries.length > 0) {

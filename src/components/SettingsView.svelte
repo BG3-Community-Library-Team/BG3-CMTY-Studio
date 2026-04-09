@@ -9,7 +9,6 @@
   const navSections: { id: SettingsSection; label: () => string }[] = [
     { id: "theme", label: () => m.settings_nav_theme() },
     { id: "display", label: () => m.settings_nav_display() },
-    { id: "dataHandling", label: () => m.settings_nav_data_handling() },
     { id: "modConfig", label: () => m.settings_nav_mod_config() },
     { id: "schemas", label: () => m.settings_nav_schemas() },
     { id: "notifications", label: () => m.settings_nav_notifications() },

@@ -45,6 +45,7 @@
   import Scissors from "@lucide/svelte/icons/scissors";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
   // ── File type badge colors ──
   const EXT_BADGE_COLORS: Record<string, string> = {
@@ -1356,6 +1357,18 @@
       </div>
     </div>
   {:else}
+    {#if modStore.isScanning}
+      <div class="scan-overlay" aria-live="polite">
+        <LoaderCircle size={28} strokeWidth={2} class="animate-spin text-sky-400" />
+        <span class="text-xs text-sky-300 mt-2">{modStore.scanPhase || m.header_scan_scanning()}</span>
+        {#if modStore.scanDetail}
+          <span class="text-[10px] text-[var(--th-text-500)] mt-0.5 truncate max-w-full">{modStore.scanDetail}</span>
+        {/if}
+        <div class="scan-bar-track">
+          <div class="scan-bar-fill"></div>
+        </div>
+      </div>
+    {/if}
     <div class="tree-root" class:scanning={modStore.isScanning} role="tree" aria-busy={modStore.isScanning} inert={modStore.isScanning ? true : undefined}>
       <!-- Root: Mod name -->
       <button class="tree-node root-node" onclick={() => { uiStore.expandNode("root"); uiStore.openTab({ id: "meta.lsx", label: "meta.lsx", type: "meta-lsx", category: "meta", icon: "⚙" }); }} oncontextmenu={(e) => showContextMenu(e, resolveNodePath("", "root"), modName)}>
@@ -2621,8 +2634,41 @@
   }
 
   .tree-root.scanning {
-    opacity: 0.4;
+    opacity: 0.15;
     cursor: progress;
+    pointer-events: none;
+  }
+
+  .scan-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  .scan-bar-track {
+    margin-top: 10px;
+    width: 60%;
+    height: 3px;
+    border-radius: 9999px;
+    background: var(--th-bg-700);
+    overflow: hidden;
+  }
+
+  .scan-bar-fill {
+    height: 100%;
+    width: 33%;
+    border-radius: 9999px;
+    background: #38bdf8;
+    animation: indeterminate 1.4s ease-in-out infinite;
+  }
+
+  @keyframes indeterminate {
+    0%   { transform: translateX(-100%); }
+    50%  { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
   }
 
   .tree-node {

@@ -109,7 +109,6 @@
   "settings_heading": "Settings",
   "settings_nav_theme": "Theme",
   "settings_nav_display": "Display & Preferences",
-  "settings_nav_data_handling": "Data Handling",
   "settings_nav_mod_config": "Mod Integration",
   "settings_nav_schemas": "Configuration Schemas",
   "settings_nav_notifications": "Notifications",
@@ -173,8 +172,6 @@
   "settings_display_tab_bar_heading": "Tab Bar",
   "settings_display_auto_hide_tab_label": "Auto-hide tab bar",
   "settings_display_auto_hide_tab_desc": "Hide the tab bar when not hovered — hover the top edge to reveal",
-
-  "settings_data_handling_title": "Data Handling",
 
   "settings_mod_config_title": "Mod Integration",
   "settings_mod_config_cf_label": "Compatibility Framework integration",
@@ -1008,5 +1005,13 @@
   "mcm_editor_add_choice": "Choice",
   "mcm_editor_min": "Min",
   "mcm_editor_max": "Max",
-  "mcm_editor_multiline": "Multiline"
+  "mcm_editor_multiline": "Multiline",
+
+  "scan_phase_reading_files": "Reading mod files…",
+  "scan_phase_staging_db": "Preparing staging database…",
+  "scan_phase_migrating": "Migrating project data…",
+  "scan_phase_loading_project": "Loading project…",
+  "scan_phase_importing_scripts": "Importing scripts…",
+  "scan_phase_importing_config": "Importing existing config…",
+  "scan_phase_indexing_files": "Indexing mod files…"
 }

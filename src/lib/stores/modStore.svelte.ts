@@ -11,6 +11,10 @@ export type ModImportStatus = "Scanning" | "Ingesting" | "Ready" | "Error";
 class ModStore {
   scanResult: ScanResult | null = $state(null);
   isScanning: boolean = $state(false);
+  /** Current scan phase label — displayed in spinner overlay during scanning. */
+  scanPhase: string = $state("");
+  /** Optional detail text for the current scan phase (e.g. file count, section name). */
+  scanDetail: string = $state("");
   selectedModPath: string = $state("");
   vanillaPath: string = $state("");
   error: string = $state("");

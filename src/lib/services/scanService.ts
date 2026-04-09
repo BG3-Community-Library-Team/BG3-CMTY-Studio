@@ -203,6 +203,8 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
   modStore.reset();
 
   modStore.isScanning = true;
+  modStore.scanPhase = m.scan_phase_reading_files();
+  modStore.scanDetail = "";
   modStore.error = "";
   modStore.selectedModPath = modPath;
 
@@ -217,16 +219,21 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
 
     // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
+    modStore.scanPhase = m.scan_phase_staging_db();
+    modStore.scanDetail = "";
     const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
     await rehydrateStaging(modPath, modName);
 
     // Migrate legacy localStorage project data into staging DB (I4/I6)
+    modStore.scanPhase = m.scan_phase_migrating();
     await migrateLocalStorageProject(modPath);
 
     // Hydrate projectStore from the freshly-populated staging DB
+    modStore.scanPhase = m.scan_phase_loading_project();
     await projectStore.hydrate();
 
     // Import script files from disk into the staging DB
+    modStore.scanPhase = m.scan_phase_importing_scripts();
     try {
       const dbPath = projectStore.stagingDbPath;
       const folder = result.mod_meta?.folder;
@@ -242,6 +249,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Import existing config entries into the staging DB
     // Skip if migration already brought in persisted data
     if (result.existing_config_path) {
+      modStore.scanPhase = m.scan_phase_importing_config();
       try {
         const configContent = await readExistingConfig(result.existing_config_path);
         const { entries: existingEntries, warnings } = parseExistingConfig(configContent, result.existing_config_path);
@@ -262,6 +270,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     }
 
     // Load previewable text files from mod directory (non-blocking)
+    modStore.scanPhase = m.scan_phase_indexing_files();
     listModFiles(modPath).then(files => { modStore.modFiles = files; }).catch(err => console.warn("Failed to list mod files:", err));
 
     // Load mod-specific localization entries and merge into the shared map (non-blocking)
@@ -293,5 +302,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     toastStore.error(m.scan_failed(), modStore.error);
   } finally {
     modStore.isScanning = false;
+    modStore.scanPhase = "";
+    modStore.scanDetail = "";
   }
 }

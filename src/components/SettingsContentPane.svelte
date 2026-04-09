@@ -238,12 +238,6 @@
       </label>
     </div>
 
-  {:else if uiStore.settingsSection === "dataHandling"}
-    <h3 class="settings-section-title">{m.settings_data_handling_title()}</h3>
-    <div class="space-y-3">
-      <!-- Honor mode toggle removed — backend always populates both databases -->
-    </div>
-
   {:else if uiStore.settingsSection === "modConfig"}
     <h3 class="settings-section-title">{m.settings_mod_config_title()}</h3>
     <div class="space-y-3">
