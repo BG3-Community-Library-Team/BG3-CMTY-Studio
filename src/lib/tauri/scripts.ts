@@ -133,3 +133,33 @@ export async function copyModFile(
 ): Promise<void> {
   return invoke("cmd_copy_mod_file", { modPath, srcRelPath, destRelPath });
 }
+
+// ── External template support ──
+
+export interface ExternalTemplateInfo {
+  id: string;
+  label: string;
+  category: string;
+  extension: string;
+  source_path: string;
+}
+
+export async function listExternalTemplates(
+  folderPath: string,
+): Promise<ExternalTemplateInfo[]> {
+  return invoke("cmd_list_external_templates", { folderPath });
+}
+
+export async function createFromExternalTemplate(
+  modPath: string,
+  filePath: string,
+  sourcePath: string,
+  variables: Record<string, string>,
+): Promise<boolean> {
+  return invoke("cmd_create_from_external_template", {
+    modPath,
+    filePath,
+    sourcePath,
+    variables,
+  });
+}

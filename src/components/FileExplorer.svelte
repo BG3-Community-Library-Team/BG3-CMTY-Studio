@@ -1,5 +1,6 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
@@ -37,7 +38,8 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
-  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate } from "../lib/tauri/scripts.js";
+  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate, listExternalTemplates, createFromExternalTemplate } from "../lib/tauri/scripts.js";
+  import type { ExternalTemplateInfo } from "../lib/tauri/scripts.js";
   import ScriptCreationModal from "./ScriptCreationModal.svelte";
   import Copy from "@lucide/svelte/icons/copy";
   import Scissors from "@lucide/svelte/icons/scissors";
@@ -302,10 +304,33 @@
   let inlineCreateName = $state("");
   let inlineCreateInput: HTMLInputElement | null = $state(null);
 
+  /** Pending template to apply when inline create commits. */
+  let pendingTemplateId: string | null = $state(null);
+  let pendingTemplateCategory: string | null = $state(null);
+
   function startInlineCreate(parentRelPath: string, type: 'file' | 'folder') {
+    cancelInlineRename();
     inlineCreateParent = parentRelPath;
     inlineCreateType = type;
     inlineCreateName = '';
+    pendingTemplateId = null;
+    pendingTemplateCategory = null;
+    uiStore.expandedNodes[`modfile:${parentRelPath}`] = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inlineCreateInput?.focus();
+      });
+    });
+  }
+
+  /** Start inline file creation pre-loaded with a template. */
+  function startInlineCreateFromTemplate(parentRelPath: string, templateId: string, category: string | null) {
+    cancelInlineRename();
+    inlineCreateParent = parentRelPath;
+    inlineCreateType = 'file';
+    inlineCreateName = '';
+    pendingTemplateId = templateId;
+    pendingTemplateCategory = category;
     uiStore.expandedNodes[`modfile:${parentRelPath}`] = true;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -318,6 +343,74 @@
     inlineCreateParent = null;
     inlineCreateType = null;
     inlineCreateName = '';
+    pendingTemplateId = null;
+    pendingTemplateCategory = null;
+  }
+
+  // ── Inline rename state ──
+  let inlineRenameNode: FileTreeNode | null = $state(null);
+  let inlineRenameName = $state("");
+  let inlineRenameInput: HTMLInputElement | null = $state(null);
+  /** Whether the rename target lives under the Localization tree (different prefix handling). */
+  let inlineRenameIsLoca = $state(false);
+
+  function startInlineRename(node: FileTreeNode, isLoca = false) {
+    cancelInlineCreate();
+    inlineRenameNode = node;
+    inlineRenameName = node.name;
+    inlineRenameIsLoca = isLoca;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (inlineRenameInput) {
+          inlineRenameInput.focus();
+          // Select name without extension for files
+          const dotIdx = node.isFile ? node.name.lastIndexOf('.') : -1;
+          if (dotIdx > 0) {
+            inlineRenameInput.setSelectionRange(0, dotIdx);
+          } else {
+            inlineRenameInput.select();
+          }
+        }
+      });
+    });
+  }
+
+  function cancelInlineRename() {
+    inlineRenameNode = null;
+    inlineRenameName = '';
+    inlineRenameIsLoca = false;
+  }
+
+  async function commitInlineRename() {
+    if (!inlineRenameNode || !inlineRenameName.trim()) {
+      cancelInlineRename();
+      return;
+    }
+    const newName = inlineRenameName.trim();
+    const oldName = inlineRenameNode.name;
+    if (newName === oldName) { cancelInlineRename(); return; }
+
+    const modPath = modStore.selectedModPath;
+    if (!modPath) { cancelInlineRename(); return; }
+
+    const oldRelPath = `${modsFilePrefix}${inlineRenameNode.relPath}`;
+    const parentPath = inlineRenameNode.relPath.substring(0, inlineRenameNode.relPath.lastIndexOf('/'));
+    const newRelPath = `${modsFilePrefix}${parentPath}/${newName}`;
+
+    try {
+      await moveModFile(modPath, oldRelPath, newRelPath);
+      // Update open tabs that reference the old path
+      const oldTabId = `script:${oldRelPath}`;
+      if (uiStore.openTabs.some(t => t.id === oldTabId)) {
+        uiStore.closeTab(oldTabId);
+        uiStore.openScriptTab(newRelPath);
+      }
+      await refreshModFiles();
+      toastStore.success("Renamed", `${oldName} → ${newName}`);
+    } catch (e) {
+      toastStore.error("Rename failed", String(e));
+    }
+    cancelInlineRename();
   }
 
   /** Determine default file extension based on parent directory context. */
@@ -348,7 +441,58 @@
       if (defaultExt) finalName = name + defaultExt;
     }
 
-    if (inlineCreateType === 'file') {
+    // If a pending template is set, force the template's extension
+    if (pendingTemplateId && pendingTemplateCategory) {
+      // Check per-template overrides → external template extension → section default
+      let templateExt = TEMPLATE_EXT[pendingTemplateId];
+      if (!templateExt) {
+        const extInfo = externalTemplates.find(e => e.id === pendingTemplateId);
+        if (extInfo) templateExt = extInfo.extension;
+      }
+      if (!templateExt) templateExt = SECTION_DEFAULT_EXT[pendingTemplateCategory];
+      if (templateExt) {
+        // Strip any user-provided extension and replace with template's
+        const baseName = finalName.includes('.') ? finalName.substring(0, finalName.lastIndexOf('.')) : finalName;
+        finalName = baseName + templateExt;
+      }
+    }
+
+    if (pendingTemplateId && inlineCreateType === 'file') {
+      // Template-based creation
+      let targetDir: string;
+      if (inlineCreateParent === 'Localization') {
+        targetDir = `Mods/${modFolder}/${inlineCreateParent}`;
+      } else {
+        targetDir = `${modsFilePrefix}${inlineCreateParent}`;
+      }
+      const relPath = `${targetDir}/${finalName}`;
+      const variables: Record<string, string> = {
+        FILE_NAME: finalName,
+        MOD_NAME: modFolder,
+        MOD_TABLE: modFolder.replace(/[^a-zA-Z0-9_]/g, '_'),
+      };
+      // Localization contentlist needs extra variables
+      if (pendingTemplateId === 'localization_contentlist') {
+        const now = new Date();
+        variables.DATE = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        variables.CONTENT_UID = `h${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`;
+        variables.VERSION = '1';
+      }
+      try {
+        // Route external templates to their dedicated IPC command
+        const sourcePath = externalSourcePaths[pendingTemplateId];
+        if (sourcePath) {
+          await createFromExternalTemplate(modPath, relPath, sourcePath, variables);
+        } else {
+          await scriptCreateFromTemplate(modPath, relPath, pendingTemplateId, variables);
+        }
+        await refreshModFiles();
+        uiStore.openScriptTab(relPath);
+        toastStore.success("Template created", finalName);
+      } catch (e) {
+        toastStore.error("Template creation failed", String(e));
+      }
+    } else if (inlineCreateType === 'file') {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${finalName}`;
       try {
         await touchFile(modPath, relPath);
@@ -436,14 +580,76 @@
     'khonsu': '.khn',
     'anubis': '.anc',
     'constellations': '.clc',
+    'localization': '.xml',
   };
 
-  function promptFileName(defaultExt: string): string | null {
-    const input = window.prompt(`Enter file name (default extension: ${defaultExt})`);
-    if (!input?.trim()) return null;
-    let name = input.trim();
-    if (!name.includes('.')) name += defaultExt;
-    return name;
+  /** Per-template extension overrides (where template ext differs from section default) */
+  const TEMPLATE_EXT: Record<string, string> = {
+    'se_config': '.json',
+    'anubis_state': '.ann',
+    'anubis_module': '.anm',
+    'constellations_state': '.cln',
+    'constellations_module': '.clm',
+  };
+
+  // ── External template support ──
+
+  type TemplateEntry = { id: string; label: string; sourcePath?: string; extension?: string };
+
+  /** External templates loaded from user-defined template folder. */
+  let externalTemplates: ExternalTemplateInfo[] = $state([]);
+
+  /** Load external templates when the templateFoldersPath setting changes. */
+  $effect(() => {
+    const folderPath = settingsStore.templateFoldersPath;
+    if (folderPath) {
+      listExternalTemplates(folderPath).then(
+        (templates) => { externalTemplates = templates; },
+        () => { externalTemplates = []; },
+      );
+    } else {
+      externalTemplates = [];
+    }
+  });
+
+  /** Merged template map: built-in + external, keyed by section category. */
+  const mergedTemplates = $derived.by(() => {
+    const result: Record<string, TemplateEntry[]> = {};
+    // Start with built-in templates
+    for (const [cat, templates] of Object.entries(SECTION_TEMPLATES)) {
+      result[cat] = templates.map(t => ({ ...t }));
+    }
+    // Merge external templates
+    for (const ext of externalTemplates) {
+      if (!result[ext.category]) result[ext.category] = [];
+      result[ext.category].push({
+        id: ext.id,
+        label: ext.label,
+        sourcePath: ext.source_path,
+        extension: ext.extension,
+      });
+    }
+    return result;
+  });
+
+  /** Lookup map for external template source paths by template ID. */
+  const externalSourcePaths = $derived.by(() => {
+    const map: Record<string, string> = {};
+    for (const ext of externalTemplates) {
+      map[ext.id] = ext.source_path;
+    }
+    return map;
+  });
+
+  /** Map from section category to the parent dir used for inline create */
+  function sectionCategoryToDir(sectionCategory: string | null): string {
+    switch (sectionCategory) {
+      case 'osiris': return 'Story/RawFiles/Goals';
+      case 'khonsu': return 'Scripts';
+      case 'anubis': return 'Scripts/anubis';
+      case 'constellations': return 'Scripts/constellations';
+      default: return 'ScriptExtender/Lua';
+    }
   }
 
   function detectSectionFromPath(relPath: string): string | null {
@@ -455,38 +661,16 @@
     return null;
   }
 
-  async function createFromSectionTemplate(templateId: string, sectionCategory: string | null): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath || !modFolder) return;
-
-    const ext = SECTION_DEFAULT_EXT[sectionCategory ?? 'lua-se'] ?? '.lua';
-    const fileName = promptFileName(ext);
-    if (!fileName) return;
-
-    let targetDir: string;
-    switch (sectionCategory) {
-      case 'osiris': targetDir = `Mods/${modFolder}/Story/RawFiles/Goals`; break;
-      case 'khonsu': targetDir = `Mods/${modFolder}/Scripts`; break;
-      case 'anubis': targetDir = `Mods/${modFolder}/Scripts/anubis`; break;
-      case 'constellations': targetDir = `Mods/${modFolder}/Scripts/constellations`; break;
-      default: targetDir = `Mods/${modFolder}/ScriptExtender/Lua`; break;
+  /** Trigger inline create pre-loaded with a template. The commit handler will use scriptCreateFromTemplate. */
+  function createFromSectionTemplate(templateId: string, sectionCategory: string | null, parentDirOverride?: string): void {
+    const parentDir = parentDirOverride ?? sectionCategoryToDir(sectionCategory);
+    const nodeKey = `_Scripts_${sectionCategory ?? 'lua-se'}`;
+    uiStore.expandNode('_Scripts');
+    uiStore.expandNode(nodeKey);
+    if (parentDirOverride) {
+      uiStore.expandedNodes[`modfile:${parentDirOverride}`] = true;
     }
-
-    const relPath = `${targetDir}/${fileName}`;
-    const variables: Record<string, string> = {
-      FILE_NAME: fileName,
-      MOD_NAME: modFolder,
-      MOD_TABLE: modFolder.replace(/[^a-zA-Z0-9_]/g, '_'),
-    };
-
-    try {
-      await scriptCreateFromTemplate(modPath, relPath, templateId, variables);
-      await refreshModFiles();
-      uiStore.openScriptTab(relPath);
-      toastStore.success("Template created", fileName);
-    } catch (e) {
-      toastStore.error("Template creation failed", String(e));
-    }
+    startInlineCreateFromTemplate(parentDir, templateId, sectionCategory);
   }
 
   // ── Script creation modal state ──
@@ -517,36 +701,10 @@
     }
   }
 
-  /** Create a localization contentlist from template */
-  async function createLocalizationTemplate(): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath || !modFolder) return;
-
-    const fileName = window.prompt("Enter file name (e.g., MyContent.xml)");
-    if (!fileName?.trim()) return;
-    let name = fileName.trim();
-    if (!name.includes('.')) name += '.xml';
-
-    const relPath = `Mods/${modFolder}/Localization/${name}`;
-    const now = new Date();
-    const date = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const uid = `h${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`;
-
-    const variables: Record<string, string> = {
-      FILE_NAME: name,
-      DATE: date,
-      CONTENT_UID: uid,
-      VERSION: '1',
-    };
-
-    try {
-      await scriptCreateFromTemplate(modPath, relPath, 'localization_contentlist', variables);
-      await refreshModFiles();
-      uiStore.openScriptTab(relPath);
-      toastStore.success("Template created", name);
-    } catch (e) {
-      toastStore.error("Template creation failed", String(e));
-    }
+  /** Trigger inline create for a localization contentlist template */
+  function createLocalizationTemplate(): void {
+    uiStore.expandNode('_Localization');
+    startInlineCreateFromTemplate('Localization', 'localization_contentlist', 'localization');
   }
 
   /** Scaffold a script category's directory structure with starter files. */
@@ -1530,6 +1688,22 @@
             <div class="tree-children">
               {#snippet locaNode(node: FileTreeNode)}
                 {#if node.isFile}
+                  {#if inlineRenameNode?.relPath === node.relPath && inlineRenameIsLoca}
+                    <div class="tree-node inline-create has-files">
+                      <span class="w-3.5 shrink-0"></span>
+                      <File size={14} class="text-[var(--th-text-amber-400)]" />
+                      <input
+                        bind:this={inlineRenameInput}
+                        bind:value={inlineRenameName}
+                        class="inline-create-input"
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitInlineRename(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelInlineRename(); }
+                        }}
+                        onblur={() => { if (inlineRenameName.trim()) commitInlineRename(); else cancelInlineRename(); }}
+                      />
+                    </div>
+                  {:else}
                   <button
                     class="tree-node has-files"
                     class:active-node={isActiveFile(node.relPath)}
@@ -1552,8 +1726,25 @@
                       <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
                     {/if}
                   </button>
+                  {/if}
                 {:else}
                   {@const expanded = uiStore.expandedNodes[`loca:${node.relPath}`] ?? false}
+                  {#if inlineRenameNode?.relPath === node.relPath && inlineRenameIsLoca}
+                    <div class="tree-node inline-create has-files">
+                      <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
+                      <Folder size={14} class="text-[var(--th-text-amber-400)]" />
+                      <input
+                        bind:this={inlineRenameInput}
+                        bind:value={inlineRenameName}
+                        class="inline-create-input"
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitInlineRename(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelInlineRename(); }
+                        }}
+                        onblur={() => { if (inlineRenameName.trim()) commitInlineRename(); else cancelInlineRename(); }}
+                      />
+                    </div>
+                  {:else}
                   <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`loca:${node.relPath}`)}>
                     <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
                     {#if expanded}
@@ -1563,6 +1754,7 @@
                     {/if}
                     <span class="node-label truncate">{node.name}</span>
                   </button>
+                  {/if}
                   {#if expanded && node.children}
                     <div class="tree-children">
                       {#each node.children as child (child.relPath)}
@@ -1637,6 +1829,22 @@
             <div class="tree-children">
               {#snippet scriptNode(node: FileTreeNode)}
                 {#if node.isFile}
+                  {#if inlineRenameNode?.relPath === node.relPath && !inlineRenameIsLoca}
+                    <div class="tree-node inline-create has-files">
+                      <span class="w-3.5 shrink-0"></span>
+                      <File size={14} class="text-[var(--th-text-emerald-400)]" />
+                      <input
+                        bind:this={inlineRenameInput}
+                        bind:value={inlineRenameName}
+                        class="inline-create-input"
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitInlineRename(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelInlineRename(); }
+                        }}
+                        onblur={() => { if (inlineRenameName.trim()) commitInlineRename(); else cancelInlineRename(); }}
+                      />
+                    </div>
+                  {:else}
                   <button
                     class="tree-node has-files"
                     class:active-node={isActiveFile(node.relPath)}
@@ -1688,8 +1896,25 @@
                       {/if}
                     {/if}
                   </button>
+                  {/if}
                 {:else}
                   {@const expanded = uiStore.expandedNodes[`script:${node.relPath}`] ?? false}
+                  {#if inlineRenameNode?.relPath === node.relPath && !inlineRenameIsLoca}
+                    <div class="tree-node inline-create has-files">
+                      <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
+                      <Folder size={14} class="text-[var(--th-text-emerald-400)]" />
+                      <input
+                        bind:this={inlineRenameInput}
+                        bind:value={inlineRenameName}
+                        class="inline-create-input"
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitInlineRename(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelInlineRename(); }
+                        }}
+                        onblur={() => { if (inlineRenameName.trim()) commitInlineRename(); else cancelInlineRename(); }}
+                      />
+                    </div>
+                  {:else}
                   <button class="tree-node has-files"
                     onclick={() => uiStore.toggleNode(`script:${node.relPath}`)}
                     oncontextmenu={(e) => showFileContextMenu(e, node)}
@@ -1728,6 +1953,7 @@
                       </span>
                     {/if}
                   </button>
+                  {/if}
                   {#if expanded && node.children}
                     <div class="tree-children">
                       {#if inlineCreateParent === node.relPath}
@@ -1901,9 +2127,9 @@
     </button>
     <button
       class="ctx-item"
-      onclick={async () => {
+      onclick={() => {
         locaCtxVisible = false;
-        await createLocalizationTemplate();
+        createLocalizationTemplate();
       }}
       role="menuitem"
     >
@@ -1948,6 +2174,19 @@
 <!-- Localization file context menu -->
 {#if locaFileCtxVisible && locaFileCtxNode}
   <ContextMenu x={locaFileCtxX} y={locaFileCtxY} header={locaFileCtxNode.name} onclose={hideContextMenu}>
+    <button
+      class="ctx-item"
+      onclick={() => {
+        if (!locaFileCtxNode) return;
+        const node = locaFileCtxNode;
+        locaFileCtxVisible = false;
+        startInlineRename(node, true);
+      }}
+      role="menuitem"
+    >
+      <Pencil size={12} class="shrink-0" />
+      Rename
+    </button>
     <button
       class="ctx-item"
       onclick={async () => {
@@ -2011,7 +2250,7 @@
     : scriptsCtxCategory === 'anubis' ? 'Scripts/anubis'
     : scriptsCtxCategory === 'constellations' ? 'Scripts/constellations'
     : 'ScriptExtender'}
-  {@const templates = SECTION_TEMPLATES[scriptsCtxCategory ?? 'lua-se'] ?? []}
+  {@const templates = mergedTemplates[scriptsCtxCategory ?? 'lua-se'] ?? []}
   {@const ctxNodeKey = scriptsCtxCategory ? `_Scripts_${scriptsCtxCategory}` : '_Scripts_lua-se'}
   {@const ctxLabel = scriptsCtxCategory === 'khonsu' ? 'Khonsu'
     : scriptsCtxCategory === 'osiris' ? 'Osiris'
@@ -2039,9 +2278,9 @@
       {#each templates as tmpl (tmpl.id)}
         <button
           class="ctx-item"
-          onclick={async () => {
+          onclick={() => {
             scriptsCtxVisible = false;
-            await createFromSectionTemplate(tmpl.id, scriptsCtxCategory);
+            createFromSectionTemplate(tmpl.id, scriptsCtxCategory);
           }}
           role="menuitem"
         >
@@ -2088,6 +2327,19 @@
         {m.file_explorer_delete_script()}
       </button>
     {/if}
+    <button
+      class="ctx-item"
+      onclick={() => {
+        if (!fileCtxNode) return;
+        const node = fileCtxNode;
+        hideFileContextMenu();
+        startInlineRename(node);
+      }}
+      role="menuitem"
+    >
+      <Pencil size={12} class="shrink-0" />
+      Rename
+    </button>
     {#if !fileCtxNode.isFile}
       <button
         class="ctx-item"
@@ -2106,16 +2358,17 @@
         New Folder
       </button>
       {@const folderSection = detectSectionFromPath(fileCtxNode!.relPath)}
-      {@const folderTemplates = SECTION_TEMPLATES[folderSection ?? 'lua-se'] ?? []}
+      {@const folderTemplates = mergedTemplates[folderSection ?? 'lua-se'] ?? []}
       {#if folderTemplates.length > 0}
         <div class="ctx-separator"></div>
         <span class="ctx-group-label">Templates</span>
         {#each folderTemplates as tmpl (tmpl.id)}
           <button
             class="ctx-item"
-            onclick={async () => {
+            onclick={() => {
+              const folderPath = fileCtxNode!.relPath;
               hideFileContextMenu();
-              await createFromSectionTemplate(tmpl.id, folderSection);
+              createFromSectionTemplate(tmpl.id, folderSection, folderPath);
             }}
             role="menuitem"
           >
@@ -2152,6 +2405,28 @@
         <FilePlus2 size={12} class="shrink-0" />
         New File
       </button>
+      {#if detectSectionFromPath(fileCtxNode!.relPath)}
+        {@const fileSection = detectSectionFromPath(fileCtxNode!.relPath)}
+        {@const fileTemplates = mergedTemplates[fileSection ?? 'lua-se'] ?? []}
+        {#if fileTemplates.length > 0}
+          <div class="ctx-separator"></div>
+          <span class="ctx-group-label">Templates</span>
+          {#each fileTemplates as tmpl (tmpl.id)}
+            <button
+              class="ctx-item"
+              onclick={() => {
+                const parentPath = fileCtxNode!.relPath.substring(0, fileCtxNode!.relPath.lastIndexOf('/'));
+                hideFileContextMenu();
+                createFromSectionTemplate(tmpl.id, fileSection, parentPath);
+              }}
+              role="menuitem"
+            >
+              <FileCode size={12} class="shrink-0" />
+              {tmpl.label}
+            </button>
+          {/each}
+        {/if}
+      {/if}
     {/if}
     <div class="ctx-separator"></div>
     <button

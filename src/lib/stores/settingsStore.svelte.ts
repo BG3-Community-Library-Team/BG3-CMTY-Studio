@@ -47,6 +47,8 @@ interface StoredSettings {
   autoHideTabBar: boolean;
   /** Path to an IDE Helpers Lua file for supplemental intellisense definitions */
   ideHelpersPath: string;
+  /** Path to a folder containing user-defined script templates (organized by category subdirectories) */
+  templateFoldersPath: string;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -75,6 +77,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   hasSeenFirstRunModal: false,
   autoHideTabBar: false,
   ideHelpersPath: "",
+  templateFoldersPath: "",
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -194,6 +197,9 @@ class SettingsStore {
 
   /** Path to an IDE Helpers Lua file for supplemental intellisense definitions */
   ideHelpersPath: string = $state(this.#initial.ideHelpersPath);
+
+  /** Path to a folder containing user-defined script templates (organized by category subdirectories) */
+  templateFoldersPath: string = $state(this.#initial.templateFoldersPath);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);

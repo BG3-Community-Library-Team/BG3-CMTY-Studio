@@ -363,3 +363,169 @@ pub async fn cmd_scaffold_osiris_structure(
     })
     .await
 }
+
+// ── External template support ──
+
+/// Info about an external template file discovered in a user-defined template folder.
+#[derive(serde::Serialize, Clone)]
+pub struct ExternalTemplateInfo {
+    /// Unique identifier: `ext:<category>/<filename>`
+    pub id: String,
+    /// Display label (filename without extension)
+    pub label: String,
+    /// Section category this template belongs to (e.g. "lua-se", "anubis")
+    pub category: String,
+    /// File extension including dot (e.g. ".lua", ".ann")
+    pub extension: String,
+    /// Absolute path to the template source file
+    pub source_path: String,
+}
+
+/// Map user-facing subdirectory names to section category keys.
+fn map_subdirectory_to_category(dir_name: &str) -> Option<&'static str> {
+    match dir_name.to_lowercase().as_str() {
+        "lua" | "lua-se" | "scriptextender" => Some("lua-se"),
+        "osiris" => Some("osiris"),
+        "khonsu" => Some("khonsu"),
+        "anubis" => Some("anubis"),
+        "constellations" => Some("constellations"),
+        "json" => Some("lua-se"),
+        "yaml" => Some("lua-se"),
+        _ => None,
+    }
+}
+
+/// Known template file extensions.
+fn is_template_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_lowercase().as_str(),
+        "lua" | "txt" | "khn" | "anc" | "ann" | "anm" | "clc" | "cln" | "clm" | "json" | "yaml" | "xml"
+    )
+}
+
+/// Scan a user-defined template folder for template files organized by category subdirectories.
+#[tauri::command]
+pub async fn cmd_list_external_templates(
+    folder_path: String,
+) -> Result<Vec<ExternalTemplateInfo>, AppError> {
+    blocking(move || {
+        let root = std::path::Path::new(&folder_path);
+        if !root.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut templates = Vec::new();
+
+        // Scan immediate subdirectories only (one level deep)
+        let entries = std::fs::read_dir(root)
+            .map_err(|e| format!("Failed to read template folder: {e}"))?;
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+
+            let category = match map_subdirectory_to_category(&dir_name) {
+                Some(c) => c,
+                None => continue,
+            };
+
+            // Scan files in this category subdirectory
+            let sub_entries = match std::fs::read_dir(&path) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for sub_entry in sub_entries.flatten() {
+                let file_path = sub_entry.path();
+                if !file_path.is_file() {
+                    continue;
+                }
+
+                let ext = match file_path.extension().and_then(|e| e.to_str()) {
+                    Some(e) if is_template_extension(e) => e.to_string(),
+                    _ => continue,
+                };
+
+                let file_name = match file_path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n.to_string(),
+                    None => continue,
+                };
+
+                let label = file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&file_name)
+                    .to_string();
+
+                let abs_path = match file_path.canonicalize() {
+                    Ok(p) => p.to_string_lossy().to_string(),
+                    Err(_) => file_path.to_string_lossy().to_string(),
+                };
+
+                templates.push(ExternalTemplateInfo {
+                    id: format!("ext:{dir_name}/{file_name}"),
+                    label,
+                    category: category.to_string(),
+                    extension: format!(".{ext}"),
+                    source_path: abs_path,
+                });
+            }
+        }
+
+        // Sort by category then label for consistent ordering
+        templates.sort_by(|a, b| a.category.cmp(&b.category).then(a.label.cmp(&b.label)));
+
+        Ok(templates)
+    })
+    .await
+}
+
+/// Create a file from an external template. Reads the template source file,
+/// applies variable substitution, and writes the result to the target path.
+#[tauri::command]
+pub async fn cmd_create_from_external_template(
+    mod_path: String,
+    file_path: String,
+    source_path: String,
+    variables: std::collections::HashMap<String, String>,
+) -> Result<bool, AppError> {
+    blocking(move || {
+        let full = resolve_script_path(&mod_path, &file_path)?;
+        if full.exists() {
+            return Err(format!("File already exists: {file_path}"));
+        }
+
+        // Validate source path exists and is a file
+        let source = std::path::Path::new(&source_path);
+        if !source.is_file() {
+            return Err(format!("Template source not found: {source_path}"));
+        }
+
+        // Read template content
+        let mut content = std::fs::read_to_string(source)
+            .map_err(|e| format!("Failed to read template: {e}"))?;
+
+        // Apply variable substitution
+        for (key, value) in &variables {
+            content = content.replace(&format!("{{{{{key}}}}}"), value);
+        }
+
+        // Create parent directories and write
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Create directories: {e}"))?;
+        }
+        std::fs::write(&full, content.as_bytes())
+            .map_err(|e| format!("Write file: {e}"))?;
+
+        Ok(true)
+    })
+    .await
+}

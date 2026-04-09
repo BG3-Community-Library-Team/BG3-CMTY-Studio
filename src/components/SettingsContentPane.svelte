@@ -25,6 +25,20 @@
     } catch { /* user cancelled */ }
   }
 
+  async function browseTemplateFolder() {
+    try {
+      const selected = await open({
+        title: "Select Template Folder",
+        multiple: false,
+        directory: true,
+      });
+      if (selected) {
+        settingsStore.templateFoldersPath = selected;
+        settingsStore.persist();
+      }
+    } catch { /* user cancelled */ }
+  }
+
   /** Maps CustomThemeValues keys → CSS custom property names for live preview overrides. */
   const STAGING_CSS_MAP: Record<keyof CustomThemeValues, string> = {
     bgMain: "--th-bg-900", bgSidebar: "--th-bg-800", bgSection: "--th-bg-850", bgInput: "--th-input-bg",
@@ -322,6 +336,27 @@
         </div>
         {#if settingsStore.ideHelpersPath}
           <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.ideHelpersPath}</p>
+        {/if}
+      </div>
+
+      <div>
+        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">Template Folder</p>
+        <p class="text-xs text-[var(--th-text-500)] mb-2">Path to a folder containing additional script templates organized by category subdirectories (lua, khonsu, anubis, constellations).</p>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+            placeholder="Select a template folder..."
+            value={settingsStore.templateFoldersPath}
+            oninput={(e) => { settingsStore.templateFoldersPath = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+          />
+          <button
+            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
+            onclick={browseTemplateFolder}
+          >{m.common_browse()}</button>
+        </div>
+        {#if settingsStore.templateFoldersPath}
+          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.templateFoldersPath}</p>
         {/if}
       </div>
     </div>

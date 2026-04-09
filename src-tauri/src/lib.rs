@@ -2131,6 +2131,8 @@ pub fn run() {
             commands::scripts::cmd_scaffold_se_structure,
             commands::scripts::cmd_scaffold_khonsu_structure,
             commands::scripts::cmd_scaffold_osiris_structure,
+            commands::scripts::cmd_list_external_templates,
+            commands::scripts::cmd_create_from_external_template,
             commands::scan::cmd_import_se_scripts,
             commands::scan::cmd_import_osiris_goals,
             commands::scan::cmd_import_khonsu_scripts,
