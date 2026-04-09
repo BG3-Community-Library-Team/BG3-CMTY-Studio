@@ -261,9 +261,9 @@ describe("CommandRegistry", () => {
       } as KeyboardEvent;
     }
 
-    it("matches a Ctrl+K shortcut", () => {
-      commandRegistry.register(makeCmd({ id: "sc1", shortcut: "Ctrl+K" }));
-      const result = commandRegistry.matchShortcut(makeKeyEvent({ key: "k", ctrlKey: true }));
+    it("matches a Ctrl+J shortcut", () => {
+      commandRegistry.register(makeCmd({ id: "sc1", shortcut: "Ctrl+J" }));
+      const result = commandRegistry.matchShortcut(makeKeyEvent({ key: "j", ctrlKey: true }));
       expect(result).toBeDefined();
       expect(result!.id).toBe("sc1");
     });

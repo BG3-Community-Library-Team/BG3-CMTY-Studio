@@ -10,9 +10,9 @@
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import { dataOperationStore } from "../lib/stores/dataOperationStore.svelte.js";
   import { modImportService } from "../lib/services/modImportService.svelte.js";
-  import { gitStore } from "../lib/stores/gitStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { registerDynamicBranchCommands } from "../lib/plugins/gitCommands.svelte.js";
+  import { statusBarRegistry } from "../lib/plugins/statusBarRegistry.svelte.js";
+  import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
   import { THEME_OPTIONS } from "../lib/themes/themeManager.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { m } from "../paraglide/messages.js";
@@ -97,9 +97,7 @@
   );
   // TODO: Wire validation summary from projectStore when validation engine is migrated
   const validationSummary = { errorCount: 0, warningCount: 0, errors: [] as any[], warnings: [] as any[] };
-  let gitBranchName = $derived(gitStore.currentBranch ?? gitStore.repoInfo?.headBranch ?? null);
-  let gitAhead = $derived(gitStore.repoInfo?.ahead ?? 0);
-  let gitBehind = $derived(gitStore.repoInfo?.behind ?? 0);
+  let pluginLeftItems = $derived(statusBarRegistry.getVisibleItems("left"));
 
   let modName = $derived(modStore.scanResult?.mod_meta?.name ?? "");
   let modVersion = $derived.by(() => {
@@ -179,32 +177,20 @@
   </div>
   {:else}
   <div class="flex items-center gap-3 min-w-0 whitespace-nowrap">
-    {#if gitStore.isRepo && gitBranchName}
+    {#each pluginLeftItems as item (item.id)}
       <button
         class="flex items-center gap-1 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] transition-colors cursor-pointer"
-        onclick={() => {
-          const gitPath = modStore.projectPath || modStore.selectedModPath || "";
-          if (gitPath) {
-            gitStore.refreshBranches(gitPath);
-            gitStore.loadHistory(gitPath);
-          }
-          registerDynamicBranchCommands();
-          uiStore.openCommandPalette(">git:");
-        }}
-        title="Git: Switch Branch"
+        onclick={() => item.command && commandRegistry.execute(item.command)}
+        title={item.tooltip || item.text}
         type="button"
       >
-        <GitBranchIcon class="w-3.5 h-3.5" />
-        <span class="text-[var(--th-text-300)]">{gitBranchName}</span>
-        {#if gitAhead > 0}
-          <span class="text-[var(--th-text-500)]">↑{gitAhead}</span>
+        {#if item.icon === "git-branch"}
+          <GitBranchIcon class="w-3.5 h-3.5" />
         {/if}
-        {#if gitBehind > 0}
-          <span class="text-[var(--th-text-500)]">↓{gitBehind}</span>
-        {/if}
+        <span class="text-[var(--th-text-300)]">{item.text}</span>
       </button>
       <span class="text-[var(--th-border-600)]">│</span>
-    {/if}
+    {/each}
     {#if modName}
       <span class="truncate max-w-[200px]" title={modName}>
         <span class="text-[var(--th-text-400)]">{m.status_bar_mod_label()}</span>

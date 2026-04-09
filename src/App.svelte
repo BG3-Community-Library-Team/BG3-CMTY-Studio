@@ -46,7 +46,9 @@
   import { SECTIONS_ORDERED, SECTION_DISPLAY_NAMES, type Section, getErrorMessage } from "./lib/types/index.js";
   import { m } from "./paraglide/messages.js";
   import { loadIdeHelpers } from "./lib/plugins/index.js";
-  import { registerGitCommands } from "./lib/plugins/gitCommands.svelte.js";
+  import { pluginHost } from "./lib/plugins/pluginHost.svelte.js";
+  import { gitPlugin } from "./lib/plugins/builtins/gitPlugin.svelte.js";
+  import { contextKeys } from "./lib/plugins/contextKeyService.svelte.js";
 
   const MIN_SIDEBAR = 280;
   const MAX_SIDEBAR_RATIO = 0.6;
@@ -76,6 +78,11 @@
         if (detected) settingsStore.setGameDataPath(detected);
       } catch { /* ignore */ }
     }
+  });
+
+  // Core context keys
+  $effect(() => {
+    contextKeys.set("modLoaded", !!modStore.scanResult);
   });
 
   let showFirstRunModal = $state(false);
@@ -473,8 +480,9 @@
         execute: () => { uiStore.openTab({ id: "theme-gallery", label: "Theme Gallery", type: "theme-gallery", icon: "🎨" }); },
       }] : []),
     ]);
-    // Register git plugin commands
-    registerGitCommands();
+    // Register and activate plugins
+    pluginHost.register(gitPlugin);
+    pluginHost.fireActivationEvent("onStartupFinished");
     // Run once
     return undefined;
   });

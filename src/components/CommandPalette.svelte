@@ -1,7 +1,7 @@
 <!--
   PF-034: Command Palette with Flat Navigation, Fuzzy Search + Entry Search.
-  Activated by Ctrl+Shift+P / Ctrl+K.  Provides instant access to every
-  application action, setting, and navigation target.
+  Shortcuts: Ctrl+P (Quick Open), Ctrl+Shift+P (Command Mode),
+  Ctrl+G (Go to Row), Ctrl+Shift+O (Go to Field), ? (Help / mode discovery).
 
   VS Code–style floating palette: fixed top-center, ~50vw wide, with a
   single input field and a scrollable results list.
@@ -43,10 +43,10 @@
     fuzzy: FuzzyResult;
   }
 
-  // Parse plugin prefix filter: ">git:" filters commands by id prefix "git:"
+  // Parse plugin prefix filter: ">git:" filters commands by id prefix "git:" (colon required)
   let pluginPrefix = $derived.by(() => {
-    const match = query.match(/^>(\S+)/);
-    return match ? match[1] : "";
+    const match = query.match(/^>(\S+:)/);
+    return match ? match[1].toLowerCase() : "";
   });
 
   // Parse section filter: "#SectionName" anywhere in query
@@ -55,13 +55,25 @@
     return match ? match[1].toLowerCase() : "";
   });
 
-  // Search text is query without the #section or >prefix portions
-  let searchText = $derived(query.replace(/#\S*/g, "").replace(/^>\S*\s*/, "").trim());
+  // Search text: in command mode strip only ">" (and plugin prefix), otherwise strip #section
+  let searchText = $derived.by(() => {
+    const q = query.trimStart();
+    if (q.startsWith(">")) {
+      // Plugin prefix mode: strip ">prefix: "
+      if (pluginPrefix) {
+        return q.replace(/^>\S+\s*/, "").trim();
+      }
+      // Command mode: strip only ">"
+      return q.slice(1).trim();
+    }
+    return query.replace(/#\S*/g, "").trim();
+  });
 
   // Detect palette mode from first character
-  type PaletteMode = "command" | "entry" | "goto-row" | "goto-field" | "section-filter";
+  type PaletteMode = "command" | "entry" | "goto-row" | "goto-field" | "section-filter" | "help";
   let paletteMode = $derived.by((): PaletteMode => {
     const q = query.trimStart();
+    if (q.startsWith("?")) return "help";
     if (q.startsWith(">")) return "command";
     if (q.startsWith(":")) return "goto-row";
     if (q.startsWith("@")) return "goto-field";
@@ -184,11 +196,15 @@
 
   // Build the flat navigable items list for keyboard navigation
   interface NavItem {
-    type: "search-all" | "command" | "scored-command" | "entry-result" | "scan-prompt" | "form-nav" | "recent";
+    type: "search-all" | "command" | "scored-command" | "entry-result" | "scan-prompt" | "form-nav" | "recent" | "help-mode";
     command?: Command;
     scored?: ScoredCommand;
     entry?: EntrySearchResult;
     formSection?: { id: string; label: string };
+    helpPrefix?: string;
+    helpLabel?: string;
+    helpDescription?: string;
+    helpShortcut?: string;
   }
   // Goto-row mode: entries in the active section (: prefix)
   let gotoRowResults = $derived.by((): NavItem[] => {
@@ -245,6 +261,16 @@
   let navItems = $derived.by((): NavItem[] => {
     const items: NavItem[] = [];
 
+    // Help mode (? prefix) — static list of available modes
+    if (paletteMode === "help") {
+      items.push({ type: "help-mode", helpPrefix: ">", helpLabel: m.command_palette_help_commands_label(), helpDescription: m.command_palette_help_commands_desc(), helpShortcut: "Ctrl+Shift+P" });
+      items.push({ type: "help-mode", helpPrefix: ":", helpLabel: m.command_palette_help_goto_row_label(), helpDescription: m.command_palette_help_goto_row_desc(), helpShortcut: "Ctrl+G" });
+      items.push({ type: "help-mode", helpPrefix: "@", helpLabel: m.command_palette_help_goto_field_label(), helpDescription: m.command_palette_help_goto_field_desc(), helpShortcut: "Ctrl+Shift+O" });
+      items.push({ type: "help-mode", helpPrefix: "#", helpLabel: m.command_palette_help_section_filter_label(), helpDescription: m.command_palette_help_section_filter_desc() });
+      items.push({ type: "help-mode", helpPrefix: "", helpLabel: m.command_palette_help_search_label(), helpDescription: m.command_palette_help_search_desc(), helpShortcut: "Ctrl+P" });
+      return items;
+    }
+
     // Goto-row mode (: prefix)
     if (paletteMode === "goto-row") {
       return gotoRowResults;
@@ -253,6 +279,27 @@
     // Goto-field mode (@ prefix)
     if (paletteMode === "goto-field") {
       return gotoFieldResults;
+    }
+
+    // Command mode with search: ONLY show matching commands (no entries/form-nav)
+    if (paletteMode === "command" && searchText && !pluginPrefix) {
+      for (const sc of commandResults) {
+        items.push({ type: "scored-command", scored: sc, command: sc.command });
+      }
+      return items;
+    }
+
+    // Command mode root: ONLY show commands (recent + all, no entries/form-nav/scan-prompts)
+    if (paletteMode === "command" && !searchText && !pluginPrefix) {
+      const recentIds = new Set(recentCommands.map(c => c.id));
+      if (recentCommands.length > 0) {
+        for (const cmd of recentCommands) items.push({ type: "recent", command: cmd });
+      }
+      const otherCommands = [...enabledCommands]
+        .filter(c => !recentIds.has(c.id))
+        .sort((a, b) => a.label.localeCompare(b.label));
+      for (const cmd of otherCommands) items.push({ type: "command", command: cmd });
+      return items;
     }
 
     // Plugin prefix mode: show only matching commands (no categories/recent)
@@ -357,6 +404,8 @@
     });
   }
 
+  const PAGE_SIZE = 10;
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -367,6 +416,30 @@
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       activeIndex = Math.max(activeIndex - 1, 0);
+      requestAnimationFrame(() => {
+        document.getElementById(`cp-item-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+      });
+    } else if (e.key === "PageDown") {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + PAGE_SIZE, totalNavigableItems - 1);
+      requestAnimationFrame(() => {
+        document.getElementById(`cp-item-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+      });
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - PAGE_SIZE, 0);
+      requestAnimationFrame(() => {
+        document.getElementById(`cp-item-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+      });
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      activeIndex = 0;
+      requestAnimationFrame(() => {
+        document.getElementById(`cp-item-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+      });
+    } else if (e.key === "End") {
+      e.preventDefault();
+      activeIndex = totalNavigableItems - 1;
       requestAnimationFrame(() => {
         document.getElementById(`cp-item-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
       });
@@ -400,6 +473,10 @@
       case "form-nav":
         if (item.formSection) scrollToFormSection(item.formSection.id);
         break;
+      case "help-mode":
+        query = item.helpPrefix ?? "";
+        requestAnimationFrame(() => inputEl?.focus());
+        break;
     }
   }
 
@@ -420,16 +497,43 @@
     }
   });
 
-  // Global keyboard shortcut
+  // Global keyboard shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey && e.shiftKey && e.key === "P") || (e.ctrlKey && e.key === "k")) {
+    // Ctrl+Shift+P — Command mode (> prefix)
+    if (e.ctrlKey && e.shiftKey && e.key === "P") {
       e.preventDefault();
-      open = !open;
-    }
-    if (e.ctrlKey && e.shiftKey && e.key === "F") {
-      e.preventDefault();
+      if (open && query.trimStart().startsWith(">")) { closePalette(); return; }
+      query = ">";
+      uiStore.commandPaletteInitialQuery = ">";
       open = true;
-      // Focus will enter search mode naturally
+      return;
+    }
+    // Ctrl+P — Quick Open (entry search, no prefix)
+    if (e.ctrlKey && !e.shiftKey && e.key === "p") {
+      e.preventDefault();
+      if (open && !query.trimStart().startsWith(">") && !query.trimStart().startsWith(":") && !query.trimStart().startsWith("@") && !query.trimStart().startsWith("#") && !query.trimStart().startsWith("?")) { closePalette(); return; }
+      query = "";
+      uiStore.commandPaletteInitialQuery = "";
+      open = true;
+      return;
+    }
+    // Ctrl+G — Go to Row (: prefix)
+    if (e.ctrlKey && !e.shiftKey && e.key === "g") {
+      e.preventDefault();
+      if (open && query.trimStart().startsWith(":")) { closePalette(); return; }
+      query = ":";
+      uiStore.commandPaletteInitialQuery = ":";
+      open = true;
+      return;
+    }
+    // Ctrl+Shift+O — Go to Field (@ prefix)
+    if (e.ctrlKey && e.shiftKey && e.key === "O") {
+      e.preventDefault();
+      if (open && query.trimStart().startsWith("@")) { closePalette(); return; }
+      query = "@";
+      uiStore.commandPaletteInitialQuery = "@";
+      open = true;
+      return;
     }
   }
 
@@ -449,18 +553,29 @@
     return result;
   }
 
-  /** Build display string for the command palette input area.
-   *  Shows "ModName | " only when a mod is loaded AND there's no search text. */
-  let inputDisplayPrefix = $derived.by(() => {
-    if (searchText) return "";  // Hide mod name when searching
-    const modName = modStore.scanResult?.mod_meta?.name;
-    if (modName) {
-      return modName;
-    }
-    return "";
-  });
+  /** Split a shortcut string like "Ctrl+Shift+P" into individual key parts */
+  function parseShortcut(shortcut: string): string[] {
+    return shortcut.split("+").map(k => k.trim()).filter(Boolean);
+  }
+
+  /** Highlight the first occurrence of a substring in text (case-insensitive) */
+  function highlightSubstring(text: string, query: string): string {
+    if (!query) return text.replace(/</g, "&lt;");
+    const escaped = text.replace(/</g, "&lt;");
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerText.indexOf(lowerQuery);
+    if (idx === -1) return escaped;
+    const before = text.slice(0, idx).replace(/</g, "&lt;");
+    const match = text.slice(idx, idx + query.length).replace(/</g, "&lt;");
+    const after = text.slice(idx + query.length).replace(/</g, "&lt;");
+    return `${before}<mark class="bg-transparent font-bold text-[var(--th-text-sky-300)]">${match}</mark>${after}`;
+  }
 
   let placeholderText = $derived.by(() => {
+    if (paletteMode === "help") return m.command_palette_help_placeholder();
+    if (paletteMode === "command") return m.command_palette_command_placeholder();
+    if (paletteMode === "section-filter") return m.command_palette_section_filter_placeholder();
     if (paletteMode === "goto-row") return m.command_palette_goto_row_placeholder();
     if (paletteMode === "goto-field") return m.command_palette_goto_field_placeholder();
     if (!hasModLoaded) return m.command_palette_open_project();
@@ -512,6 +627,8 @@
       <span class="text-[10px] font-mono px-1 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-500)] shrink-0">{item.entry!.section}</span>
     {:else if item.type === "form-nav"}
       <span class="shrink-0 w-4 text-center text-[var(--th-text-sky-400)]"><MapPin size={14} strokeWidth={2} /></span>
+    {:else if item.type === "help-mode"}
+      <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-sky-400)] shrink-0 min-w-[24px] text-center">{item.helpPrefix || "⌕"}</span>
     {:else}
       <span class="shrink-0 w-4"></span>
     {/if}
@@ -526,20 +643,45 @@
         {@html highlightLabel(item.command!.label, item.scored?.fuzzy.matches ?? [])}
       </span>
     {:else if item.type === "entry-result"}
-      <span class="flex-1 truncate">{item.entry!.displayName}</span>
+      <span class="flex-1 truncate">
+        {@html highlightSubstring(item.entry!.displayName, searchText)}
+      </span>
     {:else if item.type === "form-nav"}
-      <span class="flex-1 truncate">Jump to: {item.formSection!.label}</span>
+      <span class="flex-1 truncate">
+        {#if searchText}
+          Jump to: {@html highlightSubstring(item.formSection!.label, searchText)}
+        {:else}
+          Jump to: {item.formSection!.label}
+        {/if}
+      </span>
+    {:else if item.type === "help-mode"}
+      <span class="flex-1 truncate">
+        <span class="font-medium">{item.helpLabel}</span>
+        <span class="ml-1.5 text-[12px] text-[var(--th-text-500)]">{item.helpDescription}</span>
+      </span>
     {:else}
       <span class="flex-1 truncate">{item.command!.label}</span>
     {/if}
 
     <!-- Trailing badge / chevron -->
     {#if item.type === "search-all"}
-      <kbd class="cp-kbd">{m.command_palette_enter()}</kbd>
+      <span class="cp-keys">
+        <kbd class="cp-key">{m.command_palette_enter()}</kbd>
+      </span>
     {:else if item.type === "entry-result"}
       <span class="text-[11px] text-[var(--th-text-600)] font-mono truncate max-w-[120px]">{item.entry!.uuid}</span>
     {:else if item.command?.shortcut}
-      <kbd class="cp-kbd">{item.command.shortcut}</kbd>
+      <span class="cp-keys">
+        {#each parseShortcut(item.command.shortcut) as key}
+          <kbd class="cp-key">{key}</kbd>
+        {/each}
+      </span>
+    {:else if item.type === "help-mode" && item.helpShortcut}
+      <span class="cp-keys">
+        {#each parseShortcut(item.helpShortcut) as key}
+          <kbd class="cp-key">{key}</kbd>
+        {/each}
+      </span>
     {/if}
   </button>
 {/snippet}
@@ -547,7 +689,7 @@
 {#if open}
   <!-- Backdrop — click to dismiss (transparent, like VS Code) -->
   <div
-    class="fixed inset-0 z-[99]"
+    class="fixed inset-0 z-[99] cp-animate-backdrop"
     role="presentation"
     onclick={closePalette}
     onkeydown={(e) => e.key === "Escape" && closePalette()}
@@ -555,7 +697,7 @@
 
   <!-- Input overlay — sits exactly on top of the trigger button -->
   <div
-    class="cp-dark-mode absolute inset-0 z-[100] flex items-center shadow-[0_0_8px_2px_rgba(0,0,0,.36)] rounded-md bg-[var(--th-bg-800)]"
+    class="cp-dark-mode cp-animate-input absolute inset-0 z-[100] flex items-center shadow-[0_0_8px_2px_rgba(0,0,0,.36)] rounded-md bg-[var(--th-bg-800)] border border-[var(--th-focus-ring,#38bdf8)]"
     role="dialog"
     aria-modal="true"
     aria-label={m.command_palette_aria()}
@@ -581,14 +723,17 @@
 
   <!-- Results dropdown — anchored below the trigger area -->
   <div
-    class="cp-dark-mode absolute top-full left-0 right-0 z-[100] mt-px
+    class="cp-dark-mode cp-animate-results absolute top-full left-0 right-0 z-[100] mt-px
            bg-[var(--th-bg-800)] border-t border-[var(--th-border-700)]
            rounded-b-md shadow-[0_0_8px_2px_rgba(0,0,0,.36)] overflow-hidden"
     role="presentation"
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
-    <div id="command-list" class="max-h-[min(60vh,400px)] overflow-y-auto cp-scrollbar" role="listbox">
+    <div id="command-list" class="max-h-[min(60vh,400px)] overflow-y-auto" role="listbox">
+      <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {navItems.length === 0 ? m.command_palette_no_results_aria() : m.command_palette_results_count_aria({ count: navItems.length })}
+      </div>
       {#if availableSections.length > 0 && (searchText || sectionFilter)}
         <div class="flex flex-wrap gap-1 px-2.5 py-1.5 border-b border-[var(--th-border-700)]/50">
           {#each availableSections as sec}
@@ -605,10 +750,17 @@
       {/if}
       {#if navItems.length === 0}
         <div class="px-4 py-6 text-center text-[13px] text-[var(--th-text-500)]">
-          {searchText ? m.command_palette_no_matching() : m.command_palette_no_commands()}
+          <div>{searchText ? m.command_palette_no_matching() : m.command_palette_no_commands()}</div>
+          <button
+            type="button"
+            class="mt-2 text-[12px] text-[var(--th-text-sky-400)] hover:text-[var(--th-text-sky-300)] cursor-pointer transition-colors"
+            onclick={() => { query = "?"; }}
+          >
+            {m.command_palette_no_result_hint()}
+          </button>
         </div>
       {:else}
-        {#each navItems as item, i (item.type === "entry-result" ? `entry-${item.entry?.section}-${item.entry?.uuid}-${i}` : item.type === "form-nav" ? `form-nav-${item.formSection?.id}` : item.type === "search-all" ? "search-all" : item.type === "scan-prompt" ? `scan-${item.command?.id}` : `cmd-${item.command?.id}-${i}`)}
+        {#each navItems as item, i (item.type === "help-mode" ? `help-${item.helpPrefix}` : item.type === "entry-result" ? `entry-${item.entry?.section}-${item.entry?.uuid}-${i}` : item.type === "form-nav" ? `form-nav-${item.formSection?.id}` : item.type === "search-all" ? "search-all" : item.type === "scan-prompt" ? `scan-${item.command?.id}` : `cmd-${item.command?.id}-${i}`)}
           {@const isActive = i === activeIndex}
           {#if item.type === "form-nav" && (i === 0 || navItems[i - 1]?.type !== "form-nav")}
             <div class="cp-group-header">
@@ -632,6 +784,11 @@
             {m.command_palette_showing_first_20()}
           </div>
         {/if}
+        {#if searchText && navItems.length > 0}
+          <div class="px-3 py-1 text-center text-[11px] text-[var(--th-text-600)] border-t border-[var(--th-border-700)]/30">
+            {entryResults.length >= 20 ? m.command_palette_result_count_capped({ count: navItems.length }) : m.command_palette_result_count({ count: navItems.length })}
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -642,18 +799,24 @@
   .cp-input:focus-visible {
     outline: none;
   }
-  /* VS Code-style keybinding pill */
-  :global(.cp-kbd) {
-    display: inline-flex;
+  /* Key badge container — flex row of individual key pills */
+  :global(.cp-keys) {
+    display: flex;
     align-items: center;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  /* Individual key pill */
+  :global(.cp-key) {
     font-size: 11px;
-    line-height: 1;
-    padding: 0;
-    border-radius: 0;
-    background: none;
-    color: var(--th-text-500);
-    border: none;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--th-bg-700);
+    color: var(--th-text-400);
+    border: 1px solid var(--th-border-600, rgba(255,255,255,0.1));
+    line-height: 1.4;
+    white-space: nowrap;
     flex-shrink: 0;
   }
   /* Group header (recently used, form sections) */
@@ -669,23 +832,28 @@
   :global(.cp-group-header:first-child) {
     border-top: none;
   }
-  /* Thin scrollbar for results */
-  .cp-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: var(--th-bg-600) transparent;
-  }
-  .cp-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  .cp-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .cp-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--th-bg-600);
-    border-radius: 3px;
-  }
   /* Suppress focus outlines on items — keyboard nav uses background highlight */
   :global(.cp-item:focus-visible) {
     outline: none;
+  }
+  /* Open animations — respect reduced motion preference */
+  @media (prefers-reduced-motion: no-preference) {
+    .cp-animate-results {
+      animation: cp-enter 120ms ease-out;
+    }
+    .cp-animate-input {
+      animation: cp-fade-in 100ms ease-out;
+    }
+    .cp-animate-backdrop {
+      animation: cp-fade-in 100ms ease-out;
+    }
+  }
+  @keyframes cp-enter {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes cp-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

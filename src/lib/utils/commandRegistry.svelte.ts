@@ -18,6 +18,7 @@
  */
 
 import { m } from "../../paraglide/messages.js";
+import { contextKeys } from "../plugins/contextKeyService.svelte.js";
 
 export type CommandCategory = "action" | "navigation" | "data" | "setting" | "entry" | "help";
 
@@ -27,6 +28,8 @@ export interface Command {
   category: CommandCategory;
   icon: string;
   shortcut?: string;
+  when?: string;
+  enablement?: string;
   enabled: () => boolean;
   execute: () => void | Promise<void>;
 }
@@ -92,12 +95,19 @@ class CommandRegistry {
   }
 
   getEnabled(): Command[] {
-    return this.commands.filter(c => c.enabled());
+    return this.commands.filter(c => contextKeys.evaluate(c.when) && c.enabled());
+  }
+
+  /** Get commands that are visible (when clause passes) and enabled */
+  getVisibleCommands(): Command[] {
+    return this.commands.filter(c =>
+      contextKeys.evaluate(c.when) && c.enabled()
+    );
   }
 
   /** Get enabled commands filtered by category */
   getEnabledByCategory(category: CommandCategory): Command[] {
-    return this.commands.filter(c => c.category === category && c.enabled());
+    return this.commands.filter(c => c.category === category && contextKeys.evaluate(c.when) && c.enabled());
   }
 
   getCategoryIcon(category: CommandCategory): string {

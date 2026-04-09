@@ -7,6 +7,7 @@
   import { settingsStore, THEME_OPTIONS, DEFAULT_CUSTOM_THEME, type CustomThemeValues } from "../lib/stores/settingsStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
 
   let { stagingOverrideStyle = $bindable("") }: { stagingOverrideStyle?: string } = $props();
 
@@ -386,36 +387,52 @@
       </div>
     </div>
   {:else if uiStore.settingsSection === "git"}
-    <h3 class="settings-section-title">{m.settings_git_title()}</h3>
-
-    <div class="space-y-3">
-      <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_git_identity_heading()}</p>
-      <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_git_identity_help()}</p>
-
-      <div>
-        <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="git-user-name">{m.settings_git_user_name()}</label>
-        <input
-          id="git-user-name"
-          type="text"
-          class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          value={settingsStore.gitUserName}
-          placeholder={m.settings_git_user_name_placeholder()}
-          oninput={(e) => { settingsStore.gitUserName = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
-        />
+    {#each configurationRegistry.getSections().filter(s => s.title === "Git") as section (section.title)}
+      <h3 class="settings-section-title">{section.title}</h3>
+      <div class="space-y-3">
+        {#each Object.entries(section.properties).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)) as [key, prop] (key)}
+          <div>
+            <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="plugin-{key}">{prop.description}</label>
+            {#if prop.type === "boolean"}
+              <input
+                id="plugin-{key}"
+                type="checkbox"
+                class="form-checkbox"
+                checked={!!configurationRegistry.get(key)}
+                onchange={(e) => configurationRegistry.set(key, (e.target as HTMLInputElement).checked)}
+              />
+            {:else if prop.type === "number"}
+              <input
+                id="plugin-{key}"
+                type="number"
+                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                value={configurationRegistry.get(key) ?? ""}
+                oninput={(e) => configurationRegistry.set(key, Number((e.target as HTMLInputElement).value))}
+              />
+            {:else if prop.enum}
+              <select
+                id="plugin-{key}"
+                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                value={configurationRegistry.get(key) ?? prop.default}
+                onchange={(e) => configurationRegistry.set(key, (e.target as HTMLSelectElement).value)}
+              >
+                {#each prop.enum as opt, idx}
+                  <option value={opt}>{prop.enumDescriptions?.[idx] ?? String(opt)}</option>
+                {/each}
+              </select>
+            {:else}
+              <input
+                id="plugin-{key}"
+                type="text"
+                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                value={configurationRegistry.get(key) ?? ""}
+                oninput={(e) => configurationRegistry.set(key, (e.target as HTMLInputElement).value)}
+              />
+            {/if}
+          </div>
+        {/each}
       </div>
-
-      <div>
-        <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="git-user-email">{m.settings_git_user_email()}</label>
-        <input
-          id="git-user-email"
-          type="email"
-          class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          value={settingsStore.gitUserEmail}
-          placeholder={m.settings_git_user_email_placeholder()}
-          oninput={(e) => { settingsStore.gitUserEmail = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
-        />
-      </div>
-    </div>
+    {/each}
   {:else}
     <div class="flex flex-col items-center justify-center h-full text-center">
       <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>

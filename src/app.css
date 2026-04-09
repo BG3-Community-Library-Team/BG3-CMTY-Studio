@@ -736,6 +736,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: #71717a !important;
 }
 
+/* Force dark scrollbar thumb inside cp-dark-mode for light themes */
+:root.balance .cp-dark-mode ::-webkit-scrollbar-thumb,
+:root.light .cp-dark-mode ::-webkit-scrollbar-thumb,
+:root.solarized-light .cp-dark-mode ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
 :root.balance #hamburger-panel {
   background-color: #2a2a36 !important;
   border-color: #3f3f4a !important;
@@ -804,14 +811,27 @@ input[type="number"] {
 }
 
 /* Global themed scrollbars — applied to all scrollable containers */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: var(--th-scroll-thumb, #4b5563); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--th-scroll-thumb, #4b5563) 80%, white); }
+* { scrollbar-width: thin; scrollbar-color: var(--th-scroll-thumb, #4b5563) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: var(--th-scroll-thumb, #4b5563);
+  border-radius: 4px;
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover { opacity: 1; background: color-mix(in srgb, var(--th-scroll-thumb, #4b5563) 80%, white); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
+/* Scrollbar fade: semi-transparent when idle, opaque on container hover */
+*:hover::-webkit-scrollbar-thumb { opacity: 0.8; }
+*::-webkit-scrollbar-thumb:hover { opacity: 1; }
+
+/* Overlay scrollbar utility — no layout shift from scrollbar presence */
+.scrollbar-overlay { overflow: overlay; scrollbar-gutter: stable; }
+
 /* Legacy class alias — still works where already applied */
-.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
 
 /* --- Section hover enhancement for all themes --- */
 section > button.hover\:bg-zinc-900\/80:hover {
