@@ -6,7 +6,7 @@
   import { openPath } from "../lib/tauri/detection.js";
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
-  import { scanAndImport } from "../lib/services/scanService.js";
+  import { openProject } from "../lib/services/scanService.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
   import { m } from "../paraglide/messages.js";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
@@ -133,7 +133,7 @@
       const selected = await dialogOpen({ directory: true, title: m.header_select_mod_folder() });
       if (selected == null) return;
       const p = Array.isArray(selected) ? selected[0] : String(selected);
-      await scanAndImport(p);
+      await openProject(p);
     } catch (e) {
       console.error("Dialog error:", e);
     }

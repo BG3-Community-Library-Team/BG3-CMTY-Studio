@@ -35,7 +35,7 @@
   import type { SectionResult, DiffEntry } from "../lib/types/index.js";
   import type { ModFileEntry } from "../lib/utils/tauri.js";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { scanAndImport } from "../lib/services/scanService.js";
+  import { openProject } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
   import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate, scriptRename, listExternalTemplates, createFromExternalTemplate } from "../lib/tauri/scripts.js";
@@ -1315,7 +1315,7 @@
             const selected = await open({ directory: true, title: m.header_select_mod_folder() });
             if (selected == null) return;
             const p = Array.isArray(selected) ? selected[0] : String(selected);
-            await scanAndImport(p);
+            await openProject(p);
           } catch (e) { console.error("Dialog error:", e); }
         }}
       >
@@ -1337,7 +1337,7 @@
               const selected = await open({ directory: true, title: m.header_select_mod_folder() });
               if (selected == null) return;
               const p = Array.isArray(selected) ? selected[0] : String(selected);
-              await scanAndImport(p);
+              await openProject(p);
             } catch (e) { console.error("Dialog error:", e); }
           }}
         >

@@ -103,12 +103,12 @@ pub async fn cmd_git_checkout(mod_path: String, branch: String) -> Result<(), Ap
 
         let branch_ref = repo
             .find_branch(&branch, BranchType::Local)
-            .map_err(|e| format!("Branch '{}' not found: {e}", branch))?;
+            .map_err(|e| format!("Branch '{branch}' not found: {e}"))?;
 
         let refname = branch_ref
             .get()
             .name()
-            .ok_or_else(|| format!("Branch '{}' has invalid UTF-8 refname", branch))?
+            .ok_or_else(|| format!("Branch '{branch}' has invalid UTF-8 refname"))?
             .to_string();
 
         repo.set_head(&refname)
@@ -135,9 +135,9 @@ pub async fn cmd_git_create_branch(
         let commit = if let Some(ref rev) = from {
             let obj = repo
                 .revparse_single(rev)
-                .map_err(|e| format!("Failed to resolve '{}': {e}", rev))?;
+                .map_err(|e| format!("Failed to resolve '{rev}': {e}"))?;
             obj.peel_to_commit()
-                .map_err(|e| format!("'{}' is not a commit: {e}", rev))?
+                .map_err(|e| format!("'{rev}' is not a commit: {e}"))?
         } else {
             let head = repo
                 .head()
@@ -151,7 +151,7 @@ pub async fn cmd_git_create_branch(
 
         let branch = repo
             .branch(&name, &commit, false)
-            .map_err(|e| format!("Failed to create branch '{}': {e}", name))?;
+            .map_err(|e| format!("Failed to create branch '{name}': {e}"))?;
 
         let tip_oid = branch.get().target();
 
@@ -176,7 +176,7 @@ pub async fn cmd_git_delete_branch(mod_path: String, name: String) -> Result<(),
 
         let mut branch = repo
             .find_branch(&name, BranchType::Local)
-            .map_err(|e| format!("Branch '{}' not found: {e}", name))?;
+            .map_err(|e| format!("Branch '{name}' not found: {e}"))?;
 
         if branch.is_head() {
             return Err("Cannot delete the current branch".to_string());
@@ -184,7 +184,7 @@ pub async fn cmd_git_delete_branch(mod_path: String, name: String) -> Result<(),
 
         branch
             .delete()
-            .map_err(|e| format!("Failed to delete branch '{}': {e}", name))?;
+            .map_err(|e| format!("Failed to delete branch '{name}': {e}"))?;
 
         Ok(())
     })
@@ -199,12 +199,12 @@ pub async fn cmd_git_merge(mod_path: String, branch: String) -> Result<GitMergeR
 
         let branch_ref = repo
             .find_branch(&branch, BranchType::Local)
-            .map_err(|e| format!("Branch '{}' not found: {e}", branch))?;
+.map_err(|e| format!("Branch '{branch}' not found: {e}"))?;
 
         let branch_oid = branch_ref
             .get()
             .target()
-            .ok_or_else(|| format!("Branch '{}' has no target commit", branch))?;
+            .ok_or_else(|| format!("Branch '{branch}' has no target commit"))?;
 
         let annotated = repo
             .find_annotated_commit(branch_oid)
@@ -233,7 +233,7 @@ pub async fn cmd_git_merge(mod_path: String, branch: String) -> Result<GitMergeR
 
             repo.find_reference(&refname)
                 .map_err(|e| format!("Failed to find reference: {e}"))?
-                .set_target(branch_oid, &format!("Fast-forward to {}", branch))
+                .set_target(branch_oid, &format!("Fast-forward to {branch}"))
                 .map_err(|e| format!("Failed to update reference: {e}"))?;
 
             repo.set_head(&refname)
@@ -310,7 +310,7 @@ pub async fn cmd_git_merge(mod_path: String, branch: String) -> Result<GitMergeR
                 Some("HEAD"),
                 &sig,
                 &sig,
-                &format!("Merge branch '{}'", branch),
+                &format!("Merge branch '{branch}'"),
                 &tree,
                 &[&head_commit, &merge_commit_obj],
             )

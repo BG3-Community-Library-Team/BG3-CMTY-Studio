@@ -12,6 +12,8 @@
 
   import Palette from "@lucide/svelte/icons/palette";
   import BookOpen from "@lucide/svelte/icons/book-open";
+  import GitCompareArrows from "@lucide/svelte/icons/git-compare-arrows";
+  import GitCommitVertical from "@lucide/svelte/icons/git-commit-vertical";
 
   const TAB_ICONS: Record<EditorTab["type"], typeof FileCode> = {
     section: FileCode,
@@ -26,6 +28,8 @@
     "theme-gallery": Palette,
     "script-editor": FileCode2,
     readme: BookOpen,
+    "git-diff": GitCompareArrows,
+    "git-commit": GitCommitVertical,
   };
 
   let tabs = $derived(uiStore.openTabs);

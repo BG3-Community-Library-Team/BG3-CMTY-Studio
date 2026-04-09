@@ -7,8 +7,8 @@
  * (Svelte 5 $state) so the command palette updates automatically
  * when commands are registered or unregistered.
  *
- * Categories act as navigable tree nodes in the command palette —
- * selecting a category drills down into its children.
+ * Command labels include their category prefix (e.g. "Actions: Open Project")
+ * so the palette can display a flat, searchable list without drill-down.
  *
  * **Plugin commands** use the convention `PLUGIN:action` for their id
  * (e.g. `git:checkout`, `git:createBranch`).  Plugins register and

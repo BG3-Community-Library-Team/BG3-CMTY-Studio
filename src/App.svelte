@@ -172,7 +172,7 @@
       },
       {
         id: "action.save",
-        label: "Save Project",
+        label: "Actions: Save Project",
         category: "action",
         icon: "⚡",
         shortcut: "Ctrl+S",
@@ -341,7 +341,7 @@
       // ── Edit README ──
       {
         id: "action.editReadme",
-        label: "Edit README",
+        label: "Actions: Edit README",
         category: "action",
         icon: "📝",
         enabled: () => !!modStore.scanResult,

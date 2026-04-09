@@ -144,7 +144,7 @@
 <svelte:window onkeydown={handleTitlebarKeydown} onkeyup={handleTitlebarKeyup} onblur={handleTitlebarBlur} />
 <header
   class="titlebar flex items-center h-11 bg-[var(--th-sidebar-bg-deep,var(--th-bg-950))]
-         select-none shrink-0"
+         select-none shrink-0 relative z-50"
 >
   <!-- App icon + title (draggable) -->
   <div
@@ -350,6 +350,8 @@
   .command-palette-area {
     width: clamp(180px, 37%, 600px);
     height: 70%;
+    /* Allow the results dropdown to overflow below the titlebar */
+    overflow: visible;
   }
   /* Trigger button fills the area */
   .command-palette-trigger {
