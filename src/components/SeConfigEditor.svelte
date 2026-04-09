@@ -238,7 +238,7 @@
     {#if rawMode}
       <!-- Raw JSON editing via ScriptEditorPanel -->
       <div class="flex-1 min-h-0">
-        <ScriptEditorPanel {filePath} language="json" />
+        <ScriptEditorPanel {filePath} language="json" hideHeader />
       </div>
     {:else}
       <!-- Structured form -->

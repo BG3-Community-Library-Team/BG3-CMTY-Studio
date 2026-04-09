@@ -296,7 +296,7 @@
     {#if rawMode}
       <!-- Raw XML editing via ScriptEditorPanel -->
       <div class="flex-1 min-h-0">
-        <ScriptEditorPanel {filePath} language="xml" />
+        <ScriptEditorPanel {filePath} language="xml" hideHeader />
       </div>
     {:else}
       <!-- Structured form -->
@@ -360,7 +360,7 @@
                   <td class="ver-col">
                     <input
                       type="number"
-                      class="cell-input text-center"
+                      class="cell-input"
                       class:cell-invalid={hasDupe}
                       value={entry.version}
                       oninput={(e) => {
@@ -637,15 +637,7 @@
     border-color: #f87171;
   }
 
-  .cell-input[type="number"] {
-    -moz-appearance: textfield;
-  }
 
-  .cell-input[type="number"]::-webkit-inner-spin-button,
-  .cell-input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
 
   .delete-btn {
     display: inline-flex;

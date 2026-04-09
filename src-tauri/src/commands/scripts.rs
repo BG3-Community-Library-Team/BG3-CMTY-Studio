@@ -351,7 +351,7 @@ pub async fn cmd_scaffold_khonsu_structure(
     mod_folder: String,
 ) -> Result<Vec<String>, AppError> {
     blocking(move || {
-        let base = format!("Mods/{mod_folder}/Scripts");
+        let base = format!("Mods/{mod_folder}/Scripts/thoth/helpers");
         let mut created: Vec<String> = Vec::new();
 
         let mut vars = std::collections::HashMap::new();

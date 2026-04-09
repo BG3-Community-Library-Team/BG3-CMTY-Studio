@@ -15,9 +15,10 @@
     filePath: string;
     language: ScriptLanguage;
     readonly?: boolean;
+    hideHeader?: boolean;
   }
 
-  let { filePath, language, readonly = false }: Props = $props();
+  let { filePath, language, readonly = false, hideHeader = false }: Props = $props();
 
   let content: string = $state("");
   let originalContent: string = $state("");
@@ -369,6 +370,7 @@
       <p class="text-[10px] text-[var(--th-text-600)] mt-1 max-w-[300px]">{error}</p>
     </div>
   {:else}
+    {#if !hideHeader}
     <div class="editor-header">
       <span class="text-xs font-medium text-[var(--th-text-200)] truncate">{filePath.split("/").pop()}</span>
       <span class="text-[10px] text-[var(--th-text-500)] uppercase ml-2">{language}</span>
@@ -387,6 +389,7 @@
       {/if}
       <span class="text-[10px] text-[var(--th-text-600)] ml-2">{m.script_editor_line_count({ count: lineCount })}</span>
     </div>
+    {/if}
     <div class="breadcrumb-bar">
       {#each breadcrumbs as segment, i}
         {#if i > 0}

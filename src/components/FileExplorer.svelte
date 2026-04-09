@@ -341,6 +341,10 @@
   let pendingTemplateId: string | null = $state(null);
   let pendingTemplateCategory: string | null = $state(null);
 
+  /** Re-entrancy guards for async commit functions */
+  let isCommittingCreate = false;
+  let isCommittingRename = false;
+
   function startInlineCreate(parentRelPath: string, type: 'file' | 'folder') {
     cancelInlineRename();
     inlineCreateParent = parentRelPath;
@@ -364,7 +368,14 @@
     inlineCreateName = '';
     pendingTemplateId = templateId;
     pendingTemplateCategory = category;
+    // Expand in both Mod Files and Scripts tree namespaces
     uiStore.expandedNodes[`modfile:${parentRelPath}`] = true;
+    uiStore.expandedNodes[`script:${parentRelPath}`] = true;
+    // Also expand parent path segments in the script tree
+    const parts = parentRelPath.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      uiStore.expandedNodes[`script:${parts.slice(0, i).join('/')}`] = true;
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         inlineCreateInput?.focus();
@@ -415,24 +426,29 @@
   }
 
   async function commitInlineRename() {
+    if (isCommittingRename) return;
     if (!inlineRenameNode || !inlineRenameName.trim()) {
       cancelInlineRename();
       return;
     }
+    isCommittingRename = true;
+    // Snapshot reactive state before any await
+    const node = inlineRenameNode;
     const newName = inlineRenameName.trim();
-    const oldName = inlineRenameNode.name;
-    if (newName === oldName) { cancelInlineRename(); return; }
+    const oldName = node.name;
+    if (newName === oldName) { isCommittingRename = false; cancelInlineRename(); return; }
 
     const modPath = modStore.selectedModPath;
-    if (!modPath) { cancelInlineRename(); return; }
+    if (!modPath) { isCommittingRename = false; cancelInlineRename(); return; }
 
-    const oldRelPath = `${modsFilePrefix}${inlineRenameNode.relPath}`;
-    const parentPath = inlineRenameNode.relPath.substring(0, inlineRenameNode.relPath.lastIndexOf('/'));
+    const oldRelPath = `${modsFilePrefix}${node.relPath}`;
+    const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/'));
     const newRelPath = `${modsFilePrefix}${parentPath}/${newName}`;
+    const isScript = isScriptFile(node.extension);
 
     try {
       // Use scriptRename for script files (extra path traversal protection), moveModFile for others
-      if (isScriptFile(inlineRenameNode.extension)) {
+      if (isScript) {
         await scriptRename(modPath, oldRelPath, newRelPath);
       } else {
         await moveModFile(modPath, oldRelPath, newRelPath);
@@ -446,12 +462,13 @@
       await refreshModFiles();
       toastStore.success(m.file_explorer_renamed(), `${oldName} → ${newName}`);
       // Warn about cross-references not being auto-updated
-      if (isScriptFile(inlineRenameNode.extension)) {
+      if (isScript) {
         toastStore.info(m.file_explorer_rename_xref_warning_title(), m.file_explorer_rename_xref_warning());
       }
     } catch (e) {
       toastStore.error("Rename failed", String(e));
     }
+    isCommittingRename = false;
     cancelInlineRename();
   }
 
@@ -468,10 +485,12 @@
   }
 
   async function commitInlineCreate() {
+    if (isCommittingCreate) return;
     if (!inlineCreateName.trim() || !inlineCreateParent || !inlineCreateType) {
       cancelInlineCreate();
       return;
     }
+    isCommittingCreate = true;
     const name = inlineCreateName.trim();
     const modPath = modStore.selectedModPath;
     if (!modPath) { cancelInlineCreate(); return; }
@@ -552,6 +571,7 @@
         toastStore.error("Failed to create folder", String(e));
       }
     }
+    isCommittingCreate = false;
     cancelInlineCreate();
   }
 
@@ -687,7 +707,7 @@
   function sectionCategoryToDir(sectionCategory: string | null): string {
     switch (sectionCategory) {
       case 'osiris': return 'Story/RawFiles/Goals';
-      case 'khonsu': return 'Scripts';
+      case 'khonsu': return 'Scripts/thoth/helpers';
       case 'anubis': return 'Scripts/anubis';
       case 'constellations': return 'Scripts/constellations';
       default: return 'ScriptExtender/Lua';
@@ -699,7 +719,7 @@
     if (relPath.startsWith('Story/RawFiles/Goals') || relPath.includes('/Story/RawFiles/Goals')) return 'osiris';
     if (relPath.startsWith('Scripts/anubis') || relPath.includes('/Scripts/anubis')) return 'anubis';
     if (relPath.startsWith('Scripts/constellations') || relPath.includes('/Scripts/constellations')) return 'constellations';
-    if (relPath.startsWith('Scripts') || relPath.includes('/Scripts')) return 'khonsu';
+    if (relPath.startsWith('Scripts/thoth/helpers') || relPath.includes('/Scripts/thoth/helpers')) return 'khonsu';
     return null;
   }
 
@@ -1017,11 +1037,15 @@
     return filterTree(seDir.children, LUA_SE_EXTENSIONS);
   });
 
-  /** Khonsu tree: folder structure of Scripts/ with .khn files. */
+  /** Khonsu tree: folder structure of Scripts/thoth/helpers with .khn files. */
   let khonsuTree = $derived.by((): FileTreeNode[] => {
     const scriptsDir = modFileTree.find(n => !n.isFile && n.name === "Scripts");
     if (!scriptsDir?.children) return [];
-    return filterTree(scriptsDir.children, new Set(["khn"]));
+    const thothDir = scriptsDir.children.find(n => !n.isFile && n.name === "thoth");
+    if (!thothDir?.children) return [];
+    const helpersDir = thothDir.children.find(n => !n.isFile && n.name === "helpers");
+    if (!helpersDir?.children) return [];
+    return filterTree(helpersDir.children, new Set(["khn"]));
   });
 
   /** Osiris tree: Story/RawFiles/Goals/ with .txt goal files. */
@@ -1057,7 +1081,7 @@
   const SCRIPT_CATEGORIES = [
     { key: "lua-se", label: "Lua (SE)", dir: "ScriptExtender", extensions: LUA_SE_EXTENSIONS },
     { key: "osiris", label: "Osiris", dir: "Story/RawFiles/Goals", extensions: new Set(["txt"]) },
-    { key: "khonsu", label: "Khonsu", dir: "Scripts", extensions: new Set(["khn"]) },
+    { key: "khonsu", label: "Khonsu", dir: "Scripts/thoth/helpers", extensions: new Set(["khn"]) },
     { key: "anubis", label: "Anubis", dir: "Scripts/anubis", extensions: new Set(["anc", "ann", "anm"]) },
     { key: "constellations", label: "Constellations", dir: "Scripts/constellations", extensions: new Set(["clc", "cln", "clm"]) },
   ];
@@ -2191,17 +2215,6 @@
     </button>
     <button
       class="ctx-item"
-      onclick={() => {
-        locaCtxVisible = false;
-        createLocalizationTemplate();
-      }}
-      role="menuitem"
-    >
-      <FileCode size={12} class="shrink-0" />
-      New Contentlist from Template
-    </button>
-    <button
-      class="ctx-item"
       onclick={() => { startInlineCreate('Localization', 'folder'); locaCtxVisible = false; uiStore.expandNode('_Localization'); }}
       role="menuitem"
     >
@@ -2309,7 +2322,7 @@
 
 <!-- Scripts context menu (category-aware) -->
 {#if scriptsCtxVisible}
-  {@const ctxDir = scriptsCtxCategory === 'khonsu' ? 'Scripts'
+  {@const ctxDir = scriptsCtxCategory === 'khonsu' ? 'Scripts/thoth/helpers'
     : scriptsCtxCategory === 'osiris' ? 'Story/RawFiles/Goals'
     : scriptsCtxCategory === 'anubis' ? 'Scripts/anubis'
     : scriptsCtxCategory === 'constellations' ? 'Scripts/constellations'

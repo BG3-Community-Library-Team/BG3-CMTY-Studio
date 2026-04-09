@@ -13,6 +13,7 @@
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
   import SeConfigEditor from "./SeConfigEditor.svelte";
+  import McmBlueprintEditor from "./McmBlueprintEditor.svelte";
   import LocalizationFileEditor from "./LocalizationFileEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
@@ -481,6 +482,8 @@
       {#if activeTab.filePath}
         {#if activeTab.filePath.endsWith("ScriptExtender/Config.json")}
           <SeConfigEditor filePath={activeTab.filePath} />
+        {:else if activeTab.filePath.includes("MCM_blueprint") && activeTab.filePath.endsWith(".json")}
+          <McmBlueprintEditor filePath={activeTab.filePath} />
         {:else if activeTab.filePath.includes("Localization/") && activeTab.filePath.endsWith(".xml")}
           <LocalizationFileEditor filePath={activeTab.filePath} />
         {:else}
