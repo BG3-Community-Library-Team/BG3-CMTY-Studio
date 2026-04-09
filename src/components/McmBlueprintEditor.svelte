@@ -8,6 +8,7 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
+  import { m } from "../paraglide/messages.js";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
@@ -214,7 +215,7 @@
     const path = filePath;
     const modPath = modStore.selectedModPath;
     if (!path || !modPath) {
-      error = "No mod folder selected";
+      error = m.mcm_editor_no_mod_folder();
       isLoading = false;
       return;
     }
@@ -226,7 +227,7 @@
         rawContent = text;
         if (!jsonToForm(text)) {
           rawMode = true;
-          parseError = "Invalid MCM blueprint JSON";
+          parseError = m.mcm_editor_invalid_json();
         }
       } else {
         // New file defaults
@@ -256,9 +257,9 @@
       rawContent = json;
       const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);
       if (tab) tab.dirty = false;
-      toastStore.success("Blueprint saved", "MCM_blueprint.json");
+      toastStore.success(m.mcm_editor_saved_title(), "MCM_blueprint.json");
     } catch (err) {
-      toastStore.error("Save failed", String(err));
+      toastStore.error(m.mcm_editor_save_failed(), String(err));
     }
   }
 
@@ -268,7 +269,7 @@
         parseError = null;
         rawMode = false;
       } else {
-        parseError = "Invalid JSON — fix errors before switching to form view";
+        parseError = m.mcm_editor_fix_json();
       }
     } else {
       rawContent = formToJson();
@@ -377,12 +378,12 @@
   {#if isLoading}
     <div class="editor-empty">
       <Loader2 size={24} class="text-[var(--th-text-600)] animate-spin" />
-      <p class="text-xs text-[var(--th-text-500)] mt-2">Loading...</p>
+      <p class="text-xs text-[var(--th-text-500)] mt-2">{m.mcm_editor_loading()}</p>
     </div>
   {:else if error}
     <div class="editor-empty">
       <AlertCircle size={24} class="text-red-400" />
-      <p class="text-xs text-red-300 mt-2">Failed to load blueprint</p>
+      <p class="text-xs text-red-300 mt-2">{m.mcm_editor_load_failed()}</p>
       <p class="text-[10px] text-[var(--th-text-600)] mt-1 max-w-[300px]">{error}</p>
     </div>
   {:else}
@@ -399,16 +400,16 @@
         <button class="mode-toggle" onclick={toggleMode}>
           {#if rawMode}
             <FileText size={12} />
-            <span>Form</span>
+            <span>{m.mcm_editor_form()}</span>
           {:else}
             <Code size={12} />
-            <span>Raw JSON</span>
+            <span>{m.mcm_editor_raw_json()}</span>
           {/if}
         </button>
         {#if !rawMode}
           <button class="save-btn" onclick={saveForm}>
             <Save size={12} />
-            Save
+            {m.mcm_editor_save()}
           </button>
         {/if}
       </div>
@@ -423,14 +424,14 @@
         <!-- Root fields -->
         <div class="form-row">
           <div class="form-field" style="flex: 0 0 120px;">
-            <label class="form-label">Schema Version
+            <label class="form-label">{m.mcm_editor_schema_version()}
               <input type="number" class="form-input" value={schemaVersion} min="1" step="1"
                 oninput={(e) => { schemaVersion = parseInt(e.currentTarget.value, 10) || 1; markDirty(); }} />
             </label>
           </div>
           <div class="form-field" style="flex: 1;">
-            <label class="form-label">Mod Name <span class="text-[var(--th-text-600)]">(optional)</span>
-              <input type="text" class="form-input" value={modName} placeholder="Display name override"
+            <label class="form-label"><span>{m.mcm_editor_mod_name()} <span class="text-[var(--th-text-600)]">{m.mcm_editor_optional()}</span></span>
+              <input type="text" class="form-input" value={modName} placeholder={m.mcm_editor_mod_name_placeholder()}
                 oninput={(e) => { modName = e.currentTarget.value; markDirty(); }} />
             </label>
           </div>
@@ -439,9 +440,9 @@
         <!-- Tabs -->
         <div class="tabs-section">
           <div class="section-header">
-            <span class="section-title">Tabs</span>
+            <span class="section-title">{m.mcm_editor_tabs()}</span>
             <button class="add-btn" onclick={addTab}>
-              <Plus size={12} /> Add Tab
+              <Plus size={12} /> {m.mcm_editor_add_tab()}
             </button>
           </div>
 
@@ -451,9 +452,9 @@
             <div class="card">
               <div class="card-header" role="button" tabindex="0" onclick={() => toggleExpand(expandedTabs, tabKey)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(expandedTabs, tabKey); }}>
                 <ChevronRight size={14} class="chevron {tabExpanded ? 'expanded' : ''}" />
-                <span class="card-title">{tab.TabName || 'Untitled Tab'}</span>
-                <span class="card-badge">Tab {tabIdx + 1}</span>
-                <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeTab(tabIdx); }} title="Remove tab">
+                <span class="card-title">{tab.TabName || m.mcm_editor_untitled_tab()}</span>
+                <span class="card-badge">{m.mcm_editor_tab_badge({ index: tabIdx + 1 })}</span>
+                <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeTab(tabIdx); }} title={m.mcm_editor_remove_tab()}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -462,13 +463,13 @@
                 <div class="card-body">
                   <div class="form-row">
                     <div class="form-field" style="flex: 1;">
-                      <label class="form-label">Tab ID
+                      <label class="form-label">{m.mcm_editor_tab_id()}
                         <input type="text" class="form-input" value={tab.TabId} placeholder="unique_tab_id"
                           oninput={(e) => { tab.TabId = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
                       </label>
                     </div>
                     <div class="form-field" style="flex: 1;">
-                      <label class="form-label">Tab Name
+                      <label class="form-label">{m.mcm_editor_tab_name()}
                         <input type="text" class="form-input" value={tab.TabName} placeholder="Display Name"
                           oninput={(e) => { tab.TabName = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
                       </label>
@@ -478,9 +479,9 @@
                   <!-- Sections within tab -->
                   <div class="subsection">
                     <div class="section-header">
-                      <span class="subsection-title">Sections</span>
+                      <span class="subsection-title">{m.mcm_editor_sections()}</span>
                       <button class="add-btn small" onclick={() => addSection(tabIdx)}>
-                        <Plus size={10} /> Section
+                        <Plus size={10} /> {m.mcm_editor_add_section()}
                       </button>
                     </div>
 
@@ -490,8 +491,8 @@
                       <div class="card nested">
                         <div class="card-header" role="button" tabindex="0" onclick={() => toggleExpand(expandedSections, secKey)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(expandedSections, secKey); }}>
                           <ChevronRight size={12} class="chevron {secExpanded ? 'expanded' : ''}" />
-                          <span class="card-title small">{section.SectionName || 'Untitled Section'}</span>
-                          <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeSection(tabIdx, secIdx); }} title="Remove section">
+                          <span class="card-title small">{section.SectionName || m.mcm_editor_untitled_section()}</span>
+                          <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeSection(tabIdx, secIdx); }} title={m.mcm_editor_remove_section()}>
                             <Trash2 size={10} />
                           </button>
                         </div>
@@ -500,13 +501,13 @@
                           <div class="card-body">
                             <div class="form-row">
                               <div class="form-field" style="flex: 1;">
-                                <label class="form-label">Section ID
+                                <label class="form-label">{m.mcm_editor_section_id()}
                                   <input type="text" class="form-input" value={section.SectionId} placeholder="section_id"
                                     oninput={(e) => { section.SectionId = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
                                 </label>
                               </div>
                               <div class="form-field" style="flex: 1;">
-                                <label class="form-label">Section Name
+                                <label class="form-label">{m.mcm_editor_section_name()}
                                   <input type="text" class="form-input" value={section.SectionName} placeholder="Section Name"
                                     oninput={(e) => { section.SectionName = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
                                 </label>
@@ -518,7 +519,7 @@
                               {@render settingForm(setting, tabIdx, secIdx, settIdx)}
                             {/each}
                             <button class="add-btn small" onclick={() => addSetting(tabIdx, secIdx)}>
-                              <Plus size={10} /> Setting
+                              <Plus size={10} /> {m.mcm_editor_add_setting()}
                             </button>
                           </div>
                         {/if}
@@ -529,9 +530,9 @@
                   <!-- Tab-level settings (without sections) -->
                   <div class="subsection">
                     <div class="section-header">
-                      <span class="subsection-title">Settings</span>
+                      <span class="subsection-title">{m.mcm_editor_settings()}</span>
                       <button class="add-btn small" onclick={() => addSetting(tabIdx, null)}>
-                        <Plus size={10} /> Setting
+                        <Plus size={10} /> {m.mcm_editor_add_setting()}
                       </button>
                     </div>
                     {#each tab.Settings as setting, settIdx (setting.Id || `tab-${tabIdx}-${settIdx}`)}
@@ -555,8 +556,8 @@
     <div class="card-header setting" role="button" tabindex="0" onclick={() => toggleExpand(expandedSettings, settKey)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(expandedSettings, settKey); }}>
       <ChevronRight size={12} class="chevron {settExpanded ? 'expanded' : ''}" />
       <span class="setting-type-badge">{setting.Type}</span>
-      <span class="card-title small">{setting.Name || setting.Id || 'New Setting'}</span>
-      <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeSetting(tabIdx, secIdx, settIdx); }} title="Remove setting">
+      <span class="card-title small">{setting.Name || setting.Id || m.mcm_editor_new_setting()}</span>
+      <button class="remove-btn" onclick={(e) => { e.stopPropagation(); removeSetting(tabIdx, secIdx, settIdx); }} title={m.mcm_editor_remove_setting()}>
         <Trash2 size={10} />
       </button>
     </div>
@@ -565,19 +566,19 @@
       <div class="setting-body">
         <div class="form-row">
           <div class="form-field" style="flex: 1;">
-            <label class="form-label">ID
+            <label class="form-label">{m.mcm_editor_setting_id()}
               <input type="text" class="form-input" value={setting.Id} placeholder="unique_setting_id"
                 oninput={(e) => { setting.Id = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
             </label>
           </div>
           <div class="form-field" style="flex: 1;">
-            <label class="form-label">Name
+            <label class="form-label">{m.mcm_editor_setting_name()}
               <input type="text" class="form-input" value={setting.Name} placeholder="Setting Name"
                 oninput={(e) => { setting.Name = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
             </label>
           </div>
           <div class="form-field" style="flex: 0 0 150px;">
-            <label class="form-label">Type
+            <label class="form-label">{m.mcm_editor_setting_type()}
               <select class="form-input" value={setting.Type}
                 onchange={(e) => onTypeChange(setting, e.currentTarget.value as WidgetType)}>
                 {#each WIDGET_TYPES as wt}
@@ -591,7 +592,7 @@
         <!-- Default value -->
         {#if setting.Type !== "event_button"}
           <div class="form-field">
-            <span class="form-label">Default</span>
+            <span class="form-label">{m.mcm_editor_default()}</span>
             {#if setting.Type === "checkbox"}
               <label class="checkbox-item">
                 <input type="checkbox" checked={setting.Default === true}
@@ -623,14 +624,14 @@
         <!-- Description / Tooltip -->
         <div class="form-row">
           <div class="form-field" style="flex: 1;">
-            <label class="form-label">Description
-              <input type="text" class="form-input" value={setting.Description} placeholder="Shown below the setting"
+            <label class="form-label">{m.mcm_editor_description()}
+              <input type="text" class="form-input" value={setting.Description} placeholder={m.mcm_editor_description_placeholder()}
                 oninput={(e) => { setting.Description = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
             </label>
           </div>
           <div class="form-field" style="flex: 1;">
-            <label class="form-label">Tooltip
-              <input type="text" class="form-input" value={setting.Tooltip} placeholder="Shown on hover"
+            <label class="form-label">{m.mcm_editor_tooltip()}
+              <input type="text" class="form-input" value={setting.Tooltip} placeholder={m.mcm_editor_tooltip_placeholder()}
                 oninput={(e) => { setting.Tooltip = e.currentTarget.value; tabs = [...tabs]; markDirty(); }} />
             </label>
           </div>
@@ -639,7 +640,7 @@
         <!-- Type-specific options -->
         {#if needsChoices(setting.Type)}
           <div class="form-field">
-            <span class="form-label">Choices</span>
+            <span class="form-label">{m.mcm_editor_choices()}</span>
             <div class="choices-list">
               {#each getChoices(setting) as choice, cIdx}
                 <div class="choice-row">
@@ -652,7 +653,7 @@
                 </div>
               {/each}
               <button class="add-btn small" onclick={() => { setChoices(setting, [...getChoices(setting), `Option ${getChoices(setting).length + 1}`]); }}>
-                <Plus size={10} /> Choice
+                <Plus size={10} /> {m.mcm_editor_add_choice()}
               </button>
             </div>
           </div>
@@ -661,14 +662,14 @@
         {#if needsMinMax(setting.Type)}
           <div class="form-row">
             <div class="form-field" style="flex: 0 0 120px;">
-              <label class="form-label">Min
+              <label class="form-label">{m.mcm_editor_min()}
                 <input type="number" class="form-input" value={setting.Options.Min ?? 0}
                   step={setting.Type.includes('float') ? '0.1' : '1'}
                   oninput={(e) => { setting.Options = { ...setting.Options, Min: parseFloat(e.currentTarget.value) || 0 }; tabs = [...tabs]; markDirty(); }} />
               </label>
             </div>
             <div class="form-field" style="flex: 0 0 120px;">
-              <label class="form-label">Max
+              <label class="form-label">{m.mcm_editor_max()}
                 <input type="number" class="form-input" value={setting.Options.Max ?? 100}
                   step={setting.Type.includes('float') ? '0.1' : '1'}
                   oninput={(e) => { setting.Options = { ...setting.Options, Max: parseFloat(e.currentTarget.value) || 100 }; tabs = [...tabs]; markDirty(); }} />
@@ -682,7 +683,7 @@
             <label class="checkbox-item">
               <input type="checkbox" checked={setting.Options.Multiline === true}
                 onchange={() => { setting.Options = { ...setting.Options, Multiline: !setting.Options.Multiline }; tabs = [...tabs]; markDirty(); }} />
-              <span>Multiline</span>
+              <span>{m.mcm_editor_multiline()}</span>
             </label>
           </div>
         {/if}

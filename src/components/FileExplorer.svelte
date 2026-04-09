@@ -151,7 +151,10 @@
     return root.children ?? [];
   }
 
-  /** Derived file tree from mod files — only files under Mods/{modFolder}/ (excluding Localization, shown at root level) */
+  /** Folders managed by the Scripts tree — hidden from Mod Files to avoid duplication */
+  const SCRIPT_MANAGED_ROOTS = new Set(['ScriptExtender', 'Scripts', 'Story']);
+
+  /** Full file tree from mod files — used by script sub-trees to find their directories */
   let modFileTree = $derived.by(() => {
     const folder = modStore.scanResult?.mod_meta?.folder;
     if (!folder) return buildFileTree(modStore.modFiles);
@@ -161,6 +164,11 @@
       .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }))
       .filter(f => !f.rel_path.startsWith('Localization/') && f.rel_path !== 'Localization');
     return buildFileTree(filtered);
+  });
+
+  /** Display-filtered tree for the Mods/{folder} node — excludes script-managed roots shown in the Scripts section */
+  let modFileDisplayTree = $derived.by(() => {
+    return modFileTree.filter(n => !SCRIPT_MANAGED_ROOTS.has(n.name));
   });
 
   let scanResult = $derived(modStore.scanResult);
@@ -1587,7 +1595,7 @@
 
           {#if isModsExpanded}
             <div class="tree-children">
-              {#if modFileTree.length > 0}
+              {#if modFileDisplayTree.length > 0}
                 {#snippet modFileNode(node: FileTreeNode)}
                   {#if node.isFile}
                     <button
@@ -1709,7 +1717,7 @@
                     {/if}
                   {/if}
                 {/snippet}
-                {#each modFileTree as treeNode (treeNode.relPath)}
+                {#each modFileDisplayTree as treeNode (treeNode.relPath)}
                   {@render modFileNode(treeNode)}
                 {/each}
               {:else}
@@ -2115,7 +2123,7 @@
                             bind:this={inlineCreateInput}
                             bind:value={inlineCreateName}
                             class="inline-create-input"
-                            placeholder={inlineCreateType === 'folder' ? 'folder name' : `filename${SECTION_DEFAULT_EXT[cat.key] ?? ''}`}
+                            placeholder={inlineCreateType === 'folder' ? 'folder name' : `filename${((pendingTemplateId && TEMPLATE_EXT[pendingTemplateId]) || SECTION_DEFAULT_EXT[cat.key]) ?? ''}`}
                             onkeydown={(e) => {
                               if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); }
                               if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); }
