@@ -386,6 +386,37 @@
         {/if}
       </div>
     </div>
+  {:else if uiStore.settingsSection === "git"}
+    <h3 class="settings-section-title">{m.settings_git_title()}</h3>
+
+    <div class="space-y-3">
+      <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_git_identity_heading()}</p>
+      <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_git_identity_help()}</p>
+
+      <div>
+        <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="git-user-name">{m.settings_git_user_name()}</label>
+        <input
+          id="git-user-name"
+          type="text"
+          class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+          value={settingsStore.gitUserName}
+          placeholder={m.settings_git_user_name_placeholder()}
+          oninput={(e) => { settingsStore.gitUserName = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+        />
+      </div>
+
+      <div>
+        <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="git-user-email">{m.settings_git_user_email()}</label>
+        <input
+          id="git-user-email"
+          type="email"
+          class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+          value={settingsStore.gitUserEmail}
+          placeholder={m.settings_git_user_email_placeholder()}
+          oninput={(e) => { settingsStore.gitUserEmail = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+        />
+      </div>
+    </div>
   {:else}
     <div class="flex flex-col items-center justify-center h-full text-center">
       <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>

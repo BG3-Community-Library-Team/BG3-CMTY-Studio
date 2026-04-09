@@ -17,10 +17,12 @@
   import SettingsView from "./components/SettingsView.svelte";
   import HelpSidebarPanel from "./components/HelpSidebarPanel.svelte";
   import ProjectPanel from "./components/ProjectPanel.svelte";
+  import GitPanel from "./components/git/GitPanel.svelte";
   import LoadedDataPanel from "./components/hamburger/LoadedDataPanel.svelte";
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
   import EntrySummary from "./components/manual-entry/EntrySummary.svelte";
   import DuplicateModModal from "./components/DuplicateModModal.svelte";
+  import ModSelectionModal from "./components/ModSelectionModal.svelte";
   import PreExportValidation from "./components/PreExportValidation.svelte";
   import { modImportService, type DuplicatePromptFn } from "./lib/services/modImportService.svelte.js";
   import { detectGameDataPath, type ModMetaInfo } from "./lib/utils/tauri.js";
@@ -34,7 +36,7 @@
   import { uiStore } from "./lib/stores/uiStore.svelte.js";
   import { applyTheme, THEME_COMMANDS, type ThemeId } from "./lib/themes/themeManager.js";
   import { getPrefersReducedMotion } from "./lib/stores/motion.svelte.js";
-  import { scanAndImport } from "./lib/services/scanService.js";
+  import { scanAndImport, openProject } from "./lib/services/scanService.js";
   import { saveProject, validateHandlers, type HandlerWarning } from "./lib/tauri/save.js";
   import { getDbPaths } from "./lib/tauri/db-management.js";
   import { undoStore } from "./lib/stores/undoStore.svelte.js";
@@ -144,11 +146,10 @@
               );
               if (!confirmed) return;
             }
-            const selected = await open({ directory: true, title: m.app_select_mod_folder() });
+            const selected = await open({ directory: true, title: m.app_select_project_folder() });
             if (selected != null) {
               const path = Array.isArray(selected) ? selected[0] : String(selected);
-              modStore.selectedModPath = path;
-              await scanAndImport(path);
+              await openProject(path);
             }
           } catch (e: unknown) {
             toastStore.error(m.app_open_scan_failed(), getErrorMessage(e));
@@ -791,7 +792,7 @@
       <!-- Main content area -->
       <div bind:this={contentColumnEl} class="flex flex-1 min-h-0">
         <!-- Side panel: contextual view based on active activity -->
-        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings")}
+        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git")}
           <div class="side-panel" style="width: {leftPanelWidth}px; zoom: {settingsStore.zoomLevel / 100};">
             {#if uiStore.activeView === "search"}
               <ErrorBoundary name="Search Panel">
@@ -818,6 +819,10 @@
             {:else if uiStore.activeView === "settings"}
               <ErrorBoundary name="Settings">
                 <SettingsView />
+              </ErrorBoundary>
+            {:else if uiStore.activeView === "git"}
+              <ErrorBoundary name="Git Panel">
+                <GitPanel />
               </ErrorBoundary>
             {:else}
               <ErrorBoundary name="File Explorer">
@@ -846,7 +851,7 @@
               <p class="mt-3 text-xs text-[var(--th-text-400)]">{m.app_comparing_mod()}</p>
             </div>
           {/if}
-          {#if uiStore.activeView === "editor" || uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings"}
+          {#if uiStore.activeView === "editor" || uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git"}
             <ErrorBoundary name="Editor">
               <EditorTabs />
             </ErrorBoundary>
@@ -920,6 +925,8 @@
 </div>
 
 <CreateModModal />
+
+<ModSelectionModal />
 
 <!-- Pre-export validation gate modal -->
 {#if showValidationModal && validationWarnings.length > 0}

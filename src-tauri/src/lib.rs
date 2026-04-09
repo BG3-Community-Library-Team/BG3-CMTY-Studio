@@ -4,6 +4,7 @@ pub mod converters;
 pub mod db_manager;
 pub mod error;
 pub mod export;
+pub mod git;
 pub mod logging;
 pub mod models;
 pub mod pak;
@@ -1207,6 +1208,13 @@ async fn cmd_read_mod_meta(mod_path: String) -> Result<ModMeta, AppError> {
         .await
 }
 
+/// Detect valid ModFolders within a project folder.
+#[tauri::command]
+async fn cmd_detect_mod_folders(project_path: String) -> Result<paths::DetectResult, AppError> {
+    blocking(move || paths::detect_mod_folders(&project_path))
+        .await
+}
+
 /// Re-diff a primary mod against a different comparison source.
 /// If compare_mod_path is empty, diffs against vanilla.
 #[tauri::command]
@@ -1844,6 +1852,7 @@ async fn cmd_list_pak_sections(
 #[cfg_attr(test, derive(TS))]
 #[cfg_attr(test, ts(export))]
 struct CreateModResult {
+    project_root: String,
     mod_root: String,
     meta_path: String,
     public_path: String,
@@ -1875,9 +1884,10 @@ async fn cmd_create_mod_scaffold(
         let uuid = uuid::Uuid::new_v4().to_string();
         let folder_name = if folder.trim().is_empty() { mod_name.clone() } else { folder.trim().to_string() };
         let version64 = parse_version_to_int64(&version);
-        let root = PathBuf::from(&target_dir).join(&folder_name);
-        let mods_dir = root.join("Mods").join(&folder_name);
-        let public_dir = root.join("Public").join(&folder_name);
+        let project_root = PathBuf::from(&target_dir).join(format!("Proj_{folder_name}"));
+        let mod_root = project_root.join(&folder_name);
+        let mods_dir = mod_root.join("Mods").join(&folder_name);
+        let public_dir = mod_root.join("Public").join(&folder_name);
 
         fs::create_dir_all(&mods_dir)
             .map_err(|e| format!("Failed to create Mods dir: {e}"))?;
@@ -1939,7 +1949,7 @@ r#"<?xml version="1.0" encoding="utf-8"?>
 
         // Optional: Script Extender folder
         if use_script_extender {
-            let se_dir = root.join("Mods").join(&folder_name).join("ScriptExtender");
+            let se_dir = mod_root.join("Mods").join(&folder_name).join("ScriptExtender");
             let lua_dir = se_dir.join("Lua");
             fs::create_dir_all(&lua_dir)
                 .map_err(|e| format!("Failed to create ScriptExtender dir: {e}"))?;
@@ -2006,7 +2016,8 @@ r#"<?xml version="1.0" encoding="utf-8"?>
         }
 
         Ok(CreateModResult {
-            mod_root: root.to_string_lossy().into_owned(),
+            project_root: project_root.to_string_lossy().into_owned(),
+            mod_root: mod_root.to_string_lossy().into_owned(),
             meta_path: meta_path.to_string_lossy().into_owned(),
             public_path: public_dir.to_string_lossy().into_owned(),
             has_script_extender: use_script_extender,
@@ -2062,6 +2073,7 @@ pub fn run() {
             cmd_process_mod_folder,
             cmd_dir_size,
             cmd_read_mod_meta,
+            cmd_detect_mod_folders,
             cmd_rediff_mod,
             cmd_list_load_order_paks,
             cmd_get_active_mod_folders,
@@ -2147,6 +2159,20 @@ pub fn run() {
             commands::filesystem::cmd_move_mod_file,
             commands::filesystem::cmd_copy_mod_file,
             commands::http::cmd_fetch_remote_schema,
+            commands::git_core::cmd_git_init,
+            commands::git_core::cmd_git_clone,
+            commands::git_core::cmd_git_repo_info,
+            commands::git_core::cmd_git_open,
+            commands::git_core::cmd_git_status,
+            commands::git_core::cmd_git_stage,
+            commands::git_core::cmd_git_stage_all,
+            commands::git_core::cmd_git_unstage,
+            commands::git_core::cmd_git_discard,
+            commands::git_core::cmd_git_diff_file,
+            commands::git_core::cmd_git_commit,
+            commands::git_core::cmd_git_amend,
+            commands::git_core::cmd_git_log,
+            commands::git_core::cmd_git_show,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

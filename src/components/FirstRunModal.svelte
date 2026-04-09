@@ -91,6 +91,7 @@
             <li>{m.first_run_can_export()}</li>
           </ul>
         </div>
+        <p class="text-[var(--th-text-400)] italic">{m.first_run_project_folder_explanation()}</p>
           <p>{m.first_run_cta_text()}</p>
       </div>
 

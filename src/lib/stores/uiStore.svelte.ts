@@ -4,12 +4,12 @@
  */
 import { m } from "../../paraglide/messages.js";
 
-export type ActivityView = "project" | "explorer" | "editor" | "search" | "settings" | "loaded-data" | "help";
+export type ActivityView = "project" | "explorer" | "editor" | "search" | "git" | "settings" | "loaded-data" | "help";
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
-const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "loaded-data", "settings", "help"];
+const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "git", "loaded-data", "settings", "help"];
 
-export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts";
+export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts" | "git";
 
 /** Data needed to render the summary drawer at the App layout level */
 export interface SummaryDrawerState {
@@ -270,6 +270,14 @@ class UiStore {
   /** Whether the search panel should be shown */
   showSearchPanel = $state(false);
 
+  /** Whether the last "Open Project" attempt found no mods (shown in welcome area) */
+  noModsFound: boolean = $state(false);
+
+  /** Set the no-mods-found state (called by openProject flow) */
+  setNoModsFound(value: boolean): void {
+    this.noModsFound = value;
+  }
+
   /** Close all open tabs and clear related navigation state (e.g., on mod switch). */
   closeAllTabs(): void {
     this.openTabs = [];
@@ -287,6 +295,7 @@ class UiStore {
     this.expandedSections = {};
     this.formNavSections = [];
     this.summaryDrawer = null;
+    this.noModsFound = false;
     this.activeView = "explorer";
     this.settingsSection = "";
     this.sidebarVisible = true;

@@ -13,6 +13,7 @@
     { id: "schemas", label: () => m.settings_nav_schemas() },
     { id: "notifications", label: () => m.settings_nav_notifications() },
     { id: "scripts", label: () => m.settings_nav_scripts() },
+    { id: "git", label: () => m.settings_nav_git() },
   ];
   function selectSection(id: SettingsSection) {
     uiStore.settingsSection = id;

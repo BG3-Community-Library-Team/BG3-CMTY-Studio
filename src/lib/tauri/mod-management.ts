@@ -67,6 +67,7 @@ export async function fileExists(path: string): Promise<boolean> {
 // ─── Mod Scaffold ──────────────────────────────────────────────────
 
 export interface CreateModResult {
+  project_root: string;
   mod_root: string;
   meta_path: string;
   public_path: string;

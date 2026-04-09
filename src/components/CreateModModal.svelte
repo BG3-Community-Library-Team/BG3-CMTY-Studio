@@ -4,7 +4,7 @@
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { createModScaffold } from "../lib/utils/tauri.js";
-  import { scanAndImport } from "../lib/services/scanService.js";
+  import { openProject } from "../lib/services/scanService.js";
   import { open } from "@tauri-apps/plugin-dialog";
   import { focusTrap } from "../lib/utils/focusTrap.js";
   import X from "@lucide/svelte/icons/x";
@@ -38,7 +38,7 @@
         description.trim(),
         useScriptExtender,
       );
-      await scanAndImport(result.mod_root);
+      await openProject(result.project_root);
       close();
     } catch (e: unknown) {
       toastStore.error(m.create_mod_failed_title(), getErrorMessage(e));

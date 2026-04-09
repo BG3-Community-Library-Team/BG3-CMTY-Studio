@@ -23,8 +23,8 @@ interface StoredSettings {
   reducedMotion: "system" | "on" | "off";
   /** Whether the global search bar is always visible (vs toggled with Ctrl+Shift+F) */
   alwaysShowSearchBar: boolean;
-  /** Last scanned mod path — persisted across sessions */
-  lastModPath: string;
+  /** Last project path — persisted across sessions */
+  lastProjectPath: string;
   /** Text zoom level (percentage: 100 = default) */
   zoomLevel: number;
   /** Toast notification auto-dismiss duration in ms (0 = don't auto-dismiss) */
@@ -51,6 +51,10 @@ interface StoredSettings {
   templateFoldersPath: string;
   /** URL to fetch the MCM blueprint JSON schema for validation and editor support */
   mcmSchemaUrl: string;
+  /** Git commit author name (falls back to ~/.gitconfig if empty) */
+  gitUserName: string;
+  /** Git commit author email (falls back to ~/.gitconfig if empty) */
+  gitUserEmail: string;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -67,7 +71,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   leftPanelWidth: 240,
   reducedMotion: "system",
   alwaysShowSearchBar: false,
-  lastModPath: "",
+  lastProjectPath: "",
   zoomLevel: 100,
   toastDuration: 3000,
   errorToastDuration: 8000,
@@ -81,6 +85,8 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   ideHelpersPath: "",
   templateFoldersPath: "",
   mcmSchemaUrl: "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json",
+  gitUserName: "",
+  gitUserEmail: "",
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -89,7 +95,7 @@ const PERSISTED_KEYS = Object.keys(PERSISTED_DEFAULTS) as (keyof StoredSettings)
 /** Keys stored in OS keychain via Tauri secure storage rather than localStorage. */
 const SECURE_KEYS: (keyof StoredSettings)[] = [
   "vanillaPath", "gameDataPath",
-  "additionalModPaths", "lastModPath",
+  "additionalModPaths", "lastProjectPath",
 ];
 const SECURE_KEY_SET: ReadonlySet<string> = new Set(SECURE_KEYS);
 
@@ -165,8 +171,8 @@ class SettingsStore {
   reducedMotion: "system" | "on" | "off" = $state(this.#initial.reducedMotion);
   /** Whether the global search bar is always visible (vs toggled with Ctrl+Shift+F) */
   alwaysShowSearchBar: boolean = $state(this.#initial.alwaysShowSearchBar);
-  /** Last scanned mod path — restored on app restart */
-  lastModPath: string = $state(this.#initial.lastModPath);
+  /** Last project path — restored on app restart */
+  lastProjectPath: string = $state(this.#initial.lastProjectPath);
 
   /** Text zoom level (percentage: 100 = default, min 50, max 200) */
   zoomLevel: number = $state(this.#initial.zoomLevel);
@@ -206,6 +212,12 @@ class SettingsStore {
 
   /** URL to fetch the MCM blueprint JSON schema for validation and editor support */
   mcmSchemaUrl: string = $state(this.#initial.mcmSchemaUrl);
+
+  /** Git commit author name (falls back to ~/.gitconfig if empty) */
+  gitUserName: string = $state(this.#initial.gitUserName);
+
+  /** Git commit author email (falls back to ~/.gitconfig if empty) */
+  gitUserEmail: string = $state(this.#initial.gitUserEmail);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);

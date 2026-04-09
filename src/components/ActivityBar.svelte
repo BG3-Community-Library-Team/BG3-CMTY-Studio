@@ -8,11 +8,13 @@
   import Database from "@lucide/svelte/icons/database";
   import HelpCircle from "@lucide/svelte/icons/help-circle";
   import FileBox from "@lucide/svelte/icons/file-box";
+  import GitBranch from "@lucide/svelte/icons/git-branch";
 
   const VIEW_REGISTRY: Record<string, { label: () => string; icon: typeof FolderOpen }> = {
     project: { label: () => m.activity_bar_project(), icon: FileBox },
     explorer: { label: () => m.activity_bar_explorer(), icon: FolderOpen },
     search: { label: () => m.activity_bar_search(), icon: Search },
+    git: { label: () => m.activity_bar_git(), icon: GitBranch },
     "loaded-data": { label: () => m.activity_bar_loaded_data(), icon: Database },
     settings: { label: () => m.activity_bar_settings(), icon: Settings },
     help: { label: () => m.activity_bar_help(), icon: HelpCircle },
@@ -22,6 +24,7 @@
     uiStore.activityBarOrder
       .filter(id => id !== "search" || modStore.scanResult)
       .filter(id => id !== "project" || modStore.scanResult)
+      .filter(id => id !== "git" || modStore.projectPath || modStore.selectedModPath)
       .filter(id => id in VIEW_REGISTRY)
       .map(id => ({ id, label: VIEW_REGISTRY[id].label(), icon: VIEW_REGISTRY[id].icon }))
   );

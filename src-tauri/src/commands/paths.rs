@@ -180,6 +180,135 @@ pub fn categorize_pak_sections(file_paths: &[String]) -> Vec<PakSectionInfo> {
     results
 }
 
+// ── Mod-folder detection within a project folder ────────────────
+
+/// A single mod discovered inside a project folder.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export))]
+pub struct DetectedMod {
+    /// Absolute path to the ModFolder.
+    pub mod_path: String,
+    /// Mod name from meta.lsx / meta.yaml.
+    pub mod_name: String,
+    /// UUID from meta.lsx / meta.yaml.
+    pub mod_uuid: String,
+    /// `Folder` attribute from meta.lsx / meta.yaml.
+    pub mod_folder: String,
+    /// Author from meta.lsx / meta.yaml.
+    pub author: String,
+    /// Whether the effective project_path contains a `.git/` directory.
+    pub has_git: bool,
+}
+
+/// Result of scanning a project folder for mod sub-folders.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export))]
+pub struct DetectResult {
+    /// Effective ProjectFolder (may differ from input if auto-corrected).
+    pub project_path: String,
+    /// Detected ModFolders within `project_path`.
+    pub mods: Vec<DetectedMod>,
+}
+
+/// Check whether `dir` looks like a ModFolder (has `Mods/*/meta.lsx` or
+/// `Mods/*/meta.yaml` inside).
+fn dir_is_mod_folder(dir: &Path) -> bool {
+    let mods_dir = dir.join("Mods");
+    if !mods_dir.is_dir() {
+        return false;
+    }
+    let Ok(entries) = fs::read_dir(&mods_dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let p = entry.path();
+        if p.join("meta.lsx").is_file() || p.join("meta.yaml").is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Try to build a [`DetectedMod`] from a directory that is a ModFolder.
+fn try_detect_mod(dir: &Path, has_git: bool) -> Option<DetectedMod> {
+    let mod_path_str = dir.to_string_lossy().to_string();
+    match read_mod_meta(&mod_path_str) {
+        Ok(meta) => Some(DetectedMod {
+            mod_path: mod_path_str,
+            mod_name: meta.name,
+            mod_uuid: meta.uuid,
+            mod_folder: meta.folder,
+            author: meta.author,
+            has_git,
+        }),
+        Err(_) => None,
+    }
+}
+
+/// Scan a project folder for valid ModFolders.
+///
+/// 1. Check immediate children (depth 1) for subdirectories that are
+///    ModFolders (`Mods/*/meta.lsx` or `meta.yaml`).
+/// 2. If none found, check whether the input folder **itself** is a
+///    ModFolder. If so, treat its parent as the effective project path.
+/// 3. Return a [`DetectResult`] — `mods` may be empty.
+pub fn detect_mod_folders(project_path: &str) -> Result<DetectResult, String> {
+    let root = Path::new(project_path);
+    if !root.is_dir() {
+        return Err(format!("Path is not a directory: {project_path}"));
+    }
+
+    // Phase 1: scan immediate children
+    let mut detected: Vec<DetectedMod> = Vec::new();
+    let has_git = root.join(".git").is_dir();
+
+    let entries = fs::read_dir(root)
+        .map_err(|e| format!("Failed to read directory: {e}"))?;
+
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if child.is_dir() && dir_is_mod_folder(&child) {
+            if let Some(dm) = try_detect_mod(&child, has_git) {
+                detected.push(dm);
+            }
+        }
+    }
+
+    if !detected.is_empty() {
+        return Ok(DetectResult {
+            project_path: project_path.to_string(),
+            mods: detected,
+        });
+    }
+
+    // Phase 2: the selected folder itself might be a ModFolder
+    if dir_is_mod_folder(root) {
+        let effective_project = root
+            .parent()
+            .ok_or_else(|| "Selected folder has no parent directory".to_string())?;
+        let effective_str = effective_project.to_string_lossy().to_string();
+        let parent_has_git = effective_project.join(".git").is_dir();
+
+        if let Some(dm) = try_detect_mod(root, parent_has_git) {
+            return Ok(DetectResult {
+                project_path: effective_str,
+                mods: vec![dm],
+            });
+        }
+    }
+
+    // Phase 3: nothing found — return empty result (not an error)
+    Ok(DetectResult {
+        project_path: project_path.to_string(),
+        mods: Vec::new(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

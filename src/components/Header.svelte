@@ -6,7 +6,7 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { scanAndImport } from "../lib/services/scanService.js";
+  import { openProject } from "../lib/services/scanService.js";
   import ExistingConfigModal from "./ExistingConfigModal.svelte";
   import type { SectionResult } from "../lib/types/index.js";
 
@@ -16,10 +16,12 @@
   let modPath = $derived(modStore.selectedModPath);
   function setModPath(v: string) { modStore.selectedModPath = v; }
 
-  // Restore last mod path from settings on mount (one-time)
+  // Restore last project path from settings on mount (one-time)
   $effect(() => {
-    if (!modStore.selectedModPath && settingsStore.lastModPath) {
-      modStore.selectedModPath = settingsStore.lastModPath;
+    if (!modStore.selectedModPath && settingsStore.lastProjectPath) {
+      // Restore last project path — openProject will detect mods within it
+      modStore.projectPath = settingsStore.lastProjectPath;
+      modStore.selectedModPath = settingsStore.lastProjectPath;
     }
     // Run once
     return undefined;
@@ -38,10 +40,11 @@
 
   async function handleScan(): Promise<void> {
     if (!modPath) return;
-    // Persist the mod path for next session
-    settingsStore.lastModPath = modPath;
+    // Persist the project path for next session
+    const projectPath = modStore.projectPath || modPath;
+    settingsStore.lastProjectPath = projectPath;
     settingsStore.persist();
-    await scanAndImport(modPath);
+    await openProject(modPath);
   }
 </script>
 

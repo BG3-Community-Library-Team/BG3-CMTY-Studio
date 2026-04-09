@@ -26,8 +26,12 @@
   import FileCode from "@lucide/svelte/icons/file-code";
   import FolderPlus from "@lucide/svelte/icons/folder-plus";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Lightbulb from "@lucide/svelte/icons/lightbulb";
+  import X from "@lucide/svelte/icons/x";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { scanAndImport } from "../lib/services/scanService.js";
+  import { scanAndImport, openProject } from "../lib/services/scanService.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { createModScaffold } from "../lib/utils/tauri.js";
   import { getErrorMessage } from "../lib/types/index.js";
@@ -37,6 +41,7 @@
   // ── Welcome page ──
 
   let showNewModForm = $state(false);
+  let folderHelpExpanded = $state(false);
   let newModName = $state("");
   let newModAuthor = $state("");
   let newModDescription = $state("");
@@ -66,7 +71,7 @@
         targetDir, newModName.trim(), newModAuthor.trim(), newModDescription.trim(), newModUseSE,
         newModFolder.trim(), newModVersion.trim(),
       );
-      await scanAndImport(result.mod_root);
+      await openProject(result.project_root);
       resetNewModForm();
     } catch (e: unknown) {
       toastStore.error(m.create_mod_failed_title(), getErrorMessage(e));
@@ -77,10 +82,10 @@
 
   async function welcomeOpenProject() {
     try {
-      const selected = await open({ directory: true, title: m.header_select_mod_folder() });
+      const selected = await open({ directory: true, title: m.app_select_project_folder() });
       if (selected == null) return;
       const p = Array.isArray(selected) ? selected[0] : String(selected);
-      await scanAndImport(p);
+      await openProject(p);
     } catch (e) {
       console.error("Dialog error:", e);
     }
@@ -370,6 +375,72 @@
             </div>
 
             <p class="text-[10px] text-[var(--th-text-600)] mt-4">v{APP_VERSION}</p>
+
+            <!-- No mods found alert -->
+            {#if uiStore.noModsFound}
+              <div class="w-full max-w-[320px] mx-auto mt-4 p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-left" role="alert">
+                <div class="flex items-start gap-2">
+                  <AlertTriangle size={16} class="text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium text-[var(--th-text-200)]">{m.welcome_no_mods_title()}</p>
+                    <p class="text-[11px] text-[var(--th-text-400)] mt-1">{m.welcome_no_mods_body()}</p>
+                    <p class="text-[11px] text-[var(--th-text-300)] mt-1.5 font-medium">{m.welcome_no_mods_hint()}</p>
+                    <div class="flex gap-2 mt-2.5">
+                      <button
+                        class="px-2.5 py-1 text-[11px] rounded font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors cursor-pointer"
+                        onclick={() => { uiStore.setNoModsFound(false); welcomeOpenProject(); }}
+                      >{m.welcome_no_mods_try_again()}</button>
+                      <button
+                        class="px-2.5 py-1 text-[11px] rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors cursor-pointer"
+                        onclick={() => uiStore.setNoModsFound(false)}
+                      >{m.welcome_no_mods_dismiss()}</button>
+                    </div>
+                  </div>
+                  <button
+                    class="p-0.5 rounded hover:bg-[var(--th-bg-700)] text-[var(--th-text-500)] cursor-pointer shrink-0"
+                    onclick={() => uiStore.setNoModsFound(false)}
+                    aria-label={m.welcome_no_mods_dismiss()}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Collapsible folder help -->
+            <div class="flex flex-col items-center w-full max-w-[320px] mx-auto mt-4">
+              <button
+                class="flex items-center gap-1.5 text-[11px] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] transition-colors cursor-pointer"
+                onclick={() => folderHelpExpanded = !folderHelpExpanded}
+                aria-expanded={folderHelpExpanded}
+                aria-controls="folder-help-content"
+              >
+                <span class="shrink-0 inline-flex transition-transform duration-150" style:transform={folderHelpExpanded ? "rotate(90deg)" : ""}><ChevronRight size={14} /></span>
+                {m.welcome_folder_help_title()}
+              </button>
+
+              {#if folderHelpExpanded}
+                <div id="folder-help-content" class="self-stretch mt-2 p-3 rounded-lg border border-[var(--th-border-700)] bg-[var(--th-bg-800)]/60 text-left">
+                  <p class="text-[11px] text-[var(--th-text-300)] mb-2">{m.welcome_folder_help_body()}</p>
+                  <pre class="text-[10px] leading-relaxed text-[var(--th-text-400)] bg-[var(--th-bg-900)]/60 rounded p-2 mb-2 overflow-x-auto" aria-label={m.welcome_folder_help_body()}>{
+`📁 MyProject/          ← ${m.welcome_folder_help_select_hint()}
+   📁 MyMod/
+      📁 Mods/
+         📁 MyMod/
+            📄 meta.lsx
+      📁 Public/
+         📁 MyMod/
+   📄 .gitignore
+   📄 README.md`
+                  }</pre>
+                  <p class="text-[11px] text-[var(--th-text-400)] mb-1.5">{m.welcome_folder_help_auto_correct()}</p>
+                  <p class="text-[11px] text-[var(--th-text-300)] flex items-start gap-1.5">
+                    <Lightbulb size={13} class="shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
+                    {m.welcome_folder_help_new_mod()}
+                  </p>
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
         {/if}

@@ -3,6 +3,7 @@ pub mod diff;
 pub mod export;
 pub mod filesystem;
 pub mod generate;
+pub mod git_core;
 pub mod http;
 pub mod mod_import;
 pub mod package;

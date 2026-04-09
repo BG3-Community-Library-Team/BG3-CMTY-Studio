@@ -10,7 +10,9 @@ import { m } from "../../paraglide/messages.js";
 import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
 import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
 import { parseExistingConfig } from "../utils/configParser.js";
-import { importSeScripts, importOsirisGoals, importKhonsuScripts } from "../tauri/scripts.js";
+import { modSelectionService } from "./modSelectionService.svelte.js";
+import { detectModFolders } from "../tauri/scanning.js";
+import type { DetectedMod } from "../types/modSelection.js";
 
 /**
  * Rehydrate the staging database from a mod's on-disk files.
@@ -189,6 +191,45 @@ export async function loadVanillaData(): Promise<void> {
 }
 
 /**
+ * Two-step project opening: detect mod folders, optionally prompt for selection,
+ * then dispatch to scanAndImport() with the chosen ModFolder path.
+ */
+export async function openProject(selectedPath: string): Promise<void> {
+  // 1. Detect mod folders (may auto-correct if user selected a ModFolder)
+  const result = await detectModFolders(selectedPath);
+  const { project_path, mods } = result;
+
+  if (mods.length === 0) {
+    uiStore.setNoModsFound(true);
+    toastStore.error(m.mod_select_no_mods());
+    return;
+  }
+
+  // Clear any previous "no mods found" state
+  uiStore.setNoModsFound(false);
+
+  let selectedMod: DetectedMod;
+  if (mods.length === 1) {
+    selectedMod = mods[0];
+  } else {
+    // Show ModSelectionModal, await user choice
+    const chosen = await modSelectionService.prompt(mods);
+    if (!chosen) return; // User cancelled
+    selectedMod = chosen;
+  }
+
+  // 2. Set project-level state
+  modStore.projectPath = project_path;
+
+  // 3. Proceed with existing scan pipeline (unchanged)
+  await scanAndImport(selectedMod.mod_path);
+
+  // Persist for next session
+  settingsStore.lastProjectPath = project_path;
+  settingsStore.persist();
+}
+
+/**
  * Scan a mod folder, import existing config, and load vanilla data.
  * Centralizes the scan workflow used by both Header and HamburgerMenu.
  * `extraScanPaths` allows scanning additional directories (e.g. unpacked data dir)
@@ -231,20 +272,6 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Hydrate projectStore from the freshly-populated staging DB
     modStore.scanPhase = m.scan_phase_loading_project();
     await projectStore.hydrate();
-
-    // Import script files from disk into the staging DB
-    modStore.scanPhase = m.scan_phase_importing_scripts();
-    try {
-      const dbPath = projectStore.stagingDbPath;
-      const folder = result.mod_meta?.folder;
-      if (dbPath && folder) {
-        await importSeScripts(dbPath, modPath, folder);
-        await importOsirisGoals(dbPath, modPath, folder);
-        await importKhonsuScripts(dbPath, modPath, folder);
-      }
-    } catch (scriptErr) {
-      console.warn("[Scan] Failed to import script files:", scriptErr);
-    }
 
     // Import existing config entries into the staging DB
     // Skip if migration already brought in persisted data

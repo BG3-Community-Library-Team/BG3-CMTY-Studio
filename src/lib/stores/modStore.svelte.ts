@@ -16,6 +16,7 @@ class ModStore {
   /** Optional detail text for the current scan phase (e.g. file count, section name). */
   scanDetail: string = $state("");
   selectedModPath: string = $state("");
+  projectPath: string = $state("");    // ProjectFolder path (parent of ModFolder)
   vanillaPath: string = $state("");
   error: string = $state("");
 
