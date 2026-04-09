@@ -264,7 +264,7 @@ pub async fn cmd_git_stage(mod_path: String, paths: Vec<String>) -> Result<(), A
         for p in &paths {
             index
                 .add_path(Path::new(p))
-                .map_err(|e| format!("Failed to stage '{}': {e}", p))?;
+                .map_err(|e| format!("Failed to stage '{p}': {e}"))?;
         }
 
         index.write().map_err(|e| format!("Failed to write index: {e}"))?;
@@ -312,7 +312,7 @@ pub async fn cmd_git_unstage(mod_path: String, paths: Vec<String>) -> Result<(),
                 for p in &paths {
                     index
                         .remove_path(Path::new(p))
-                        .map_err(|e| format!("Failed to unstage '{}': {e}", p))?;
+                        .map_err(|e| format!("Failed to unstage '{p}': {e}"))?;
                 }
                 index.write().map_err(|e| format!("Failed to write index: {e}"))?;
             }
@@ -371,10 +371,10 @@ pub async fn cmd_git_discard(mod_path: String, paths: Vec<String>) -> Result<(),
             let full_path = root.join(p);
             if full_path.is_file() {
                 std::fs::remove_file(&full_path)
-                    .map_err(|e| format!("Failed to remove '{}': {e}", p))?;
+                    .map_err(|e| format!("Failed to remove '{p}': {e}"))?;
             } else if full_path.is_dir() {
                 std::fs::remove_dir_all(&full_path)
-                    .map_err(|e| format!("Failed to remove directory '{}': {e}", p))?;
+                    .map_err(|e| format!("Failed to remove directory '{p}': {e}"))?;
             }
         }
 
@@ -617,7 +617,7 @@ pub async fn cmd_git_log(
             let oid = oid_result.map_err(|e| format!("Revwalk error: {e}"))?;
             let commit = repo
                 .find_commit(oid)
-                .map_err(|e| format!("Failed to find commit {}: {e}", oid))?;
+                .map_err(|e| format!("Failed to find commit {oid}: {e}"))?;
             result.push(commit_to_info(&commit));
         }
 
@@ -636,7 +636,7 @@ pub async fn cmd_git_show(
             .map_err(|e| format!("Failed to open repository: {e}"))?;
 
         let oid = git2::Oid::from_str(&commit_oid)
-            .map_err(|e| format!("Invalid OID '{}': {e}", commit_oid))?;
+            .map_err(|e| format!("Invalid OID '{commit_oid}': {e}"))?;
         let commit = repo
             .find_commit(oid)
             .map_err(|e| format!("Failed to find commit: {e}"))?;

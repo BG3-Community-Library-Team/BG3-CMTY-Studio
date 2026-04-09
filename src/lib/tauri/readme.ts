@@ -14,6 +14,11 @@ export async function readTextFile(path: string): Promise<string | null> {
   }
 }
 
+/** List files with a given extension in a directory (non-recursive). */
+export async function listFilesByExt(dirPath: string, ext: string): Promise<string[]> {
+  return invoke<string[]>("cmd_list_files_by_ext", { dirPath, ext });
+}
+
 /** Write a text file to an absolute path (creates parent dirs if needed). */
 export async function writeTextFile(path: string, content: string): Promise<void> {
   await invoke("cmd_write_text_file", { path, content });

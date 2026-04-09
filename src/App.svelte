@@ -38,7 +38,9 @@
   import { getPrefersReducedMotion } from "./lib/stores/motion.svelte.js";
   import { scanAndImport, openProject } from "./lib/services/scanService.js";
   import { saveProject, validateHandlers, type HandlerWarning } from "./lib/tauri/save.js";
-  import { getDbPaths } from "./lib/tauri/db-management.js";
+  import { getDbPaths, resetReferenceDbs } from "./lib/tauri/db-management.js";
+  import { populateVanillaDbs } from "./lib/tauri/pipeline.js";
+  import { dataOperationStore } from "./lib/stores/dataOperationStore.svelte.js";
   import { undoStore } from "./lib/stores/undoStore.svelte.js";
   import { open, ask } from "@tauri-apps/plugin-dialog";
   import { SECTIONS_ORDERED, SECTION_DISPLAY_NAMES, type Section, getErrorMessage } from "./lib/types/index.js";
@@ -106,11 +108,11 @@
     };
   });
 
-  // MOD-SWITCH: Close all tabs when switching between mods (non-empty → different non-empty)
+  // MOD-SWITCH: Close all tabs when switching mods or closing a project
   let prevModPath = $state(modStore.selectedModPath ?? "");
   $effect(() => {
     const current = modStore.selectedModPath ?? "";
-    if (current && prevModPath && current !== prevModPath) {
+    if (prevModPath && current !== prevModPath) {
       uiStore.closeAllTabs();
     }
     prevModPath = current;
@@ -344,6 +346,120 @@
         enabled: () => !!modStore.scanResult,
         execute: () => {
           uiStore.openTab({ id: "readme", label: "README.md", type: "readme", icon: "📝" });
+        },
+      },
+      // ── Git identity commands ──
+      {
+        id: "setting.gitSetName",
+        label: m.command_label_git_set_name(),
+        category: "setting",
+        icon: "⚙",
+        enabled: () => true,
+        execute: () => {
+          const name = window.prompt(m.git_set_name_prompt(), settingsStore.gitUserName);
+          if (name !== null) {
+            settingsStore.gitUserName = name;
+            settingsStore.persist();
+            toastStore.info(m.git_set_name_updated({ name }));
+          }
+        },
+      },
+      {
+        id: "setting.gitSetEmail",
+        label: m.command_label_git_set_email(),
+        category: "setting",
+        icon: "⚙",
+        enabled: () => true,
+        execute: () => {
+          const email = window.prompt(m.git_set_email_prompt(), settingsStore.gitUserEmail);
+          if (email !== null) {
+            settingsStore.gitUserEmail = email;
+            settingsStore.persist();
+            toastStore.info(m.git_set_email_updated({ email }));
+          }
+        },
+      },
+      // ── Data management commands ──
+      {
+        id: "data.populateGameData",
+        label: m.command_label_populate_game_data(),
+        category: "data",
+        icon: "📊",
+        enabled: () => !!settingsStore.gameDataPath && !dataOperationStore.isRunning,
+        execute: async () => {
+          if (!settingsStore.gameDataPath) return;
+          dataOperationStore.startOperation("populate");
+          try {
+            await populateVanillaDbs(settingsStore.gameDataPath);
+            dataOperationStore.completeOperation(m.loaded_data_populate_complete_title());
+            toastStore.success(m.loaded_data_populate_complete_title());
+          } catch (e: unknown) {
+            const msg = getErrorMessage(e);
+            dataOperationStore.failOperation(msg);
+            toastStore.error(m.loaded_data_populate_failed_title(), msg);
+          }
+        },
+      },
+      {
+        id: "data.resetDatabases",
+        label: m.command_label_reset_databases(),
+        category: "data",
+        icon: "📊",
+        enabled: () => !dataOperationStore.isRunning,
+        execute: async () => {
+          if (!confirm(m.loaded_data_populate_confirm())) return;
+          dataOperationStore.startOperation("reset");
+          try {
+            await resetReferenceDbs();
+            dataOperationStore.completeOperation(m.loaded_data_reset_complete());
+            toastStore.success(m.loaded_data_reset_complete_title(), m.loaded_data_reset_complete());
+          } catch (e: unknown) {
+            const msg = getErrorMessage(e);
+            dataOperationStore.failOperation(msg);
+            toastStore.error(m.loaded_data_reset_failed_title(), msg);
+          }
+        },
+      },
+      {
+        id: "data.importLoadOrder",
+        label: m.command_label_import_load_order(),
+        category: "data",
+        icon: "📊",
+        enabled: () => !modImportService.isImportingLoadOrder,
+        execute: async () => {
+          await modImportService.importFromLoadOrder(sidebarDuplicatePrompt);
+        },
+      },
+      {
+        id: "data.addModFolder",
+        label: m.command_label_add_mod_folder(),
+        category: "data",
+        icon: "📊",
+        enabled: () => true,
+        execute: async () => {
+          try {
+            const selected = await open({ directory: true, title: m.loaded_data_select_mod_folder() });
+            if (selected != null) {
+              const path = Array.isArray(selected) ? selected[0] : String(selected);
+              await modImportService.addModPath(path, sidebarDuplicatePrompt);
+            }
+          } catch (e) { console.error("Dialog error:", e); }
+        },
+      },
+      {
+        id: "data.addModPak",
+        label: m.command_label_add_mod_pak(),
+        category: "data",
+        icon: "📊",
+        enabled: () => true,
+        execute: async () => {
+          try {
+            const selected = await open({ directory: false, title: m.loaded_data_select_mod_pak(), filters: [{ name: m.loaded_data_pak_filter(), extensions: ["pak"] }] });
+            if (selected != null) {
+              const path = Array.isArray(selected) ? selected[0] : String(selected);
+              await modImportService.addModPath(path, sidebarDuplicatePrompt);
+            }
+          } catch (e) { console.error("Dialog error:", e); }
         },
       },
       // ── Dev: Theme Gallery ──

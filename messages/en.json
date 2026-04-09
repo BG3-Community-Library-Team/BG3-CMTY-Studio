@@ -208,10 +208,6 @@
   "settings_notifications_error_15s": "15 seconds",
 
   "settings_scripts_title": "Scripts",
-  "settings_scripts_ide_helpers_heading": "IDE Helpers File",
-  "settings_scripts_ide_helpers_desc": "Provide a Lua file containing helper definitions to supplement intellisense. The file is parsed for function signatures, global variables, and table fields.",
-  "settings_scripts_ide_helpers_placeholder": "Path to IDE helpers .lua file",
-  "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers File",
 
   "settings_git_title": "Git",
   "settings_git_identity_heading": "Git Identity",
@@ -1062,5 +1058,21 @@
   "git_file_status_deleted": "Deleted",
   "git_file_status_renamed": "Renamed",
   "git_file_status_untracked": "Untracked",
-  "git_file_status_conflicted": "Conflicted"
+  "git_file_status_conflicted": "Conflicted",
+
+  "command_label_git_set_name": "Git: Set Name",
+  "command_label_git_set_email": "Git: Set Email",
+  "command_label_populate_game_data": "Populate Game Data",
+  "command_label_reset_databases": "Reset Databases",
+  "command_label_import_load_order": "Import Load Order",
+  "command_label_add_mod_folder": "Add Mod (Folder)",
+  "command_label_add_mod_pak": "Add Mod (.pak)",
+  "git_set_name_prompt": "Enter your Git commit author name:",
+  "git_set_name_updated": "Git name set to: {name}",
+  "git_set_email_prompt": "Enter your Git commit author email:",
+  "git_set_email_updated": "Git email set to: {email}",
+  "settings_scripts_ide_helpers_heading": "IDE Helpers Folder",
+  "settings_scripts_ide_helpers_desc": "Select a folder containing Lua helper definition files to supplement intellisense. All .lua files in the folder are parsed for function signatures, global variables, and table fields.",
+  "settings_scripts_ide_helpers_placeholder": "Path to IDE helpers folder",
+  "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers Folder"
 }

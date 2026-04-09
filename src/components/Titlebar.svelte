@@ -154,7 +154,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="relative h-full flex items-center" onkeydown={handleFileMenuKeydown}>
     <button
-      class="px-3 h-full text-xs text-[var(--th-text-400)] hover:text-[var(--th-text-100)]
+      class="px-3 py-1 mx-1 text-xs rounded-full text-[var(--th-text-400)] hover:text-[var(--th-text-100)]
              hover:bg-[var(--th-bg-800)] transition-colors cursor-pointer"
       onclick={toggleFileMenu}
       type="button"
@@ -165,9 +165,9 @@
     </button>
     {#if fileMenuOpen}
       <div
-        class="file-menu-dropdown absolute top-full left-0 mt-px min-w-[220px] z-[100]
+        class="file-menu-dropdown absolute top-full left-0 min-w-[220px] z-[100]
                bg-[var(--th-sidebar-bg,var(--th-bg-800))] border border-[var(--th-border-700)]
-               rounded-md shadow-lg py-1 text-xs"
+               shadow-lg py-1 text-xs"
         role="menu"
       >
         <!-- Open Project -->

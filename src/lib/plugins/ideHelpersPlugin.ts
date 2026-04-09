@@ -3,7 +3,7 @@
  * Reads the file content from disk when the path changes and caches parsed symbols.
  */
 import type { CompletionPlugin, CompletionContext, CompletionItem } from './completionTypes.js';
-import { readTextFile } from '../tauri/readme.js';
+import { readTextFile, listFilesByExt } from '../tauri/readme.js';
 
 let cachedPath = '';
 let cachedSymbols: CompletionItem[] = [];
@@ -85,7 +85,7 @@ function parseHelperSymbols(content: string): CompletionItem[] {
   return symbols;
 }
 
-/** Load (or reload) the helpers file from disk. */
+/** Load (or reload) helpers from a folder containing .lua files. */
 export async function loadIdeHelpers(path: string): Promise<void> {
   if (!path) {
     cachedPath = '';
@@ -97,23 +97,25 @@ export async function loadIdeHelpers(path: string): Promise<void> {
 
   loading = true;
   try {
-    const content = await readTextFile(path);
-    if (content) {
-      cachedSymbols = parseHelperSymbols(content);
-      cachedPath = path;
-    } else {
-      cachedSymbols = [];
-      cachedPath = path;
+    const luaFiles = await listFilesByExt(path, 'lua');
+    const allSymbols: CompletionItem[] = [];
+    for (const filePath of luaFiles) {
+      const content = await readTextFile(filePath);
+      if (content) {
+        allSymbols.push(...parseHelperSymbols(content));
+      }
     }
+    cachedSymbols = allSymbols;
+    cachedPath = path;
   } catch (e) {
-    console.warn('[IDE Helpers] Failed to load helpers file:', e);
+    console.warn('[IDE Helpers] Failed to load helpers folder:', e);
     cachedSymbols = [];
   } finally {
     loading = false;
   }
 }
 
-/** Force refresh of the helpers file (e.g. when the user changes the path). */
+/** Force refresh of the helpers folder (e.g. when the user changes the path). */
 export async function reloadIdeHelpers(path: string): Promise<void> {
   cachedPath = '';
   cachedSymbols = [];

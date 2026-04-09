@@ -299,14 +299,14 @@ describe("UiStore", () => {
   // ── activityBarOrder (FT-01) ──────────────────────────────────────
 
   describe("activityBarOrder", () => {
-    it("defaults to all six views", () => {
+    it("defaults to all seven views", () => {
       expect(uiStore.activityBarOrder).toEqual([
-        "project", "explorer", "search", "loaded-data", "settings", "help",
+        "project", "explorer", "search", "git", "loaded-data", "settings", "help",
       ]);
     });
 
     it("persists reorder to localStorage", () => {
-      const reordered = ["search", "explorer", "loaded-data", "settings", "help"] as typeof uiStore.activityBarOrder;
+      const reordered = ["search", "git", "explorer", "loaded-data", "settings", "help"] as typeof uiStore.activityBarOrder;
       uiStore.setActivityBarOrder(reordered);
       expect(uiStore.activityBarOrder).toEqual(reordered);
       const stored = localStorage.getItem("bg3-cmty-activity-bar-order");
@@ -329,7 +329,7 @@ describe("UiStore", () => {
       localStorage.setItem("bg3-cmty-activity-bar-order", JSON.stringify(["search", "bogus", "explorer"]));
       // Create a new store instance would test this, but since it's a singleton,
       // we verify the stored data doesn't corrupt the current order
-      expect(uiStore.activityBarOrder.length).toBe(5);
+      expect(uiStore.activityBarOrder.length).toBe(6);
     });
   });
 

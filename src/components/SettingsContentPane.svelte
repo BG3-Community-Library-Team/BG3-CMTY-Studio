@@ -14,9 +14,8 @@
     try {
       const selected = await open({
         title: m.settings_scripts_ide_helpers_browse_title(),
-        filters: [{ name: "Lua Files", extensions: ["lua"] }],
         multiple: false,
-        directory: false,
+        directory: true,
       });
       if (selected) {
         settingsStore.ideHelpersPath = selected;

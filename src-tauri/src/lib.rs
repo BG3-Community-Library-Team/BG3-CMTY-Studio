@@ -473,6 +473,31 @@ async fn cmd_read_text_file(path: String) -> Result<String, AppError> {
         .map_err(|e| AppError::io_error(format!("Read file: {e}")))
 }
 
+/// List all files matching a given extension in a directory (non-recursive).
+#[tauri::command]
+async fn cmd_list_files_by_ext(dir_path: String, ext: String) -> Result<Vec<String>, AppError> {
+    let dir = PathBuf::from(&dir_path);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let ext_lower = ext.to_lowercase();
+    let mut files = Vec::new();
+    let entries = fs::read_dir(&dir)
+        .map_err(|e| AppError::io_error(format!("Read dir: {e}")))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(file_ext) = path.extension() {
+                if file_ext.to_string_lossy().to_lowercase() == ext_lower {
+                    files.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 #[tauri::command]
 async fn cmd_write_text_file(path: String, content: String) -> Result<(), AppError> {
     let p = PathBuf::from(&path);
@@ -2085,6 +2110,7 @@ pub fn run() {
             cmd_file_exists,
             cmd_find_readme,
             cmd_read_text_file,
+            cmd_list_files_by_ext,
             cmd_write_text_file,
             cmd_preview_lsx,
             cmd_save_lsx,
