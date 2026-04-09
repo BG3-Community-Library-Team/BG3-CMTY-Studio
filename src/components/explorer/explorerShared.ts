@@ -3,6 +3,7 @@
  * Extracted from the FileExplorer monolith to avoid duplication.
  */
 import { localeCompare } from "../../lib/utils/localeSort.js";
+import { fuzzyScore } from "../../lib/utils/fuzzyScore.js";
 import type { ModFileEntry } from "../../lib/utils/tauri.js";
 
 // ── File Tree Types ──
@@ -219,6 +220,82 @@ export const SECTION_TEMPLATES: Record<string, Array<{ id: string; label: string
     { id: 'constellations_module', label: 'Constellations Module' },
   ],
 };
+
+// ── Explorer filter store ──
+
+export { explorerFilter, type FilterMode } from "./explorerFilterStore.svelte.js";
+
+export interface FilterMatch {
+  matched: boolean;
+  indices: number[];
+}
+
+/** Check if a text string matches the current filter query. */
+export function matchesFilter(text: string, query: string, useFuzzy: boolean): FilterMatch {
+  if (!query) return { matched: true, indices: [] };
+  if (useFuzzy) {
+    const result = fuzzyScore(query, text);
+    return result ? { matched: true, indices: result.matches } : { matched: false, indices: [] };
+  }
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+  if (idx < 0) return { matched: false, indices: [] };
+  const indices: number[] = [];
+  for (let i = idx; i < idx + lowerQuery.length; i++) indices.push(i);
+  return { matched: true, indices };
+}
+
+/** Filter a file tree to only nodes matching the query (and their parent chain). */
+export function filterSearchTree(nodes: FileTreeNode[], query: string, useFuzzy: boolean): FileTreeNode[] {
+  if (!query) return nodes;
+  const result: FileTreeNode[] = [];
+  for (const node of nodes) {
+    const selfMatch = matchesFilter(node.name, query, useFuzzy).matched;
+    if (node.isFile) {
+      if (selfMatch) result.push(node);
+    } else {
+      const filteredChildren = node.children ? filterSearchTree(node.children, query, useFuzzy) : [];
+      if (selfMatch || filteredChildren.length > 0) {
+        result.push({ ...node, children: filteredChildren.length > 0 ? filteredChildren : node.children });
+      }
+    }
+  }
+  return result;
+}
+
+/** Count matching files in a file tree. */
+export function countFileTreeMatches(nodes: FileTreeNode[], query: string, useFuzzy: boolean): number {
+  if (!query) return 0;
+  let count = 0;
+  for (const node of nodes) {
+    if (matchesFilter(node.name, query, useFuzzy).matched) count++;
+    if (node.children) count += countFileTreeMatches(node.children, query, useFuzzy);
+  }
+  return count;
+}
+
+/** Check if a FolderNode or any descendant matches the filter. */
+export function folderNodeHasMatch(
+  node: { label: string; children?: { label: string; children?: any[] }[] },
+  query: string,
+  useFuzzy: boolean,
+): boolean {
+  if (matchesFilter(node.label, query, useFuzzy).matched) return true;
+  if (node.children) return node.children.some(c => folderNodeHasMatch(c, query, useFuzzy));
+  return false;
+}
+
+/** Count matching descendants in a FolderNode tree. */
+export function countFolderNodeMatches(
+  node: { label: string; children?: { label: string; children?: any[] }[] },
+  query: string,
+  useFuzzy: boolean,
+): number {
+  let count = matchesFilter(node.label, query, useFuzzy).matched ? 1 : 0;
+  if (node.children) for (const c of node.children) count += countFolderNodeMatches(c, query, useFuzzy);
+  return count;
+}
 
 /** Default file extensions per section for template creation */
 export const SECTION_DEFAULT_EXT: Record<string, string> = {

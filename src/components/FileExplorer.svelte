@@ -7,11 +7,15 @@
   import { openProject } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
+  import ExplorerHeader from "./ExplorerHeader.svelte";
   import ExplorerModRoot from "./explorer/ExplorerModRoot.svelte";
   import DataDrawerContent from "./explorer/DataDrawerContent.svelte";
   import LocalizationDrawerContent from "./explorer/LocalizationDrawerContent.svelte";
   import ScriptsDrawerContent from "./explorer/ScriptsDrawerContent.svelte";
+  import FileTreeExplorer from "./explorer/FileTreeExplorer.svelte";
+  import ExplorerTreeFilter from "./explorer/ExplorerTreeFilter.svelte";
   import ScriptCreationModal from "./ScriptCreationModal.svelte";
+  import { explorerFilter } from "./explorer/explorerShared.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Cog from "@lucide/svelte/icons/cog";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -51,11 +55,32 @@
   // â”€â”€ Script creation modal (triggered via command registry) â”€â”€
   let showCreateScript = $state(false);
   let createScriptDefaultContext: 'Server' | 'Client' | 'Shared' | 'Other' = $state('Other');
-</script>
+  // ── Tree filter (Ctrl+Alt+F) ──
+  let filterRef: ExplorerTreeFilter | null = $state(null);
 
-<div class="file-explorer" role="none">
-  <div class="explorer-header">
-    <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--th-text-500)]">Explorer</span>
+  function handleExplorerKeydown(e: KeyboardEvent) {
+    if (e.ctrlKey && e.altKey && e.key === "f") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (explorerFilter.active) {
+        explorerFilter.close();
+      } else {
+        explorerFilter.open();
+        requestAnimationFrame(() => filterRef?.focusInput());
+      }
+    }
+  }
+
+  function focusFirstMatch() {
+    const el = document.querySelector<HTMLElement>('.file-explorer .tree-node.filter-match');
+    el?.focus();
+  }</script>
+
+<div class="file-explorer" role="none" onkeydown={handleExplorerKeydown}>
+  <ExplorerHeader />
+  <ExplorerTreeFilter bind:this={filterRef} onfocusfirstmatch={focusFirstMatch} />
+
+  <div class="explorer-toolbar">
     {#if scanResult}
       <button
         class="ml-auto p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
@@ -112,7 +137,7 @@
         </button>
       </div>
     </div>
-  {:else}
+  {:else if uiStore.explorerViewMode === "studio"}
     <div class="tree-root" role="tree">
       <!-- Root: Mod name -->
       <button
@@ -135,6 +160,8 @@
         <ScriptsDrawerContent />
       {/if}
     </div>
+  {:else}
+    <FileTreeExplorer />
   {/if}
 </div>
 
@@ -155,10 +182,11 @@
     padding-bottom: 1rem;
   }
 
-  .explorer-header {
+  .explorer-toolbar {
     display: flex;
     align-items: center;
-    padding: 8px 12px 4px;
+    justify-content: flex-end;
+    padding: 4px 12px 4px;
     user-select: none;
   }
 
@@ -392,6 +420,37 @@
     padding: 1px 4px;
     outline: none;
     font-family: inherit;
+  }
+
+  /* ── Filter highlight styles ── */
+
+  .file-explorer :global(.filter-match .node-label) {
+    color: var(--th-text-100);
+  }
+
+  .file-explorer :global(.filter-dimmed) {
+    opacity: 0.4;
+  }
+
+  .file-explorer :global(.filter-hidden) {
+    display: none;
+  }
+
+  .file-explorer :global(.filter-match-count) {
+    font-size: 9px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 20%, transparent);
+    color: var(--th-accent-300, #7dd3fc);
+    font-weight: 600;
+    line-height: 14px;
+    flex-shrink: 0;
+  }
+
+  .file-explorer :global(.filter-highlight) {
+    background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 35%, transparent);
+    border-radius: 1px;
+    color: var(--th-text-100);
   }
 
   .file-explorer :global(.inline-create-input:focus) {

@@ -8,6 +8,7 @@ export type ActivityView = "project" | "explorer" | "editor" | "search" | "git" 
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
 const EXPLORER_DRAWERS_STORAGE_KEY = "bg3-cmty-explorer-drawers";
+const EXPLORER_NODE_ORDER_STORAGE_KEY = "bg3-cmty-explorer-node-order";
 const EXPLORER_VIEW_MODE_STORAGE_KEY = "bg3-cmty-explorer-view-mode";
 const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "git", "loaded-data", "settings", "help"];
 
@@ -312,6 +313,7 @@ class UiStore {
     this.sidebarVisible = true;
     this.explorerViewMode = "studio";
     this.explorerDrawers = {};
+    this.explorerNodeOrder = {};
   }
 
   // ── Explorer Drawer System ────────────────────────────────────
@@ -361,6 +363,98 @@ class UiStore {
   #persistExplorerDrawers(): void {
     try {
       localStorage.setItem(EXPLORER_DRAWERS_STORAGE_KEY, JSON.stringify(this.explorerDrawers));
+    } catch { /* quota exceeded — silently ignore */ }
+  }
+
+  // ── Explorer Node Ordering & Pin-to-Top ──────────────────────
+
+  /** Node ordering and pin state per drawer */
+  explorerNodeOrder: Record<string, { pinned: string[]; order: string[] }> = $state(UiStore.#loadNodeOrder());
+
+  static #loadNodeOrder(): Record<string, { pinned: string[]; order: string[] }> {
+    try {
+      const raw = localStorage.getItem(EXPLORER_NODE_ORDER_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch { /* fallback */ }
+    return {};
+  }
+
+  pinNode(drawerId: string, nodeId: string): void {
+    const current = this.explorerNodeOrder[drawerId] || { pinned: [], order: [] };
+    if (!current.pinned.includes(nodeId)) {
+      this.explorerNodeOrder = {
+        ...this.explorerNodeOrder,
+        [drawerId]: { ...current, pinned: [...current.pinned, nodeId] },
+      };
+    }
+    this.#persistNodeOrder();
+  }
+
+  unpinNode(drawerId: string, nodeId: string): void {
+    const current = this.explorerNodeOrder[drawerId];
+    if (current) {
+      this.explorerNodeOrder = {
+        ...this.explorerNodeOrder,
+        [drawerId]: { ...current, pinned: current.pinned.filter(id => id !== nodeId) },
+      };
+      this.#persistNodeOrder();
+    }
+  }
+
+  reorderNode(drawerId: string, draggedId: string, targetId: string, position: "before" | "after"): void {
+    const current = this.explorerNodeOrder[drawerId] || { pinned: [], order: [] };
+    const isPinnedDrag = current.pinned.includes(draggedId);
+    const isPinnedTarget = current.pinned.includes(targetId);
+
+    if (isPinnedDrag && isPinnedTarget) {
+      // Reorder within pinned list
+      const pinned = current.pinned.filter(id => id !== draggedId);
+      const targetIdx = pinned.indexOf(targetId);
+      const insertIdx = position === "before" ? targetIdx : targetIdx + 1;
+      pinned.splice(insertIdx, 0, draggedId);
+      this.explorerNodeOrder = {
+        ...this.explorerNodeOrder,
+        [drawerId]: { ...current, pinned },
+      };
+    } else if (!isPinnedDrag && !isPinnedTarget) {
+      // Reorder within unpinned order list
+      const order = current.order.filter(id => id !== draggedId);
+      const targetIdx = order.indexOf(targetId);
+      if (targetIdx >= 0) {
+        const insertIdx = position === "before" ? targetIdx : targetIdx + 1;
+        order.splice(insertIdx, 0, draggedId);
+      } else {
+        // Target not yet in order list — add both
+        order.push(draggedId);
+      }
+      this.explorerNodeOrder = {
+        ...this.explorerNodeOrder,
+        [drawerId]: { ...current, order },
+      };
+    }
+    // Cross-zone (pinned↔unpinned) drag is a no-op — use pin/unpin instead
+
+    this.#persistNodeOrder();
+  }
+
+  isNodePinned(drawerId: string, nodeId: string): boolean {
+    return this.explorerNodeOrder[drawerId]?.pinned.includes(nodeId) ?? false;
+  }
+
+  getOrderedNodes(drawerId: string, defaultIds: string[]): string[] {
+    const state = this.explorerNodeOrder[drawerId];
+    if (!state) return defaultIds;
+    const pinned = state.pinned.filter(id => defaultIds.includes(id));
+    const remaining = defaultIds.filter(id => !pinned.includes(id));
+    if (state.order.length === 0) return [...pinned, ...remaining];
+    const ordered = state.order.filter(id => remaining.includes(id));
+    const unordered = remaining.filter(id => !ordered.includes(id));
+    return [...pinned, ...ordered, ...unordered];
+  }
+
+  #persistNodeOrder(): void {
+    try {
+      localStorage.setItem(EXPLORER_NODE_ORDER_STORAGE_KEY, JSON.stringify(this.explorerNodeOrder));
     } catch { /* quota exceeded — silently ignore */ }
   }
 

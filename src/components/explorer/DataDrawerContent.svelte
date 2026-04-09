@@ -4,6 +4,7 @@
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { schemaStore } from "../../lib/stores/schemaStore.svelte.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems } from "./dragReorder.js";
   import {
     BG3_CORE_FOLDERS,
     BG3_ADDITIONAL_FOLDERS,
@@ -25,6 +26,11 @@
     EXT_BADGE_COLORS,
     EXT_BADGE_FALLBACK,
     SCRIPT_MANAGED_ROOTS,
+    explorerFilter,
+    matchesFilter,
+    folderNodeHasMatch,
+    countFolderNodeMatches,
+    filterSearchTree,
   } from "./explorerShared.js";
   import ContextMenu from "../ContextMenu.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -44,7 +50,9 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Search from "@lucide/svelte/icons/search";
   import FileCode from "@lucide/svelte/icons/file-code";
+  import PinIcon from "@lucide/svelte/icons/pin";
   import type { SectionResult, DiffEntry } from "../../lib/types/index.js";
+  import type { ContextMenuItemDef } from "../../lib/types/contextMenu.js";
 
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
@@ -197,6 +205,50 @@
     return combined;
   });
 
+  // ── Drag-to-reorder state ──
+
+  let dragState = $state(createDragReorderState());
+
+  /** All root-level node IDs: core folders + "_Additional_" separator + additional sections */
+  let defaultNodeIds = $derived.by((): string[] => {
+    const ids: string[] = [];
+    for (const f of enrichedCoreFolders) ids.push(f.name);
+    ids.push("_Additional_");
+    for (const f of mergedAdditionalSections) ids.push(f.name);
+    return ids;
+  });
+
+  /** Ordered root-level IDs respecting user pin/reorder state */
+  let orderedNodeIds = $derived(uiStore.getOrderedNodes("data", defaultNodeIds));
+
+  /** Quick lookup: node name → FolderNode for rendering in custom order */
+  let nodeMap = $derived.by((): Map<string, FolderNode> => {
+    const m = new Map<string, FolderNode>();
+    for (const f of enrichedCoreFolders) m.set(f.name, f);
+    for (const f of mergedAdditionalSections) m.set(f.name, f);
+    return m;
+  });
+
+  /** Index of first non-pinned node (for divider rendering) */
+  let firstUnpinnedIdx = $derived.by((): number => {
+    for (let i = 0; i < orderedNodeIds.length; i++) {
+      if (!uiStore.isNodePinned("data", orderedNodeIds[i])) return i;
+    }
+    return orderedNodeIds.length;
+  });
+
+  let hasPinnedNodes = $derived(firstUnpinnedIdx > 0);
+
+  /** Set of core folder names (vs additional sections) for path resolution */
+  let coreNodeNames = $derived(new Set(enrichedCoreFolders.map(f => f.name)));
+
+  /** Whether an additional node should be hidden (not pinned, and _Additional_ is collapsed) */
+  function isAdditionalHidden(nodeId: string): boolean {
+    if (coreNodeNames.has(nodeId) || nodeId === "_Additional_") return false;
+    if (uiStore.isNodePinned("data", nodeId)) return false;
+    return !isAdditionalExpanded;
+  }
+
   // ── Active node tracking ──
 
   let activeNodeKey = $derived.by(() => {
@@ -274,14 +326,18 @@
   let ctxLabel = $state("");
   let ctxSection = $state<string | undefined>(undefined);
   let ctxNode = $state<FolderNode | undefined>(undefined);
+  let ctxIsRootNode = $state(false);
+  let ctxRootNodeId = $state("");
 
-  function showContextMenu(e: MouseEvent, path: string, label: string, Section?: string, node?: FolderNode) {
+  function showContextMenu(e: MouseEvent, path: string, label: string, Section?: string, node?: FolderNode, isRootNode = false, rootNodeId = "") {
     e.preventDefault();
     e.stopPropagation();
     ctxPath = path;
     ctxLabel = label;
     ctxSection = Section;
     ctxNode = node;
+    ctxIsRootNode = isRootNode;
+    ctxRootNodeId = rootNodeId;
     const zoom = getComputedZoom(e.currentTarget as HTMLElement);
     ctxX = e.clientX / zoom;
     ctxY = e.clientY / zoom;
@@ -336,6 +392,31 @@
     try { await navigator.clipboard.writeText(ctxPath); toastStore.success(m.file_explorer_path_copied()); }
     catch { toastStore.error(m.file_explorer_copy_failed_title(), m.file_explorer_copy_failed_message()); }
   }
+
+  /** Build context menu items array, prepending pin/unpin for root-level nodes */
+  let ctxItems = $derived.by((): ContextMenuItemDef[] => {
+    const items: ContextMenuItemDef[] = [];
+    // Pin/unpin for root-level draggable nodes
+    if (ctxIsRootNode && ctxRootNodeId) {
+      const pinItems = getPinContextMenuItems("data", ctxRootNodeId, uiStore.isNodePinned("data", ctxRootNodeId));
+      if (pinItems.length > 0) {
+        pinItems[pinItems.length - 1].separator = "after";
+        items.push(...pinItems);
+      }
+    }
+    if (ctxHasPath) {
+      items.push({ label: m.file_explorer_open_in_file_manager(), icon: FolderOpen, action: ctxOpenInFileManager });
+    }
+    if (ctxHasSection) {
+      items.push({ label: m.file_explorer_add_entry(), icon: File, action: ctxAddEntry });
+      items.push({ label: "Refresh Section", icon: RefreshCw, action: ctxRefreshSection });
+      items.push({ label: m.file_explorer_view_vanilla(), icon: Package, action: ctxViewVanillaData });
+    }
+    if (ctxHasPath) {
+      items.push({ label: m.file_explorer_copy_path(), icon: FileCode2, action: ctxCopyPath });
+    }
+    return items;
+  });
 
   // ── File tree context menu ──
 
@@ -492,6 +573,37 @@
     if (fileNode.extension === "xml" && fileNode.relPath.startsWith("Localization/")) { uiStore.openScriptTab(fullRelPath); return; }
     uiStore.openTab({ id: `file:${fullRelPath}`, label: fileNode.name, type: "file-preview", filePath: fullRelPath, icon: "📄", preview });
   }
+
+  // ── Filter helpers ──
+
+  function folderFilterClass(label: string, children?: { label: string; children?: any[] }[]): string {
+    const q = explorerFilter.query;
+    if (!explorerFilter.active || !q) return '';
+    if (matchesFilter(label, q, explorerFilter.fuzzy).matched) return 'filter-match';
+    if (children && folderNodeHasMatch({ label, children }, q, explorerFilter.fuzzy)) return '';
+    return explorerFilter.mode === 'filter' ? 'filter-hidden' : 'filter-dimmed';
+  }
+
+  function folderMatchCount(children?: { label: string; children?: any[] }[]): number {
+    const q = explorerFilter.query;
+    if (!explorerFilter.active || !q || !children) return 0;
+    let count = 0;
+    for (const c of children) count += countFolderNodeMatches(c, q, explorerFilter.fuzzy);
+    return count;
+  }
+
+  function fileFilterClass(name: string, children?: FileTreeNode[]): string {
+    const q = explorerFilter.query;
+    if (!explorerFilter.active || !q) return '';
+    if (matchesFilter(name, q, explorerFilter.fuzzy).matched) return 'filter-match';
+    if (children && filterSearchTree(children, q, explorerFilter.fuzzy).length > 0) return '';
+    return explorerFilter.mode === 'filter' ? 'filter-hidden' : 'filter-dimmed';
+  }
+
+  let filteredModFileDisplayTree = $derived.by(() => {
+    if (!explorerFilter.active || !explorerFilter.query || explorerFilter.mode !== 'filter') return modFileDisplayTree;
+    return filterSearchTree(modFileDisplayTree, explorerFilter.query, explorerFilter.fuzzy);
+  });
 </script>
 
 <div class="data-content" onclick={hideContextMenu} role="none">
@@ -509,174 +621,176 @@
 
     {#if isPublicExpanded}
       <div class="tree-children">
-        {#each enrichedCoreFolders as node (node.name)}
-          {@const count = getGroupCount(node)}
-          {@const active = hasModFiles(node)}
-          {@const isExpanded = uiStore.expandedNodes[node.name] ?? false}
+        {#each orderedNodeIds as nodeId, idx (nodeId)}
+          {#if idx === firstUnpinnedIdx && hasPinnedNodes}
+            <div class="pin-divider"></div>
+          {/if}
 
-          {#if node.children}
+          {#if nodeId === "_Additional_"}
+            <!-- Additional Data separator -->
             <div
-              class="tree-node"
-              class:has-files={active}
-              class:active-node={isActiveNode(node)}
-              oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'public-folder'), node.label, node.Section, node)}
+              class="tree-node separator-node"
+              class:drop-before={dragState.dropTargetId === "_Additional_" && dragState.dropPosition === "before"}
+              class:drop-after={dragState.dropTargetId === "_Additional_" && dragState.dropPosition === "after"}
+              draggable={true}
+              ondragstart={(e) => handleDragStart(e, "_Additional_", "data", dragState)}
+              ondragover={(e) => handleDragOver(e, "_Additional_", "data", dragState)}
+              ondrop={(e) => handleDrop(e, "_Additional_", "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+              ondragend={() => handleDragEnd(dragState)}
+              oncontextmenu={(e) => showContextMenu(e, "", "Additional Data", undefined, undefined, true, "_Additional_")}
               role="treeitem"
               tabindex="0"
               aria-selected={false}
-              aria-expanded={isExpanded}
             >
-              <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(node.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(node.name); } }} role="button" tabindex="0" aria-label="Toggle {node.label}">
-                <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
-              </span>
-              <button class="tree-node-label" onclick={() => { if (node.isGroup && node.groupSections) openNode(node); else uiStore.toggleNode(node.name); }} ondblclick={() => { if (node.isGroup && node.groupSections) openNode(node, false); }}>
-                {#if isExpanded}
-                  <FolderOpen size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+              {#if uiStore.isNodePinned("data", "_Additional_")}
+                <PinIcon size={10} class="pin-indicator" />
+              {/if}
+              <button class="tree-node-label" onclick={() => uiStore.toggleNode("_Additional")}>
+                <ChevronRight size={14} class="chevron {isAdditionalExpanded ? 'expanded' : ''}" />
+                {#if isAdditionalExpanded}
+                  <FolderOpen size={14} class="text-[var(--th-text-600)] opacity-50" />
                 {:else}
-                  <Folder size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                  <Folder size={14} class="text-[var(--th-text-600)] opacity-50" />
                 {/if}
-                <span class="node-label truncate" class:text-muted={!active}>{node.label}</span>
-                {#if count > 0}
-                  <span class="entry-count">{count}</span>
-                {/if}
+                <span class="node-label text-[var(--th-text-600)] text-[10px] uppercase tracking-wider">Additional Data</span>
               </button>
             </div>
-
-            {#if isExpanded}
-              <div class="tree-children">
-                {#each node.children as child (child.name)}
-                  {@const childCount = getGroupCount(child)}
-                  {@const childActive = hasModFiles(child)}
-                  {@const childExpanded = uiStore.expandedNodes[child.name] ?? false}
-
-                  {#if child.children}
-                    <div class="tree-node" class:has-files={childActive} role="treeitem" aria-selected={false} aria-expanded={childExpanded}>
-                      <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
-                        <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
-                      </span>
-                      <button class="tree-node-label" onclick={() => { if (child.isGroup && child.groupSections) { openNode(child); uiStore.expandNode(child.name); } else uiStore.toggleNode(child.name); }} ondblclick={() => { if (child.isGroup && child.groupSections) openNode(child, false); }}>
-                        <Folder size={14} class={childActive ? "text-[var(--th-text-sky-400)] opacity-60" : "text-[var(--th-text-600)] opacity-30"} />
-                        <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
-                        {#if childCount > 0}
-                          <span class="entry-count">{childCount}</span>
-                        {/if}
-                      </button>
-                    </div>
-                    {#if childExpanded}
-                      <div class="tree-children">
-                        {#each child.children as grandchild (grandchild.name)}
-                          <button class="tree-node" class:has-files={hasModFiles(grandchild)} onclick={() => openNode(grandchild)} ondblclick={() => openNode(grandchild, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(grandchild.name, 'public-child'), grandchild.label, grandchild.Section, grandchild)}>
-                            <span class="w-3.5 shrink-0"></span>
-                            <File size={14} class={hasModFiles(grandchild) ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                            <span class="node-label truncate" class:text-muted={!hasModFiles(grandchild)}>{grandchild.label}</span>
-                          </button>
-                        {/each}
-                      </div>
-                    {/if}
-                  {:else}
-                    <button class="tree-node" class:has-files={childActive} class:active-node={isActiveNode(child)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, 'public-child'), child.label, child.Section, child)}>
-                      <span class="w-3.5 shrink-0"></span>
-                      <File size={14} class={childActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                      <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
-                      {#if childCount > 0}
-                        <span class="entry-count">{childCount}</span>
-                      {/if}
-                      {#if child.Section}
-                        <span class="add-entry-btn" onclick={(e) => quickAddEntry(e, child)} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); quickAddEntry(e as any, child); } }} role="button" tabindex="0" aria-label="Add entry to {child.label}">
-                          <Plus size={12} />
-                        </span>
-                      {/if}
-                    </button>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
           {:else}
-            <button
-              class="tree-node"
-              class:has-files={active}
-              class:active-node={isActiveNode(node)}
-              onclick={() => openNode(node)}
-              ondblclick={() => openNode(node, false)}
-              oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'public-folder'), node.label, node.Section, node)}
-            >
-              <span class="w-3.5 shrink-0"></span>
-              <File size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-              <span class="node-label truncate" class:text-muted={!active}>{node.label}</span>
-              {#if count > 0}
-                <span class="entry-count">{count}</span>
-              {/if}
-              {#if node.Section}
-                <span class="add-entry-btn" onclick={(e) => quickAddEntry(e, node)} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); quickAddEntry(e as any, node); } }} role="button" tabindex="0" aria-label="Add entry to {node.label}">
-                  <Plus size={12} />
-                </span>
-              {/if}
-            </button>
-          {/if}
-        {/each}
+            {@const node = nodeMap.get(nodeId)}
+            {#if node && !isAdditionalHidden(nodeId)}
+              {@const count = getGroupCount(node)}
+              {@const active = hasModFiles(node)}
+              {@const isExpanded = uiStore.expandedNodes[node.name] ?? false}
+              {@const fCls = folderFilterClass(node.label, node.children)}
+              {@const fCount = folderMatchCount(node.children)}
+              {@const pathKind = coreNodeNames.has(nodeId) ? 'public-folder' : 'additional'}
+              {@const isPinned = uiStore.isNodePinned("data", nodeId)}
 
-        <!-- Additional Data -->
-        <button class="tree-node separator-node" onclick={() => uiStore.toggleNode("_Additional")}>
-          <ChevronRight size={14} class="chevron {isAdditionalExpanded ? 'expanded' : ''}" />
-          {#if isAdditionalExpanded}
-            <FolderOpen size={14} class="text-[var(--th-text-600)] opacity-50" />
-          {:else}
-            <Folder size={14} class="text-[var(--th-text-600)] opacity-50" />
-          {/if}
-          <span class="node-label text-[var(--th-text-600)] text-[10px] uppercase tracking-wider">Additional Data</span>
-        </button>
-
-        {#if isAdditionalExpanded}
-          <div class="tree-children">
-            {#each mergedAdditionalSections as node (node.name)}
               {#if node.children}
-                {@const grpCount = getGroupCount(node)}
-                {@const grpActive = node.children.some(c => hasModFiles(c))}
-                {@const grpExpanded = uiStore.expandedNodes[node.name] ?? false}
-                <div class="tree-node" class:has-files={grpActive} role="treeitem" tabindex="0" aria-selected={false} aria-expanded={grpExpanded}>
+                <div
+                  class="tree-node {fCls}"
+                  class:has-files={active}
+                  class:active-node={isActiveNode(node)}
+                  class:drop-before={dragState.dropTargetId === nodeId && dragState.dropPosition === "before"}
+                  class:drop-after={dragState.dropTargetId === nodeId && dragState.dropPosition === "after"}
+                  draggable={true}
+                  ondragstart={(e) => handleDragStart(e, nodeId, "data", dragState)}
+                  ondragover={(e) => handleDragOver(e, nodeId, "data", dragState)}
+                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+                  ondragend={() => handleDragEnd(dragState)}
+                  oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, pathKind), node.label, node.Section, node, true, nodeId)}
+                  role="treeitem"
+                  tabindex="0"
+                  aria-selected={false}
+                  aria-expanded={isExpanded}
+                >
+                  {#if isPinned}
+                    <PinIcon size={10} class="pin-indicator" />
+                  {/if}
                   <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(node.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(node.name); } }} role="button" tabindex="0" aria-label="Toggle {node.label}">
-                    <ChevronRight size={14} class="chevron {grpExpanded ? 'expanded' : ''}" />
+                    <ChevronRight size={14} class="chevron {isExpanded ? 'expanded' : ''}" />
                   </span>
-                  <button class="tree-node-label" onclick={() => { if (node.isGroup && node.groupSections) openNode(node); else uiStore.toggleNode(node.name); }}>
-                    {#if grpExpanded}
-                      <FolderOpen size={14} class={grpActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                  <button class="tree-node-label" onclick={() => { if (node.isGroup && node.groupSections) openNode(node); else uiStore.toggleNode(node.name); }} ondblclick={() => { if (node.isGroup && node.groupSections) openNode(node, false); }}>
+                    {#if isExpanded}
+                      <FolderOpen size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                     {:else}
-                      <Folder size={14} class={grpActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                      <Folder size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                     {/if}
-                    <span class="node-label truncate" class:text-muted={!grpActive}>{node.label}</span>
-                    {#if grpCount > 0}
-                      <span class="entry-count">{grpCount}</span>
+                    <span class="node-label truncate" class:text-muted={!active}>{node.label}</span>
+                    {#if fCount > 0}
+                      <span class="filter-match-count">{fCount}</span>
+                    {:else if count > 0}
+                      <span class="entry-count">{count}</span>
                     {/if}
                   </button>
                 </div>
-                {#if grpExpanded}
+
+                {#if isExpanded}
                   <div class="tree-children">
                     {#each node.children as child (child.name)}
-                      {@const childCount = getSectionCount(child.Section ?? child.name)}
-                      <button class="tree-node" class:has-files={childCount > 0} class:active-node={isActiveNode(child)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, 'additional'), child.label, child.Section, child)}>
-                        <span class="w-3.5 shrink-0"></span>
-                        <File size={14} class={childCount > 0 ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                        <span class="node-label truncate" class:text-muted={childCount === 0}>{child.label}</span>
-                        {#if childCount > 0}
-                          <span class="entry-count">{childCount}</span>
+                      {@const childCount = getGroupCount(child)}
+                      {@const childActive = hasModFiles(child)}
+                      {@const childExpanded = uiStore.expandedNodes[child.name] ?? false}
+                      {@const childFCls = folderFilterClass(child.label, child.children)}
+
+                      {#if child.children}
+                        <div class="tree-node {childFCls}" class:has-files={childActive} role="treeitem" aria-selected={false} aria-expanded={childExpanded}>
+                          <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
+                            <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
+                          </span>
+                          <button class="tree-node-label" onclick={() => { if (child.isGroup && child.groupSections) { openNode(child); uiStore.expandNode(child.name); } else uiStore.toggleNode(child.name); }} ondblclick={() => { if (child.isGroup && child.groupSections) openNode(child, false); }}>
+                            <Folder size={14} class={childActive ? "text-[var(--th-text-sky-400)] opacity-60" : "text-[var(--th-text-600)] opacity-30"} />
+                            <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
+                            {#if childCount > 0}
+                              <span class="entry-count">{childCount}</span>
+                            {/if}
+                          </button>
+                        </div>
+                        {#if childExpanded}
+                          <div class="tree-children">
+                            {#each child.children as grandchild (grandchild.name)}
+                              {@const gcFCls = folderFilterClass(grandchild.label)}
+                              <button class="tree-node {gcFCls}" class:has-files={hasModFiles(grandchild)} onclick={() => openNode(grandchild)} ondblclick={() => openNode(grandchild, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(grandchild.name, 'public-child'), grandchild.label, grandchild.Section, grandchild)}>
+                                <span class="w-3.5 shrink-0"></span>
+                                <File size={14} class={hasModFiles(grandchild) ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                                <span class="node-label truncate" class:text-muted={!hasModFiles(grandchild)}>{grandchild.label}</span>
+                              </button>
+                            {/each}
+                          </div>
                         {/if}
-                      </button>
+                      {:else}
+                        <button class="tree-node {childFCls}" class:has-files={childActive} class:active-node={isActiveNode(child)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
+                          <span class="w-3.5 shrink-0"></span>
+                          <File size={14} class={childActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                          <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
+                          {#if childCount > 0}
+                            <span class="entry-count">{childCount}</span>
+                          {/if}
+                          {#if child.Section}
+                            <span class="add-entry-btn" onclick={(e) => quickAddEntry(e, child)} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); quickAddEntry(e as any, child); } }} role="button" tabindex="0" aria-label="Add entry to {child.label}">
+                              <Plus size={12} />
+                            </span>
+                          {/if}
+                        </button>
+                      {/if}
                     {/each}
                   </div>
                 {/if}
               {:else}
-                {@const adCount = getSectionCount(node.Section ?? node.name)}
-                <button class="tree-node" class:has-files={adCount > 0} class:active-node={isActiveNode(node)} onclick={() => openNode(node)} ondblclick={() => openNode(node, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, 'additional'), node.label, node.Section, node)}>
+                <button
+                  class="tree-node {fCls}"
+                  class:has-files={active}
+                  class:active-node={isActiveNode(node)}
+                  class:drop-before={dragState.dropTargetId === nodeId && dragState.dropPosition === "before"}
+                  class:drop-after={dragState.dropTargetId === nodeId && dragState.dropPosition === "after"}
+                  draggable={true}
+                  ondragstart={(e) => handleDragStart(e, nodeId, "data", dragState)}
+                  ondragover={(e) => handleDragOver(e, nodeId, "data", dragState)}
+                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+                  ondragend={() => handleDragEnd(dragState)}
+                  onclick={() => openNode(node)}
+                  ondblclick={() => openNode(node, false)}
+                  oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, pathKind), node.label, node.Section, node, true, nodeId)}
+                >
+                  {#if isPinned}
+                    <PinIcon size={10} class="pin-indicator" />
+                  {/if}
                   <span class="w-3.5 shrink-0"></span>
-                  <File size={14} class={adCount > 0 ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
-                  <span class="node-label truncate" class:text-muted={adCount === 0}>{node.label}</span>
-                  {#if adCount > 0}
-                    <span class="entry-count">{adCount}</span>
+                  <File size={14} class={active ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
+                  <span class="node-label truncate" class:text-muted={!active}>{node.label}</span>
+                  {#if count > 0}
+                    <span class="entry-count">{count}</span>
+                  {/if}
+                  {#if node.Section}
+                    <span class="add-entry-btn" onclick={(e) => quickAddEntry(e, node)} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); quickAddEntry(e as any, node); } }} role="button" tabindex="0" aria-label="Add entry to {node.label}">
+                      <Plus size={12} />
+                    </span>
                   {/if}
                 </button>
               {/if}
-            {/each}
-          </div>
-        {/if}
+            {/if}
+          {/if}
+        {/each}
       </div>
     {/if}
   </div>
@@ -697,9 +811,10 @@
       <div class="tree-children">
         {#if modFileDisplayTree.length > 0}
           {#snippet modFileNode(node: FileTreeNode)}
+            {@const nodeFCls = fileFilterClass(node.name, node.children)}
             {#if node.isFile}
               <button
-                class="tree-node has-files"
+                class="tree-node has-files {nodeFCls}"
                 class:active-node={isActiveFile(node.relPath)}
                 onclick={() => openFilePreview(node)}
                 ondblclick={() => openFilePreview(node, false)}
@@ -735,7 +850,7 @@
               </button>
             {:else}
               {@const expanded = uiStore.expandedNodes[`modfile:${node.relPath}`] ?? false}
-              <button class="tree-node has-files"
+              <button class="tree-node has-files {nodeFCls}"
                 onclick={() => uiStore.toggleNode(`modfile:${node.relPath}`)}
                 oncontextmenu={(e) => showFileContextMenu(e, node)}
                 onmouseenter={() => { hoveredNode = node.relPath; }}
@@ -786,7 +901,7 @@
               {/if}
             {/if}
           {/snippet}
-          {#each modFileDisplayTree as treeNode (treeNode.relPath)}
+          {#each filteredModFileDisplayTree as treeNode (treeNode.relPath)}
             {@render modFileNode(treeNode)}
           {/each}
         {:else}
@@ -799,34 +914,7 @@
 
 <!-- Section context menu -->
 {#if ctxVisible}
-  <ContextMenu x={ctxX} y={ctxY} header={ctxLabel} headerTitle={ctxPath || ctxLabel} onclose={hideContextMenu}>
-    {#if ctxHasPath}
-      <button class="ctx-item" onclick={ctxOpenInFileManager} role="menuitem">
-        <FolderOpen size={12} class="shrink-0" />
-        {m.file_explorer_open_in_file_manager()}
-      </button>
-    {/if}
-    {#if ctxHasSection}
-      <button class="ctx-item" onclick={ctxAddEntry} role="menuitem">
-        <File size={12} class="shrink-0" />
-        {m.file_explorer_add_entry()}
-      </button>
-      <button class="ctx-item" onclick={ctxRefreshSection} role="menuitem">
-        <RefreshCw size={12} class="shrink-0" />
-        Refresh Section
-      </button>
-      <button class="ctx-item" onclick={ctxViewVanillaData} role="menuitem">
-        <Package size={12} class="shrink-0" />
-        {m.file_explorer_view_vanilla()}
-      </button>
-    {/if}
-    {#if ctxHasPath}
-      <button class="ctx-item" onclick={ctxCopyPath} role="menuitem">
-        <FileCode2 size={12} class="shrink-0" />
-        {m.file_explorer_copy_path()}
-      </button>
-    {/if}
-  </ContextMenu>
+  <ContextMenu x={ctxX} y={ctxY} header={ctxLabel} headerTitle={ctxPath || ctxLabel} onclose={hideContextMenu} items={ctxItems} />
 {/if}
 
 <!-- File tree context menu -->
@@ -904,5 +992,30 @@
 
   .tree-section {
     padding-left: 12px;
+  }
+
+  /* ── Pin indicator ── */
+  :global(.pin-indicator) {
+    color: var(--th-accent-400);
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-right: -2px;
+  }
+
+  /* ── Pin divider between pinned and unpinned groups ── */
+  .pin-divider {
+    height: 1px;
+    margin: 4px 8px 4px 16px;
+    background: var(--th-border-300, var(--th-bg-700));
+    opacity: 0.4;
+  }
+
+  /* ── Drop indicators ── */
+  :global(.tree-node.drop-before) {
+    box-shadow: inset 0 2px 0 0 var(--th-accent-500);
+  }
+
+  :global(.tree-node.drop-after) {
+    box-shadow: inset 0 -2px 0 0 var(--th-accent-500);
   }
 </style>

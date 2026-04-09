@@ -1152,6 +1152,21 @@
   "readme_export_txt_success": "Exported to {path}",
   "readme_copy_plain_text_success": "Plain text copied to clipboard",
   "explorer_context_menu_reveal_in_file_explorer": "Reveal in File Explorer",
+  "explorer_context_menu_new_file": "New File…",
+  "explorer_context_menu_new_folder": "New Folder…",
   "explorer_context_menu_pin_to_top": "Pin to Top",
-  "explorer_context_menu_unpin": "Unpin"
+  "explorer_context_menu_unpin": "Unpin",
+
+  "file_explorer_rename": "Rename",
+  "file_explorer_delete": "Delete",
+  "file_explorer_copy_relative_path": "Copy Relative Path",
+  "file_tree_delete_confirm": "Delete \"{name}\"?",
+  "file_tree_created": "Created {name}",
+  "file_tree_deleted": "Deleted {name}",
+  "file_tree_renamed": "Renamed to {name}",
+
+  "explorer_filter_placeholder": "Filter…",
+  "explorer_filter_mode_highlight": "Highlight matches",
+  "explorer_filter_mode_filter": "Filter matches",
+  "explorer_filter_fuzzy_toggle": "Fuzzy match"
 }

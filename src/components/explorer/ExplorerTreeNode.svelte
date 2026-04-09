@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import PinIcon from "@lucide/svelte/icons/pin";
 
   let {
     label,
@@ -11,12 +12,20 @@
     icon,
     badge = "",
     badgeColor = "",
+    pinned = false,
+    draggable: isDraggable = false,
+    dropBefore = false,
+    dropAfter = false,
     onclick,
     ontoggle,
     oncontextmenu,
     ondblclick,
     onmouseenter,
     onmouseleave,
+    ondragstart,
+    ondragover,
+    ondrop,
+    ondragend,
     children,
     hoverActions,
   }: {
@@ -28,12 +37,20 @@
     icon?: Snippet;
     badge?: string;
     badgeColor?: string;
+    pinned?: boolean;
+    draggable?: boolean;
+    dropBefore?: boolean;
+    dropAfter?: boolean;
     onclick?: (e: MouseEvent) => void;
     ontoggle?: (e: MouseEvent) => void;
     oncontextmenu?: (e: MouseEvent) => void;
     ondblclick?: (e: MouseEvent) => void;
     onmouseenter?: (e: MouseEvent) => void;
     onmouseleave?: (e: MouseEvent) => void;
+    ondragstart?: (e: DragEvent) => void;
+    ondragover?: (e: DragEvent) => void;
+    ondrop?: (e: DragEvent) => void;
+    ondragend?: (e: DragEvent) => void;
     children?: Snippet;
     hoverActions?: Snippet;
   } = $props();
@@ -56,11 +73,18 @@
 <div
   class="tree-node"
   class:active-node={active}
+  class:drop-before={dropBefore}
+  class:drop-after={dropAfter}
   style:padding-left="{paddingLeft}px"
   role="treeitem"
   tabindex="0"
   aria-expanded={hasChildren ? expanded : undefined}
   aria-selected={active}
+  draggable={isDraggable}
+  {ondragstart}
+  {ondragover}
+  {ondrop}
+  {ondragend}
 >
   {#if hasChildren}
     <span
@@ -89,6 +113,9 @@
       {@render icon()}
     {/if}
     <span class="node-label truncate">{label}</span>
+    {#if pinned}
+      <PinIcon size={12} class="pin-indicator" />
+    {/if}
     {#if hoverActions}
       {@render hoverActions()}
     {:else if badge}
@@ -199,8 +226,39 @@
     flex-shrink: 0;
   }
 
+  :global(.pin-indicator) {
+    flex-shrink: 0;
+    opacity: 0.5;
+    color: var(--th-accent-400, var(--th-text-300));
+  }
+
   .tree-children {
     padding-left: 12px;
+  }
+
+  /* Drag-to-reorder insertion indicators */
+  .tree-node.drop-before::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--th-accent-500);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .tree-node.drop-after::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--th-accent-500);
+    pointer-events: none;
+    z-index: 1;
   }
 
   :global(:root.reduced-motion) .chevron-hit :global(.chevron),

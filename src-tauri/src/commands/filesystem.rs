@@ -144,6 +144,40 @@ pub async fn cmd_copy_mod_file(
     .await
 }
 
+/// Delete a file or directory within a mod directory.
+/// Path traversal is blocked. Cannot delete the mod root itself.
+#[tauri::command]
+pub async fn cmd_delete_mod_path(
+    mod_path: String,
+    rel_path: String,
+) -> Result<(), AppError> {
+    blocking(move || {
+        let root = PathBuf::from(&mod_path);
+        let full = root.join(&rel_path);
+        let canon_root = root
+            .canonicalize()
+            .map_err(|e| format!("Invalid mod path: {e}"))?;
+        let canon_full = full
+            .canonicalize()
+            .map_err(|e| format!("Path not found: {e}"))?;
+        if !canon_full.starts_with(&canon_root) {
+            return Err("Path traversal detected".into());
+        }
+        if canon_full == canon_root {
+            return Err("Cannot delete mod root directory".into());
+        }
+        if full.is_dir() {
+            fs::remove_dir_all(&full).map_err(|e| format!("Failed to delete directory: {e}"))?;
+        } else if full.is_file() {
+            fs::remove_file(&full).map_err(|e| format!("Failed to delete file: {e}"))?;
+        } else {
+            return Err("Path does not exist".into());
+        }
+        Ok(())
+    })
+    .await
+}
+
 /// Recursively copy a directory tree.
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("Create dir: {e}"))?;

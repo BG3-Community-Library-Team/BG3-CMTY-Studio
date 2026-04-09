@@ -2184,6 +2184,7 @@ pub fn run() {
             commands::filesystem::cmd_create_mod_directory,
             commands::filesystem::cmd_move_mod_file,
             commands::filesystem::cmd_copy_mod_file,
+            commands::filesystem::cmd_delete_mod_path,
             commands::http::cmd_fetch_remote_schema,
             commands::git_core::cmd_git_init,
             commands::git_core::cmd_git_clone,

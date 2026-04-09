@@ -31,7 +31,13 @@
     SECTION_TEMPLATES,
     SECTION_DEFAULT_EXT,
     TEMPLATE_EXT,
+    explorerFilter,
+    matchesFilter,
+    filterSearchTree,
+    countFileTreeMatches,
   } from "./explorerShared.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd } from "./dragReorder.js";
+  import type { DragReorderState } from "./dragReorder.js";
   import ContextMenu from "../ContextMenu.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
@@ -48,6 +54,8 @@
   import Scissors from "@lucide/svelte/icons/scissors";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
   import Search from "@lucide/svelte/icons/search";
+  import Pin from "@lucide/svelte/icons/pin";
+  import PinOff from "@lucide/svelte/icons/pin-off";
 
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
@@ -65,6 +73,54 @@
 
   function isActiveFile(relPath: string): boolean {
     return activeNodeKey === `file:${modsFilePrefix}${relPath}`;
+  }
+
+  // ── Section-bounded drag state ──
+
+  let dragStates = $state<Record<string, DragReorderState>>({
+    "lua-se": createDragReorderState(),
+    "khonsu": createDragReorderState(),
+    "osiris": createDragReorderState(),
+    "anubis": createDragReorderState(),
+    "constellations": createDragReorderState(),
+  });
+
+  function getDragState(key: string): DragReorderState {
+    return dragStates[key] ?? (dragStates[key] = createDragReorderState());
+  }
+
+  function onSectionReorder(sectionKey: string, draggedId: string, targetId: string, position: "before" | "after") {
+    uiStore.reorderNode(`scripts:${sectionKey}`, draggedId, targetId, position);
+  }
+
+  async function onSectionMove(sectionKey: string, draggedRelPath: string, targetRelPath: string) {
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
+    const fromPath = `${modsFilePrefix}${draggedRelPath}`;
+    const targetDir = targetRelPath.substring(0, targetRelPath.lastIndexOf('/'));
+    const fileName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
+    const toPath = `${modsFilePrefix}${targetDir}/${fileName}`;
+    if (fromPath === toPath) return;
+    try {
+      await moveModFile(modPath, fromPath, toPath);
+      await refreshModFiles();
+      toastStore.success("File moved", fileName);
+    } catch (e) {
+      toastStore.error("Move failed", String(e));
+    }
+  }
+
+  function getOrderedTree(sectionKey: string, nodes: FileTreeNode[]): FileTreeNode[] {
+    if (nodes.length === 0) return nodes;
+    const defaultIds = nodes.map(n => n.relPath);
+    const orderedIds = uiStore.getOrderedNodes(`scripts:${sectionKey}`, defaultIds);
+    const nodeMap = new Map(nodes.map(n => [n.relPath, n]));
+    const ordered: FileTreeNode[] = [];
+    for (const id of orderedIds) {
+      const node = nodeMap.get(id);
+      if (node) ordered.push(node);
+    }
+    return ordered;
   }
 
   // ── File trees ──
@@ -131,6 +187,20 @@
       case 'constellations': return constellationsTree;
       default: return [];
     }
+  }
+
+  function getFilteredTreeData(key: string): FileTreeNode[] {
+    const tree = getTreeData(key);
+    if (!explorerFilter.active || !explorerFilter.query || explorerFilter.mode !== 'filter') return tree;
+    return filterSearchTree(tree, explorerFilter.query, explorerFilter.fuzzy);
+  }
+
+  function scriptFileFilterClass(name: string, children?: FileTreeNode[]): string {
+    const q = explorerFilter.query;
+    if (!explorerFilter.active || !q) return '';
+    if (matchesFilter(name, q, explorerFilter.fuzzy).matched) return 'filter-match';
+    if (children && filterSearchTree(children, q, explorerFilter.fuzzy).length > 0) return '';
+    return explorerFilter.mode === 'filter' ? 'filter-hidden' : 'filter-dimmed';
   }
 
   let scriptCounts = $derived.by((): Map<string, number> => {
@@ -213,14 +283,18 @@
   let fileCtxX = $state(0);
   let fileCtxY = $state(0);
   let fileCtxNode: FileTreeNode | null = $state(null);
+  let fileCtxSectionKey: string | null = $state(null);
+  let fileCtxIsTopLevel = $state(false);
 
-  function showFileContextMenu(e: MouseEvent, node: FileTreeNode) {
+  function showFileContextMenu(e: MouseEvent, node: FileTreeNode, sectionKey?: string, isTopLevel?: boolean) {
     e.preventDefault();
     e.stopPropagation();
     const zoom = getComputedZoom(e.currentTarget as HTMLElement);
     fileCtxX = e.clientX / zoom;
     fileCtxY = e.clientY / zoom;
     fileCtxNode = node;
+    fileCtxSectionKey = sectionKey ?? null;
+    fileCtxIsTopLevel = isTopLevel ?? false;
     fileCtxVisible = true;
   }
 
@@ -228,6 +302,8 @@
     scriptsCtxVisible = false;
     fileCtxVisible = false;
     fileCtxNode = null;
+    fileCtxSectionKey = null;
+    fileCtxIsTopLevel = false;
   }
 
   // ── Hover ──
@@ -507,7 +583,12 @@
 
   {#if isScriptsExpanded}
     <div class="tree-children">
-      {#snippet scriptNode(node: FileTreeNode)}
+      {#snippet scriptNode(node: FileTreeNode, sectionKey: string, isTopLevel: boolean)}
+        {@const sFCls = scriptFileFilterClass(node.name, node.children)}
+        {@const ds = getDragState(sectionKey)}
+        {@const isDragOver = ds.dropTargetId === node.relPath}
+        {@const dropPos = ds.dropPosition}
+        {@const pinned = isTopLevel && uiStore.isNodePinned(`scripts:${sectionKey}`, node.relPath)}
         {#if node.isFile}
           {#if inlineRenameNode?.relPath === node.relPath}
             <div class="tree-node inline-create has-files">
@@ -520,15 +601,28 @@
             </div>
           {:else}
             <button
-              class="tree-node has-files"
+              class="tree-node has-files {sFCls}"
               class:active-node={isActiveFile(node.relPath)}
+              class:drop-before={isDragOver && dropPos === 'before'}
+              class:drop-after={isDragOver && dropPos === 'after'}
+              class:dragging={ds.draggedId === node.relPath}
+              draggable={true}
+              ondragstart={(e) => handleDragStart(e, node.relPath, sectionKey, ds)}
+              ondragover={(e) => handleDragOver(e, node.relPath, sectionKey, ds)}
+              ondrop={(e) => handleDrop(e, node.relPath, sectionKey, ds,
+                (d, t, p) => onSectionReorder(sectionKey, d, t, p),
+                (d, t) => onSectionMove(sectionKey, d, t))}
+              ondragend={() => handleDragEnd(ds)}
               onclick={() => openFilePreview(node)}
               ondblclick={() => openFilePreview(node, false)}
-              oncontextmenu={(e) => showFileContextMenu(e, node)}
+              oncontextmenu={(e) => showFileContextMenu(e, node, sectionKey, isTopLevel)}
               onkeydown={(e) => { if (e.key === 'Delete') { deleteScriptFile(node); } }}
               onmouseenter={() => { hoveredNode = node.relPath; }}
               onmouseleave={() => { hoveredNode = null; }}
             >
+              {#if pinned}
+                <Pin size={10} class="pin-indicator" />
+              {/if}
               <span class="w-3.5 shrink-0"></span>
               <File size={14} class="text-[var(--th-text-emerald-400)]" />
               <span class="node-label truncate">{node.name}</span>
@@ -569,12 +663,25 @@
               />
             </div>
           {:else}
-            <button class="tree-node has-files"
+            <button class="tree-node has-files {sFCls}"
+              class:drop-before={isDragOver && dropPos === 'before'}
+              class:drop-after={isDragOver && dropPos === 'after'}
+              class:dragging={ds.draggedId === node.relPath}
+              draggable={true}
+              ondragstart={(e) => handleDragStart(e, node.relPath, sectionKey, ds)}
+              ondragover={(e) => handleDragOver(e, node.relPath, sectionKey, ds)}
+              ondrop={(e) => handleDrop(e, node.relPath, sectionKey, ds,
+                (d, t, p) => onSectionReorder(sectionKey, d, t, p),
+                (d, t) => onSectionMove(sectionKey, d, t))}
+              ondragend={() => handleDragEnd(ds)}
               onclick={() => uiStore.toggleNode(`script:${node.relPath}`)}
-              oncontextmenu={(e) => showFileContextMenu(e, node)}
+              oncontextmenu={(e) => showFileContextMenu(e, node, sectionKey, isTopLevel)}
               onmouseenter={() => { hoveredNode = node.relPath; }}
               onmouseleave={() => { hoveredNode = null; }}
             >
+              {#if pinned}
+                <Pin size={10} class="pin-indicator" />
+              {/if}
               <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
               {#if expanded}
                 <FolderOpen size={14} class="text-[var(--th-text-emerald-400)]" />
@@ -612,7 +719,7 @@
                 </div>
               {/if}
               {#each node.children as child (child.relPath)}
-                {@render scriptNode(child)}
+                {@render scriptNode(child, sectionKey, false)}
               {/each}
             </div>
           {/if}
@@ -622,6 +729,8 @@
       {#each SCRIPT_CATEGORIES as cat (cat.key)}
         {@const count = scriptCounts.get(cat.key) ?? 0}
         {@const treeData = getTreeData(cat.key)}
+        {@const filteredTreeData = getFilteredTreeData(cat.key)}
+        {@const filterMatchCount = explorerFilter.active && explorerFilter.query ? countFileTreeMatches(treeData, explorerFilter.query, explorerFilter.fuzzy) : 0}
         {@const nodeKey = `_Scripts_${cat.key}`}
         {@const isExpanded = uiStore.expandedNodes[nodeKey] ?? false}
         {@const catDir = cat.dir}
@@ -643,7 +752,9 @@
             <button class="tree-node-label" onclick={() => uiStore.toggleNode(nodeKey)}>
               <FileCode size={14} class={count > 0 ? "text-[var(--th-text-emerald-400)]" : "text-[var(--th-text-600)] opacity-40"} />
               <span class="node-label truncate" class:text-muted={count === 0}>{cat.label}</span>
-              {#if count > 0}
+              {#if filterMatchCount > 0}
+                <span class="filter-match-count">{filterMatchCount}</span>
+              {:else if count > 0}
                 <span class="entry-count">{count}</span>
               {/if}
             </button>
@@ -665,9 +776,10 @@
                   />
                 </div>
               {/if}
-              {#if treeData.length > 0}
-                {#each treeData as node (node.relPath)}
-                  {@render scriptNode(node)}
+              {#if filteredTreeData.length > 0}
+                {@const orderedData = getOrderedTree(cat.key, filteredTreeData)}
+                {#each orderedData as node (node.relPath)}
+                  {@render scriptNode(node, cat.key, true)}
                 {/each}
               {:else if count === 0 && !(catDir && inlineCreateParent === catDir)}
                 <button class="tree-node text-muted" onclick={() => scaffoldCategory(cat.key)}>
@@ -734,6 +846,24 @@
       <button class="ctx-item" onclick={async () => { if (fileCtxNode) { await deleteScriptFile(fileCtxNode); hideContextMenu(); } }} role="menuitem">
         <Trash2 size={12} class="shrink-0" />
         {m.file_explorer_delete_script()}
+      </button>
+    {/if}
+    {#if fileCtxIsTopLevel && fileCtxSectionKey}
+      {@const isPinned = uiStore.isNodePinned(`scripts:${fileCtxSectionKey}`, fileCtxNode.relPath)}
+      <button class="ctx-item" onclick={() => {
+        if (!fileCtxNode || !fileCtxSectionKey) return;
+        const drawerId = `scripts:${fileCtxSectionKey}`;
+        if (isPinned) uiStore.unpinNode(drawerId, fileCtxNode.relPath);
+        else uiStore.pinNode(drawerId, fileCtxNode.relPath);
+        hideContextMenu();
+      }} role="menuitem">
+        {#if isPinned}
+          <PinOff size={12} class="shrink-0" />
+          {m.explorer_context_menu_unpin()}
+        {:else}
+          <Pin size={12} class="shrink-0" />
+          {m.explorer_context_menu_pin_to_top()}
+        {/if}
       </button>
     {/if}
     <button class="ctx-item" onclick={() => { if (!fileCtxNode) return; const node = fileCtxNode; hideContextMenu(); startInlineRename(node); }} role="menuitem">
@@ -820,5 +950,23 @@
 <style>
   .scripts-content {
     padding: 0 4px;
+  }
+
+  /* Drag-to-reorder visual indicators */
+  :global(.tree-node).drop-before {
+    box-shadow: inset 0 2px 0 0 var(--th-accent-500, #3b82f6);
+  }
+  :global(.tree-node).drop-after {
+    box-shadow: inset 0 -2px 0 0 var(--th-accent-500, #3b82f6);
+  }
+  :global(.tree-node).dragging {
+    opacity: 0.4;
+  }
+
+  /* Pin indicator */
+  :global(.pin-indicator) {
+    color: var(--th-text-400);
+    flex-shrink: 0;
+    margin-right: -2px;
   }
 </style>

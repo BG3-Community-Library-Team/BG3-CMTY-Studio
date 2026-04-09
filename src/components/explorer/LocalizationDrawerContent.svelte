@@ -14,7 +14,13 @@
     EXT_BADGE_COLORS,
     EXT_BADGE_FALLBACK,
     LOCA_EXTENSIONS,
+    explorerFilter,
+    matchesFilter,
+    filterSearchTree,
+    countFileTreeMatches,
   } from "./explorerShared.js";
+  import { fileExists } from "../../lib/tauri/mod-management.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems } from "./dragReorder.js";
   import ContextMenu from "../ContextMenu.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
@@ -62,6 +68,121 @@
     if (!locaDir?.children) return [];
     return filterTree(locaDir.children, LOCA_EXTENSIONS);
   });
+
+  // ── Ordered tree (pin-to-top) ──
+
+  let orderedLocalizationTree = $derived.by((): FileTreeNode[] => {
+    if (localizationTree.length === 0) return [];
+    const defaultIds = localizationTree.map(n => n.relPath);
+    const ordered = uiStore.getOrderedNodes("localization", defaultIds);
+    const byPath = new Map(localizationTree.map(n => [n.relPath, n]));
+    return ordered.map(id => byPath.get(id)).filter((n): n is FileTreeNode => !!n);
+  });
+
+  let filteredLocalizationTree = $derived.by(() => {
+    if (!explorerFilter.active || !explorerFilter.query || explorerFilter.mode !== 'filter') return orderedLocalizationTree;
+    return filterSearchTree(orderedLocalizationTree, explorerFilter.query, explorerFilter.fuzzy);
+  });
+
+  let locaFilterMatchCount = $derived.by(() => {
+    if (!explorerFilter.active || !explorerFilter.query) return 0;
+    return countFileTreeMatches(localizationTree, explorerFilter.query, explorerFilter.fuzzy);
+  });
+
+  function locaFileFilterClass(name: string, children?: FileTreeNode[]): string {
+    const q = explorerFilter.query;
+    if (!explorerFilter.active || !q) return '';
+    if (matchesFilter(name, q, explorerFilter.fuzzy).matched) return 'filter-match';
+    if (children && filterSearchTree(children, q, explorerFilter.fuzzy).length > 0) return '';
+    return explorerFilter.mode === 'filter' ? 'filter-hidden' : 'filter-dimmed';
+  }
+
+  // ── Drag-to-move state ──
+
+  let dragState = createDragReorderState();
+
+  function getNodeFolder(relPath: string): string {
+    // relPath is like "Localization/English/foo.xml" or "Localization/bar.xml"
+    const idx = relPath.lastIndexOf('/');
+    return idx > 0 ? relPath.substring(0, idx) : 'Localization';
+  }
+
+  async function handleFileMoveToFolder(draggedRelPath: string, targetRelPath: string): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
+
+    const draggedName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
+    const targetFolder = getNodeFolder(targetRelPath);
+    const newRelPath = `${targetFolder}/${draggedName}`;
+
+    if (draggedRelPath === newRelPath) return;
+
+    const srcFull = `${modsFilePrefix}${draggedRelPath}`;
+    const destFull = `${modsFilePrefix}${newRelPath}`;
+
+    // Check if file exists at destination
+    const destAbsolute = `${modPath}/${destFull}`;
+    const exists = await fileExists(destAbsolute);
+    if (exists) {
+      if (!confirm(`"${draggedName}" already exists in ${targetFolder}. Overwrite?`)) return;
+    }
+
+    try {
+      await moveModFile(modPath, srcFull, destFull);
+      // Update tab if the moved file was open
+      const oldTabId = `script:${srcFull}`;
+      if (uiStore.openTabs.some(t => t.id === oldTabId)) {
+        uiStore.closeTab(oldTabId);
+        uiStore.openScriptTab(destFull);
+      }
+      await refreshModFiles();
+      toastStore.success("File moved", `${draggedName} → ${targetFolder}`);
+    } catch (e) {
+      toastStore.error("Move failed", String(e));
+    }
+  }
+
+  async function handleFileMoveToRoot(draggedRelPath: string): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    if (!modPath) return;
+
+    const draggedName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
+    const newRelPath = `Localization/${draggedName}`;
+
+    if (draggedRelPath === newRelPath) return;
+
+    const srcFull = `${modsFilePrefix}${draggedRelPath}`;
+    const destFull = `${modsFilePrefix}${newRelPath}`;
+
+    const destAbsolute = `${modPath}/${destFull}`;
+    const exists = await fileExists(destAbsolute);
+    if (exists) {
+      if (!confirm(`"${draggedName}" already exists in Localization root. Overwrite?`)) return;
+    }
+
+    try {
+      await moveModFile(modPath, srcFull, destFull);
+      const oldTabId = `script:${srcFull}`;
+      if (uiStore.openTabs.some(t => t.id === oldTabId)) {
+        uiStore.closeTab(oldTabId);
+        uiStore.openScriptTab(destFull);
+      }
+      await refreshModFiles();
+      toastStore.success("File moved", `${draggedName} → Localization/`);
+    } catch (e) {
+      toastStore.error("Move failed", String(e));
+    }
+  }
+
+  function onLocaReorder(draggedId: string, targetId: string, position: "before" | "after"): void {
+    uiStore.reorderNode("localization", draggedId, targetId, position);
+  }
+
+  function onLocaCrossMove(draggedId: string, targetId: string): void {
+    // draggedId is a file relPath, targetId is where it was dropped
+    // Find the target node to determine the destination folder
+    handleFileMoveToFolder(draggedId, targetId);
+  }
 
   // ── Context menus ──
 
@@ -257,12 +378,32 @@
     <button class="tree-node-label" onclick={() => uiStore.openTab({ id: "section:Localization", label: "Localization", type: "localization", category: "Localization", icon: "🌐" })}>
       <Languages size={14} class="text-[var(--th-text-amber-400)]" />
       <span class="node-label">Localization</span>
+      {#if locaFilterMatchCount > 0}
+        <span class="filter-match-count">{locaFilterMatchCount}</span>
+      {/if}
     </button>
   </div>
 
   {#if isLocalizationExpanded}
-    <div class="tree-children">
+    <div
+      class="tree-children"
+      role="group"
+      ondragover={(e) => {
+        if (!dragState.draggedId) return;
+        // Allow dropping files to localization root
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      }}
+      ondrop={(e) => {
+        e.preventDefault();
+        const draggedId = dragState.draggedId;
+        if (draggedId) {
+          handleFileMoveToRoot(draggedId);
+        }
+        handleDragEnd(dragState);
+      }}>
       {#snippet locaNode(node: FileTreeNode)}
+        {@const lFCls = locaFileFilterClass(node.name, node.children)}
         {#if node.isFile}
           {#if inlineRenameNode?.relPath === node.relPath}
             <div class="tree-node inline-create has-files">
@@ -277,9 +418,16 @@
               />
             </div>
           {:else}
+            {@const nodeFolder = getNodeFolder(node.relPath)}
             <button
-              class="tree-node has-files"
+              class="tree-node has-files {lFCls}"
               class:active-node={isActiveFile(node.relPath)}
+              class:drag-over={dragState.dropTargetId === node.relPath && dragState.draggedId !== node.relPath}
+              draggable="true"
+              ondragstart={(e) => handleDragStart(e, node.relPath, nodeFolder, dragState)}
+              ondragover={(e) => handleDragOver(e, node.relPath, nodeFolder, dragState, true)}
+              ondrop={(e) => handleDrop(e, node.relPath, nodeFolder, dragState, onLocaReorder, onLocaCrossMove)}
+              ondragend={() => handleDragEnd(dragState)}
               onclick={() => openFilePreview(node)}
               ondblclick={() => openFilePreview(node, false)}
               oncontextmenu={(e) => {
@@ -315,7 +463,42 @@
               />
             </div>
           {:else}
-            <button class="tree-node has-files" onclick={() => uiStore.toggleNode(`loca:${node.relPath}`)}>
+            <button
+              class="tree-node has-files {lFCls}"
+              class:drag-over={dragState.dropTargetId === node.relPath && dragState.draggedId !== node.relPath}
+              ondragover={(e) => {
+                if (!dragState.draggedId) return;
+                // Only accept file drops onto folders
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                dragState.dropTargetId = node.relPath;
+                dragState.dropPosition = "inside";
+              }}
+              ondrop={(e) => {
+                e.preventDefault();
+                const draggedId = dragState.draggedId;
+                if (draggedId) {
+                  handleFileMoveToFolder(draggedId, `${node.relPath}/`);
+                }
+                handleDragEnd(dragState);
+              }}
+              ondragleave={() => {
+                if (dragState.dropTargetId === node.relPath) {
+                  dragState.dropTargetId = null;
+                  dragState.dropPosition = null;
+                }
+              }}
+              onclick={() => uiStore.toggleNode(`loca:${node.relPath}`)}
+              oncontextmenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const zoom = getComputedZoom(e.currentTarget as HTMLElement);
+                locaFileCtxX = e.clientX / zoom;
+                locaFileCtxY = e.clientY / zoom;
+                locaFileCtxNode = node;
+                locaFileCtxVisible = true;
+              }}
+            >
               <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
               {#if expanded}
                 <FolderOpen size={14} class="text-[var(--th-text-amber-400)]" />
@@ -353,8 +536,8 @@
           />
         </div>
       {/if}
-      {#if localizationTree.length > 0}
-        {#each localizationTree as treeNode (treeNode.relPath)}
+      {#if filteredLocalizationTree.length > 0}
+        {#each filteredLocalizationTree as treeNode (treeNode.relPath)}
           {@render locaNode(treeNode)}
         {/each}
       {:else if inlineCreateParent !== 'Localization'}
@@ -393,7 +576,22 @@
 
 <!-- Localization file context menu -->
 {#if locaFileCtxVisible && locaFileCtxNode}
+  {@const ctxNodeIsRoot = !locaFileCtxNode.relPath.includes('/') || locaFileCtxNode.relPath.split('/').length <= 2}
+  {@const ctxNodePinId = locaFileCtxNode.relPath}
+  {@const ctxNodeIsPinned = uiStore.isNodePinned("localization", ctxNodePinId)}
   <ContextMenu x={locaFileCtxX} y={locaFileCtxY} header={locaFileCtxNode.name} onclose={hideContextMenu}>
+    {#if ctxNodeIsRoot}
+      {#each getPinContextMenuItems("localization", ctxNodePinId, ctxNodeIsPinned) as pinItem}
+        <button class="ctx-item" onclick={() => { pinItem.action?.(); locaFileCtxVisible = false; }} role="menuitem">
+          {#if pinItem.icon}
+            {@const PinIcon = pinItem.icon}
+            <PinIcon size={12} class="shrink-0" />
+          {/if}
+          {pinItem.label}
+        </button>
+      {/each}
+      <div class="ctx-separator"></div>
+    {/if}
     <button class="ctx-item" onclick={() => { if (!locaFileCtxNode) return; const node = locaFileCtxNode; locaFileCtxVisible = false; startInlineRename(node); }} role="menuitem">
       <Pencil size={12} class="shrink-0" />
       Rename
@@ -434,5 +632,10 @@
 <style>
   .loca-content {
     padding: 0 4px;
+  }
+  .loca-content :global(.drag-over) {
+    outline: 1px dashed var(--th-accent-500);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--th-accent-500) 10%, transparent);
   }
 </style>

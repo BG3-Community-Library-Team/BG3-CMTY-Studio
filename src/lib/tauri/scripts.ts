@@ -142,6 +142,13 @@ export async function copyModFile(
   return invoke("cmd_copy_mod_file", { modPath, srcRelPath, destRelPath });
 }
 
+export async function deleteModPath(
+  modPath: string,
+  relPath: string,
+): Promise<void> {
+  return invoke("cmd_delete_mod_path", { modPath, relPath });
+}
+
 // ── External template support ──
 
 export interface ExternalTemplateInfo {
