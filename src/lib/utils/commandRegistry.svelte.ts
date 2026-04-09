@@ -9,6 +9,12 @@
  *
  * Categories act as navigable tree nodes in the command palette —
  * selecting a category drills down into its children.
+ *
+ * **Plugin commands** use the convention `PLUGIN:action` for their id
+ * (e.g. `git:checkout`, `git:createBranch`).  Plugins register and
+ * unregister their commands via `registerMany` / `unregisterPrefix`.
+ * The command palette can be opened pre-filtered to a plugin's commands
+ * using `uiStore.openCommandPalette(">git:")`.
  */
 
 import { m } from "../../paraglide/messages.js";

@@ -287,7 +287,8 @@ class GitStore {
 
   // ── Polling control ───────────────────────────────────────
 
-  /** Start polling status (call when Git panel mounts) */
+  /** Start polling status (call when Git panel mounts).
+   *  Polls every 30s — mutations call refresh() directly for instant feedback. */
   startPolling(modPath: string): void {
     if (this._pollActive) return;
     this._pollActive = true;
@@ -295,7 +296,7 @@ class GitStore {
       if (this._pollActive && !this.isLoading) {
         this.refresh(modPath);
       }
-    }, 3000);
+    }, 30_000);
   }
 
   /** Stop polling status (call when Git panel unmounts) */

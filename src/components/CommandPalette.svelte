@@ -50,14 +50,20 @@
     fuzzy: FuzzyResult;
   }
 
+  // Parse plugin prefix filter: ">git:" filters commands by id prefix "git:"
+  let pluginPrefix = $derived.by(() => {
+    const match = query.match(/^>(\S+)/);
+    return match ? match[1] : "";
+  });
+
   // Parse section filter: "#SectionName" anywhere in query
   let sectionFilter = $derived.by(() => {
     const match = query.match(/#(\S+)/);
     return match ? match[1].toLowerCase() : "";
   });
 
-  // Search text is query without the #section portion
-  let searchText = $derived(query.replace(/#\S*/g, "").trim());
+  // Search text is query without the #section or >prefix portions
+  let searchText = $derived(query.replace(/#\S*/g, "").replace(/^>\S*\s*/, "").trim());
 
   // Debounced search text for expensive entry search (120ms delay)
   let debouncedSearchText = $state("");
@@ -138,12 +144,22 @@
 
   // Filtered command results — only when searching
   let commandResults = $derived.by((): ScoredCommand[] => {
-    if (!searchText) return [];
+    if (!searchText && !pluginPrefix) return [];
     let commands = enabledCommands;
+
+    // If plugin prefix is active, filter by command id prefix
+    if (pluginPrefix) {
+      commands = commands.filter(c => c.id.startsWith(pluginPrefix));
+    }
 
     // If in a category, only show that category's commands
     if (activeCategory) {
       commands = commands.filter(c => c.category === activeCategory);
+    }
+
+    if (!searchText) {
+      // No text search, just return all matching plugin-prefix commands
+      return commands.map(cmd => ({ command: cmd, fuzzy: { score: 0, matches: [] } }));
     }
 
     const scored: ScoredCommand[] = [];
@@ -162,7 +178,7 @@
   });
 
   // Determine if search-all-entries action should appear
-  let showSearchAllAction = $derived(!!searchText && !!modStore.scanResult);
+  let showSearchAllAction = $derived(!!searchText && !!modStore.scanResult && !pluginPrefix);
 
   // Build the flat navigable items list for keyboard navigation
   interface NavItem {
@@ -175,6 +191,14 @@
   }
   let navItems = $derived.by((): NavItem[] => {
     const items: NavItem[] = [];
+
+    // Plugin prefix mode: show only matching commands (no categories/recent)
+    if (pluginPrefix) {
+      for (const sc of commandResults) {
+        items.push({ type: searchText ? "scored-command" : "command", scored: searchText ? sc : undefined, command: sc.command });
+      }
+      return items;
+    }
 
     if (searchText) {
       // Searching mode: show search-all, matching commands, then entry results
@@ -351,10 +375,13 @@
   // Auto-focus input when opened
   $effect(() => {
     if (open) {
-      query = "";
+      query = uiStore.commandPaletteInitialQuery || "";
       activeIndex = 0;
       activeCategory = null;
       requestAnimationFrame(() => inputEl?.focus());
+    } else {
+      // Clear initial query when palette closes
+      uiStore.commandPaletteInitialQuery = "";
     }
   });
 

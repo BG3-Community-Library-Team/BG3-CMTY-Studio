@@ -2,6 +2,7 @@
   import { m } from "../../paraglide/messages.js";
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import GitBranchPicker from "./GitBranchPicker.svelte";
 
   interface Props {
     modPath: string;
@@ -11,14 +12,17 @@
 
 <div class="git-toolbar">
   <h3 class="git-toolbar-title">{m.git_panel_title()}</h3>
-  <button
-    class="git-toolbar-btn"
-    title={m.git_refresh_tooltip()}
-    onclick={() => gitStore.refresh(modPath)}
-    disabled={gitStore.isLoading}
-  >
-    <RefreshCw size={14} class={gitStore.isLoading ? "spinning" : ""} />
-  </button>
+  <div class="git-toolbar-actions">
+    <GitBranchPicker {modPath} />
+    <button
+      class="git-toolbar-btn"
+      title={m.git_refresh_tooltip()}
+      onclick={() => gitStore.refresh(modPath)}
+      disabled={gitStore.isLoading}
+    >
+      <RefreshCw size={14} class={gitStore.isLoading ? "spinning" : ""} />
+    </button>
+  </div>
 </div>
 
 <style>
@@ -26,15 +30,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 10px;
+    padding: 4px 10px;
     border-bottom: 1px solid var(--th-bg-700);
   }
 
   .git-toolbar-title {
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--th-text-200);
     margin: 0;
+  }
+
+  .git-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .git-toolbar-btn {

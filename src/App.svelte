@@ -46,6 +46,7 @@
   import { SECTIONS_ORDERED, SECTION_DISPLAY_NAMES, type Section, getErrorMessage } from "./lib/types/index.js";
   import { m } from "./paraglide/messages.js";
   import { loadIdeHelpers } from "./lib/plugins/index.js";
+  import { registerGitCommands } from "./lib/plugins/gitCommands.svelte.js";
 
   const MIN_SIDEBAR = 280;
   const MAX_SIDEBAR_RATIO = 0.6;
@@ -472,6 +473,8 @@
         execute: () => { uiStore.openTab({ id: "theme-gallery", label: "Theme Gallery", type: "theme-gallery", icon: "🎨" }); },
       }] : []),
     ]);
+    // Register git plugin commands
+    registerGitCommands();
     // Run once
     return undefined;
   });

@@ -304,6 +304,18 @@ class UiStore {
     this.settingsSection = "";
     this.sidebarVisible = true;
   }
+
+  // ── Command Palette programmatic open ─────────────────────────
+  /** Whether the command palette is currently open */
+  commandPaletteOpen: boolean = $state(false);
+  /** Initial query to pre-fill when opening the command palette programmatically */
+  commandPaletteInitialQuery: string = $state("");
+
+  /** Open the command palette, optionally pre-filled with a query string. */
+  openCommandPalette(query = ""): void {
+    this.commandPaletteInitialQuery = query;
+    this.commandPaletteOpen = true;
+  }
 }
 
 export const uiStore = new UiStore();

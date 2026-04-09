@@ -206,7 +206,7 @@ pub(crate) fn parse_bgra_color(value: &str) -> Option<String> {
 #[tauri::command]
 async fn cmd_scan_mod(app: tauri::AppHandle, mod_path: String, extra_scan_paths: Option<Vec<String>>, is_primary: Option<bool>) -> Result<ScanResult, AppError> {
     blocking(move || {
-        let db_paths = db_manager::get_db_paths(&app)
+        let db_paths = db_manager::ensure_schema_dbs(&app)
             .map_err(|e| format!("DB paths not available: {e}"))?;
         let base_db = &db_paths.base;
         if !base_db.exists() {

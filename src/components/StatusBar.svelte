@@ -12,6 +12,7 @@
   import { modImportService } from "../lib/services/modImportService.svelte.js";
   import { gitStore } from "../lib/stores/gitStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
+  import { registerDynamicBranchCommands } from "../lib/plugins/gitCommands.svelte.js";
   import { THEME_OPTIONS } from "../lib/themes/themeManager.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { m } from "../paraglide/messages.js";
@@ -181,8 +182,16 @@
     {#if gitStore.isRepo && gitBranchName}
       <button
         class="flex items-center gap-1 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] transition-colors cursor-pointer"
-        onclick={() => { uiStore.activeView = "git"; }}
-        title="Switch to Git panel"
+        onclick={() => {
+          const gitPath = modStore.projectPath || modStore.selectedModPath || "";
+          if (gitPath) {
+            gitStore.refreshBranches(gitPath);
+            gitStore.loadHistory(gitPath);
+          }
+          registerDynamicBranchCommands();
+          uiStore.openCommandPalette(">git:");
+        }}
+        title="Git: Switch Branch"
         type="button"
       >
         <GitBranchIcon class="w-3.5 h-3.5" />

@@ -4,7 +4,6 @@
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import GitCommitRow from "./GitCommitRow.svelte";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-  import History from "@lucide/svelte/icons/history";
 
   interface Props {
     modPath: string;
@@ -31,11 +30,6 @@
 </script>
 
 <div class="history-panel">
-  <div class="history-header">
-    <History size={14} />
-    <span>{m.git_history_heading()}</span>
-  </div>
-
   <div class="history-list">
     {#if gitStore.commitsLoading && gitStore.commits.length === 0}
       <div class="history-loading">
@@ -77,18 +71,6 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
-  }
-
-  .history-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    color: var(--th-text-300);
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .history-list {

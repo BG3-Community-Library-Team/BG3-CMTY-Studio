@@ -44,7 +44,19 @@
     const projectPath = modStore.projectPath || modPath;
     settingsStore.lastProjectPath = projectPath;
     settingsStore.persist();
-    await openProject(modPath);
+    try {
+      await openProject(modPath);
+    } catch (e) {
+      console.error("[handleScan] openProject failed:", e);
+      const msg = typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : e != null && typeof e === "object" && "message" in e
+            ? String((e as Record<string, unknown>).message)
+            : "Failed to open project";
+      modStore.error = msg;
+    }
   }
 </script>
 

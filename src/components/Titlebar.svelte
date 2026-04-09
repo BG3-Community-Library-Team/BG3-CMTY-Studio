@@ -13,6 +13,7 @@
   import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { projectStore } from "../lib/stores/projectStore.svelte.js";
+  import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
   import { APP_NAME } from "../lib/version.js";
   import Search from "@lucide/svelte/icons/search";
@@ -21,7 +22,11 @@
   import Copy from "@lucide/svelte/icons/copy";
   import X from "@lucide/svelte/icons/x";
 
-  let commandPaletteOpen = $state(false);
+  let commandPaletteOpen = $derived(uiStore.commandPaletteOpen);
+  function setCommandPaletteOpen(v: boolean) {
+    uiStore.commandPaletteOpen = v;
+    if (!v) uiStore.commandPaletteInitialQuery = "";
+  }
 
   let isMaximized = $state(false);
 
@@ -254,8 +259,8 @@
                  bg-[var(--th-bg-800)] border border-[var(--th-border-700)]
                  text-[var(--th-titlebar-text,var(--th-text-500))] hover:text-[var(--th-text-300)]
                  hover:border-[var(--th-border-600)] text-xs cursor-pointer"
-          onclick={() => commandPaletteOpen = true}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); commandPaletteOpen = true; } }}
+          onclick={() => setCommandPaletteOpen(true)}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCommandPaletteOpen(true); } }}
           role="button"
           tabindex="0"
           title={m.titlebar_command_palette_title()}
@@ -292,7 +297,7 @@
         {/if}
       </div>
     {/if}
-    <CommandPalette bind:open={commandPaletteOpen} />
+    <CommandPalette bind:open={uiStore.commandPaletteOpen} />
   </div>
 
   <!-- Spacer (draggable) -->

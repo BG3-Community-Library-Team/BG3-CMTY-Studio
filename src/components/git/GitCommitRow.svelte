@@ -28,10 +28,8 @@
   type="button"
 >
   <span class="commit-oid">{commit.shortOid}</span>
-  <span class="commit-body">
-    <span class="commit-message">{firstLine}</span>
-    <span class="commit-author">{commit.authorName}</span>
-  </span>
+  <span class="commit-message">{firstLine}</span>
+  <span class="commit-meta">— {commit.authorName}</span>
   <span class="commit-time">{relativeTime(commit.timestamp)}</span>
 </button>
 
@@ -39,14 +37,14 @@
   .commit-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
-    min-height: 32px;
+    min-height: 26px;
     padding: 2px 10px;
     border: none;
     background: transparent;
     color: var(--th-text-200);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     cursor: pointer;
     text-align: left;
   }
@@ -58,32 +56,32 @@
   .commit-oid {
     flex-shrink: 0;
     font-family: var(--th-font-mono, monospace);
-    font-size: 0.72rem;
+    font-size: 0.65rem;
     color: var(--th-text-500);
-  }
-
-  .commit-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
+    background: var(--th-bg-700);
+    border-radius: 3px;
+    padding: 0 4px;
+    line-height: 1.4;
   }
 
   .commit-message {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .commit-author {
+  .commit-meta {
+    flex-shrink: 0;
     font-size: 0.7rem;
     color: var(--th-text-500);
+    white-space: nowrap;
   }
 
   .commit-time {
     flex-shrink: 0;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--th-text-400);
     white-space: nowrap;
   }

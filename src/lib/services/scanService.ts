@@ -296,37 +296,55 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
       }
     }
 
-    // Load previewable text files from mod directory (non-blocking)
+    // Load previewable text files from mod directory
     modStore.scanPhase = m.scan_phase_indexing_files();
-    listModFiles(modPath).then(files => { modStore.modFiles = files; }).catch(err => console.warn("Failed to list mod files:", err));
+    try {
+      modStore.modFiles = await listModFiles(modPath);
+    } catch (err) {
+      console.warn("Failed to list mod files:", err);
+    }
 
-    // Load mod-specific localization entries and merge into the shared map (non-blocking)
-    getModLocalization(modPath).then(result => {
-      if (result.entries.length > 0) {
+    // Load mod-specific localization entries and merge into the shared map
+    try {
+      const locaResult = await getModLocalization(modPath);
+      if (locaResult.entries.length > 0) {
         const map = new Map(modStore.localizationMap);
-        for (const e of result.entries) {
+        for (const e of locaResult.entries) {
           map.set(e.handle.toLowerCase(), e.text);
         }
         modStore.localizationMap = map;
       }
-      if (result.warnings.length > 0) {
-        for (const w of result.warnings) console.warn("[Mod Loca]", w);
-        toastStore.warning(m.scan_mod_loca_parse_title(), m.scan_mod_loca_parse_detail({ count: String(result.warnings.length) }));
+      if (locaResult.warnings.length > 0) {
+        for (const w of locaResult.warnings) console.warn("[Mod Loca]", w);
+        toastStore.warning(m.scan_mod_loca_parse_title(), m.scan_mod_loca_parse_detail({ count: String(locaResult.warnings.length) }));
       }
-    }).catch(err => console.warn("Failed to load mod localization:", err));
+    } catch (err) {
+      console.warn("Failed to load mod localization:", err);
+    }
 
-    // Load mod stat entries for combobox population (non-blocking)
-    getModStatEntries(modPath).then(entries => {
-      modStore.modStatEntries = entries;
-    }).catch(err => console.warn("Failed to load mod stat entries:", err));
+    // Load mod stat entries for combobox population
+    try {
+      modStore.modStatEntries = await getModStatEntries(modPath);
+    } catch (err) {
+      console.warn("Failed to load mod stat entries:", err);
+    }
 
-    // Load vanilla entries for combobox population (non-blocking)
-    loadVanillaData();
+    // Load vanilla entries for combobox population
+    modStore.scanPhase = m.scan_phase_loading_project();
+    await loadVanillaData();
   } catch (e: unknown) {
-    modStore.error = typeof e === "string" ? e : (e instanceof Error ? e.message : "Scan failed");
+    console.error("[scanAndImport] Scan failed — full error:", e);
+    const msg = typeof e === "string"
+      ? e
+      : e instanceof Error
+        ? e.message
+        : e != null && typeof e === "object" && "message" in e
+          ? String((e as Record<string, unknown>).message)
+          : "Load failed";
+    modStore.error = msg;
     modStore.scanResult = null;
     modStore.modStatEntries = [];
-    toastStore.error(m.scan_failed(), modStore.error);
+    toastStore.error(m.scan_failed(), msg);
   } finally {
     modStore.isScanning = false;
     modStore.scanPhase = "";

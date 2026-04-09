@@ -7,6 +7,8 @@
   }
   let { modPath }: Props = $props();
 
+  let focused = $state(false);
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -21,7 +23,9 @@
     placeholder={m.git_commit_placeholder()}
     bind:value={gitStore.commitMessage}
     onkeydown={handleKeydown}
-    rows="3"
+    onfocus={() => { focused = true; }}
+    onblur={() => { focused = false; }}
+    rows={focused ? 3 : 1}
   ></textarea>
   <button
     class="git-commit-btn"
@@ -36,23 +40,23 @@
   .git-commit-box {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 8px 10px;
+    gap: 4px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--th-bg-700);
   }
 
   .git-commit-input {
     width: 100%;
-    resize: vertical;
-    min-height: 60px;
-    padding: 6px 8px;
-    border: 1px solid var(--th-bg-700);
-    border-radius: 4px;
-    background: var(--th-bg-850, var(--th-bg-800));
-    color: var(--th-text-200);
-    font-size: 0.8rem;
+    resize: none;
+    padding: 4px 8px;
+    border: 1px solid var(--th-input-border, var(--th-bg-700));
+    border-radius: 3px;
+    background: var(--th-input-bg, var(--th-bg-800));
+    color: var(--th-input-text, var(--th-text-200));
+    font-size: 0.75rem;
     font-family: inherit;
     line-height: 1.4;
+    transition: all 0.15s ease;
   }
 
   .git-commit-input::placeholder {
@@ -61,23 +65,23 @@
 
   .git-commit-input:focus {
     outline: none;
-    border-color: var(--th-accent-500);
+    border-color: var(--th-bg-sky-600);
   }
 
   .git-commit-btn {
-    padding: 5px 12px;
+    padding: 3px 10px;
     border: none;
-    border-radius: 4px;
-    background: var(--th-accent-500);
+    border-radius: 3px;
+    background: var(--th-bg-sky-600);
     color: #fff;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: filter 0.15s ease;
   }
 
   .git-commit-btn:hover:not(:disabled) {
-    background: var(--th-accent-600);
+    filter: brightness(1.15);
   }
 
   .git-commit-btn:disabled {

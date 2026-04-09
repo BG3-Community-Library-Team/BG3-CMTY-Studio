@@ -26,7 +26,7 @@
     modified: "var(--th-warning-400, #f59e0b)",
     added: "var(--th-success-400, #22c55e)",
     deleted: "var(--th-error-400, #ef4444)",
-    renamed: "var(--th-info-400, #3b82f6)",
+    renamed: "var(--th-text-sky-400, #38bdf8)",
     untracked: "var(--th-text-500)",
     conflicted: "var(--th-error-500, #dc2626)",
   };
@@ -59,12 +59,10 @@
   onkeydown={(e) => { if (e.key === "Enter") gitStore.loadFileDiff(modPath, file.path, staged); }}
 >
   <span class="git-file-status" style="color: {getStatusColor()}">{getStatusLabel()}</span>
-  <span class="git-file-path" title={file.path}>
-    {#if dirPart()}
-      <span class="git-file-dir">{dirPart()}</span>
-    {/if}
-    {fileName()}
-  </span>
+  <span class="git-file-name" title={file.path}>{fileName()}</span>
+  {#if dirPart()}
+    <span class="git-file-dir-hint">{dirPart()}</span>
+  {/if}
   <div class="git-file-actions">
     {#if staged}
       <button
@@ -100,10 +98,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 2px 10px 2px 16px;
+    padding: 0 10px 0 16px;
     cursor: pointer;
-    font-size: 0.8rem;
-    min-height: 26px;
+    font-size: 0.75rem;
+    min-height: 22px;
   }
 
   .git-file-item:hover {
@@ -114,22 +112,29 @@
     flex-shrink: 0;
     width: 14px;
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-align: center;
     font-family: monospace;
   }
 
-  .git-file-path {
-    flex: 1;
+  .git-file-name {
+    flex-shrink: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--th-text-300);
+    color: var(--th-text-200);
   }
 
-  .git-file-dir {
+  .git-file-dir-hint {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--th-text-500);
+    font-size: 0.7rem;
+    margin-left: 4px;
   }
 
   .git-file-actions {

@@ -3,11 +3,11 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import GitToolbar from "./GitToolbar.svelte";
-  import GitBranchPicker from "./GitBranchPicker.svelte";
   import GitCommitBox from "./GitCommitBox.svelte";
   import GitFileList from "./GitFileList.svelte";
   import GitHistoryPanel from "./GitHistoryPanel.svelte";
   import GitInitPrompt from "./GitInitPrompt.svelte";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
 
@@ -24,6 +24,7 @@
 
   let stagedOpen = $state(true);
   let changesOpen = $state(true);
+  let historyOpen = $state(true);
 </script>
 
 <div class="git-panel">
@@ -35,25 +36,26 @@
     <GitInitPrompt modPath={gitPath} />
   {:else}
     <GitToolbar modPath={gitPath} />
-    <GitBranchPicker modPath={gitPath} />
     <GitCommitBox modPath={gitPath} />
 
-    <!-- Staged Changes -->
+    <!-- Staged Changes (hidden when empty) -->
+    {#if gitStore.stagedFiles.length > 0}
     <div class="git-section">
       <button class="git-section-header" onclick={() => { stagedOpen = !stagedOpen; }}>
-        <span class="git-section-chevron" class:open={stagedOpen}>▶</span>
+        <span class="git-section-chevron" class:open={stagedOpen}><ChevronRight size={12} /></span>
         <span>{m.git_staged_changes()}</span>
         <span class="git-section-count">{gitStore.stagedFiles.length}</span>
       </button>
-      {#if stagedOpen && gitStore.stagedFiles.length > 0}
+      {#if stagedOpen}
         <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
       {/if}
     </div>
+    {/if}
 
     <!-- Changes (unstaged + untracked) -->
     <div class="git-section">
       <button class="git-section-header" onclick={() => { changesOpen = !changesOpen; }}>
-        <span class="git-section-chevron" class:open={changesOpen}>▶</span>
+        <span class="git-section-chevron" class:open={changesOpen}><ChevronRight size={12} /></span>
         <span>{m.git_changes()}</span>
         <span class="git-section-count">{gitStore.unstagedFiles.length + gitStore.untrackedFiles.length}</span>
       </button>
@@ -68,7 +70,13 @@
 
     <!-- History -->
     <div class="git-section git-history-section">
-      <GitHistoryPanel modPath={gitPath} />
+      <button class="git-section-header" onclick={() => { historyOpen = !historyOpen; }}>
+        <span class="git-section-chevron" class:open={historyOpen}><ChevronRight size={12} /></span>
+        <span>{m.git_history_heading()}</span>
+      </button>
+      {#if historyOpen}
+        <GitHistoryPanel modPath={gitPath} />
+      {/if}
     </div>
   {/if}
 </div>
@@ -94,7 +102,7 @@
     font-size: 0.85rem;
   }
 
-  .git-section {
+  .git-section + .git-section {
     border-top: 1px solid var(--th-bg-700);
   }
 
@@ -103,7 +111,7 @@
     align-items: center;
     gap: 6px;
     width: 100%;
-    padding: 6px 10px;
+    padding: 4px 10px;
     border: none;
     background: transparent;
     color: var(--th-text-300);
@@ -119,9 +127,11 @@
   }
 
   .git-section-chevron {
-    display: inline-block;
-    font-size: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: transform 0.15s ease;
+    color: var(--th-text-400);
   }
 
   .git-section-chevron.open {
@@ -136,8 +146,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 9px;
-    background: var(--th-bg-700);
-    color: var(--th-text-400);
+    background: var(--th-bg-sky-600, #0284c7);
+    color: #fff;
     font-size: 0.65rem;
     font-weight: 600;
   }
