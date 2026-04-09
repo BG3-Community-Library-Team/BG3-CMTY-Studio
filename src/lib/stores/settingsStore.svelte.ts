@@ -49,6 +49,8 @@ interface StoredSettings {
   ideHelpersPath: string;
   /** Path to a folder containing user-defined script templates (organized by category subdirectories) */
   templateFoldersPath: string;
+  /** URL to fetch the MCM blueprint JSON schema for validation and editor support */
+  mcmSchemaUrl: string;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -78,6 +80,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   autoHideTabBar: false,
   ideHelpersPath: "",
   templateFoldersPath: "",
+  mcmSchemaUrl: "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json",
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -200,6 +203,9 @@ class SettingsStore {
 
   /** Path to a folder containing user-defined script templates (organized by category subdirectories) */
   templateFoldersPath: string = $state(this.#initial.templateFoldersPath);
+
+  /** URL to fetch the MCM blueprint JSON schema for validation and editor support */
+  mcmSchemaUrl: string = $state(this.#initial.mcmSchemaUrl);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);

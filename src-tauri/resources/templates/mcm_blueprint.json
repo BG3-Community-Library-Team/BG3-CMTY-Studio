@@ -1,0 +1,20 @@
+{
+    "SchemaVersion": 1,
+    "ModName": "{{MOD_NAME}}",
+    "Tabs": [
+        {
+            "TabName": "General",
+            "TabId": "general",
+            "Settings": [
+                {
+                    "Id": "enabled",
+                    "Name": "Enable Mod",
+                    "Type": "checkbox",
+                    "Default": true,
+                    "Description": "Enable or disable the mod.",
+                    "Tooltip": "Toggle the mod on or off."
+                }
+            ]
+        }
+    ]
+}

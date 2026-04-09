@@ -13,6 +13,7 @@
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
   import ScriptEditorPanel from "./ScriptEditorPanel.svelte";
   import SeConfigEditor from "./SeConfigEditor.svelte";
+  import LocalizationFileEditor from "./LocalizationFileEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
@@ -480,6 +481,8 @@
       {#if activeTab.filePath}
         {#if activeTab.filePath.endsWith("ScriptExtender/Config.json")}
           <SeConfigEditor filePath={activeTab.filePath} />
+        {:else if activeTab.filePath.includes("Localization/") && activeTab.filePath.endsWith(".xml")}
+          <LocalizationFileEditor filePath={activeTab.filePath} />
         {:else}
           <ScriptEditorPanel
             filePath={activeTab.filePath}

@@ -39,6 +39,13 @@
     } catch { /* user cancelled */ }
   }
 
+  const MCM_SCHEMA_DEFAULT_URL = "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json";
+
+  function resetMcmSchemaUrl() {
+    settingsStore.mcmSchemaUrl = MCM_SCHEMA_DEFAULT_URL;
+    settingsStore.persist();
+  }
+
   /** Maps CustomThemeValues keys → CSS custom property names for live preview overrides. */
   const STAGING_CSS_MAP: Record<keyof CustomThemeValues, string> = {
     bgMain: "--th-bg-900", bgSidebar: "--th-bg-800", bgSection: "--th-bg-850", bgInput: "--th-input-bg",
@@ -270,6 +277,31 @@
           <p class="text-xs text-[var(--th-text-500)]">{m.settings_mod_config_mazzle_desc()}</p>
         </div>
       </label>
+    </div>
+
+  {:else if uiStore.settingsSection === "schemas"}
+    <h3 class="settings-section-title">{m.settings_schemas_title()}</h3>
+    <div class="space-y-3">
+      <div>
+        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_schemas_mcm_heading()}</p>
+        <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_schemas_mcm_desc()}</p>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+            placeholder={m.settings_schemas_mcm_placeholder()}
+            value={settingsStore.mcmSchemaUrl}
+            oninput={(e) => { settingsStore.mcmSchemaUrl = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+          />
+          <button
+            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
+            onclick={resetMcmSchemaUrl}
+          >{m.settings_schemas_reset()}</button>
+        </div>
+        {#if settingsStore.mcmSchemaUrl}
+          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.mcmSchemaUrl}</p>
+        {/if}
+      </div>
     </div>
 
   {:else if uiStore.settingsSection === "notifications"}

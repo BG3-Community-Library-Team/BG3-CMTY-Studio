@@ -1329,6 +1329,178 @@ pub async fn cmd_import_constellations_scripts(
     .await
 }
 
+/// Maximum file size for config file imports (2 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = MAX_MOD_FILE_SIZE;
+
+/// Import config files (JSON/YAML) from an existing mod into the staging authoring table.
+///
+/// Walks `{mod_root}/Mods/{mod_folder}/` for `.json`, `.yaml`, `.yml` files,
+/// excluding any files under `ScriptExtender/` (handled by `import_se_scripts`).
+/// Also specifically includes `MCM_blueprint*.json` at any depth.
+///
+/// Excludes non-config files like `meta.lsx`, `meta.yaml`.
+///
+/// **Merge guard (CH-3):** Files that already exist in staging with `_is_modified=1`
+/// or `_is_new=1` are skipped to avoid overwriting user edits.
+fn import_config_files(
+    conn: &rusqlite::Connection,
+    mod_root: &Path,
+    mod_folder: &str,
+) -> Result<u64, String> {
+    // SEC: Validate mod_folder has no path traversal
+    if mod_folder.contains("..")
+        || mod_folder.contains('/')
+        || mod_folder.contains('\\')
+        || mod_folder.contains('\0')
+    {
+        return Err("Invalid mod_folder: path traversal not allowed".to_string());
+    }
+
+    let mod_dir = mod_root.join("Mods").join(mod_folder);
+    if !mod_dir.exists() {
+        return Ok(0);
+    }
+
+    // SEC: Canonicalize to resolve symlinks and verify the path is under mod_root
+    let canonical_mod_dir = mod_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize mod directory path: {e}"))?;
+    let canonical_root = mod_root
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize mod root: {e}"))?;
+    if !canonical_mod_dir.starts_with(&canonical_root) {
+        return Err("Mod directory escapes mod root (possible symlink attack)".to_string());
+    }
+
+    // Precompute the canonical ScriptExtender path for exclusion checks
+    let se_dir = canonical_mod_dir.join("ScriptExtender");
+    let canonical_se = se_dir.canonicalize().ok();
+
+    // Ensure the authoring table exists
+    crate::reference_db::staging::ensure_staging_authoring_table(conn)?;
+
+    let mut imported = 0u64;
+
+    for entry in WalkDir::new(&canonical_mod_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+
+        // Only allow .json, .yaml, .yml files
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        match ext {
+            "json" | "yaml" | "yml" => {}
+            _ => continue,
+        }
+
+        // Exclude files under ScriptExtender/ — those are handled by import_se_scripts
+        if let Some(ref canonical_se_path) = canonical_se {
+            if path.starts_with(canonical_se_path) {
+                continue;
+            }
+        }
+
+        // Exclude meta.lsx / meta.yaml (not config files)
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if file_name == "meta.lsx" || file_name == "meta.yaml" {
+            continue;
+        }
+
+        // SEC: Check file size
+        if check_file_size(path, MAX_CONFIG_FILE_SIZE).is_err() {
+            tracing::warn!(path = %path.display(), "Config file exceeds size limit, skipping");
+            continue;
+        }
+
+        // SEC: Verify no symlinks
+        let meta = std::fs::symlink_metadata(path)
+            .map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+
+        // Read content
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read config file"
+                );
+                continue;
+            }
+        };
+
+        // Build the staging key as relative path from mod_root
+        // Convention: Mods/{folder}/{subpath}/{filename}.json
+        let relative = path
+            .strip_prefix(&canonical_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        // Merge guard (CH-3): skip if the key already exists with user edits
+        let has_user_edits: bool = conn
+            .prepare(
+                "SELECT 1 FROM _staging_authoring WHERE key = ?1 AND (_is_modified = 1 OR _is_new = 1) AND _is_deleted = 0",
+            )
+            .map_err(|e| format!("Prepare merge guard check: {e}"))?
+            .exists(rusqlite::params![relative])
+            .map_err(|e| format!("Merge guard check: {e}"))?;
+
+        if has_user_edits {
+            tracing::debug!(key = %relative, "Skipping config file import — user edits exist");
+            continue;
+        }
+
+        // Compute hash
+        use std::collections::hash_map::DefaultHasher;
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        let hash = format!("{:016x}", hasher.finish());
+
+        // Upsert: INSERT or UPDATE, but only for non-guarded rows
+        conn.execute(
+            "INSERT INTO _staging_authoring (key, value, _is_new, _is_modified, _is_deleted, _original_hash)
+             VALUES (?1, ?2, 0, 0, 0, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, _is_modified = 0, _is_deleted = 0, _original_hash = excluded._original_hash",
+            rusqlite::params![relative, content, hash],
+        )
+        .map_err(|e| format!("Insert config file '{relative}': {e}"))?;
+
+        imported += 1;
+    }
+
+    Ok(imported)
+}
+
+/// Tauri command: import config files (JSON/YAML) from an existing mod into the staging DB.
+#[tauri::command]
+pub async fn cmd_import_config_files(
+    db_path: String,
+    mod_path: String,
+    mod_folder: String,
+) -> Result<u64, AppError> {
+    blocking(move || {
+        let db = PathBuf::from(&db_path);
+        if !db.is_file() {
+            return Err(format!("Staging database not found: {db_path}"));
+        }
+        let mod_root = PathBuf::from(&mod_path);
+        if !mod_root.is_dir() {
+            return Err(format!("Mod path is not a directory: {mod_path}"));
+        }
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| format!("Open staging DB: {e}"))?;
+        import_config_files(&conn, &mod_root, &mod_folder)
+    })
+    .await
+}
+
 fn find_meta_lsx(mod_root: &Path) -> Result<PathBuf, String> {
     // Look in Mods/<anything>/meta.lsx or meta.yaml
     let mods_dir = mod_root.join("Mods");

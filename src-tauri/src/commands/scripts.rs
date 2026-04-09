@@ -38,6 +38,7 @@ fn get_script_template(template_id: &str) -> Option<&'static str> {
         "lua_se_server_module" => Some(include_str!("../../resources/templates/se_server_module.lua")),
         "lua_se_client_module" => Some(include_str!("../../resources/templates/se_client_module.lua")),
         "lua_se_shared_module" => Some(include_str!("../../resources/templates/se_shared_module.lua")),
+        "mcm_blueprint" => Some(include_str!("../../resources/templates/mcm_blueprint.json")),
         _ => None,
     }
 }
@@ -135,6 +136,35 @@ fn collect_files(
         }
     }
     Ok(())
+}
+
+/// Rename (move) a script file on disk within the mod directory.
+/// Both old and new paths are validated against path traversal via `resolve_script_path`.
+#[tauri::command]
+pub async fn cmd_script_rename(
+    mod_path: String,
+    old_path: String,
+    new_path: String,
+) -> Result<bool, AppError> {
+    blocking(move || {
+        let old_full = resolve_script_path(&mod_path, &old_path)?;
+        let new_full = resolve_script_path(&mod_path, &new_path)?;
+
+        if !old_full.is_file() {
+            return Err(format!("Source file does not exist: {old_path}"));
+        }
+        if new_full.exists() {
+            return Err(format!("Destination already exists: {new_path}"));
+        }
+        if let Some(parent) = new_full.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Create directories: {e}"))?;
+        }
+        std::fs::rename(&old_full, &new_full)
+            .map_err(|e| format!("Rename file: {e}"))?;
+        Ok(true)
+    })
+    .await
 }
 
 /// Read a script file from disk.
@@ -528,4 +558,161 @@ pub async fn cmd_create_from_external_template(
         Ok(true)
     })
     .await
+}
+
+/// Validate an MCM blueprint JSON string and return diagnostics.
+#[tauri::command]
+pub async fn cmd_validate_mcm_blueprint(
+    content: String,
+) -> Result<Vec<crate::validation::mcm_blueprint::Diagnostic>, AppError> {
+    blocking(move || {
+        Ok::<_, String>(crate::validation::mcm_blueprint::validate_mcm_blueprint(&content))
+    })
+    .await
+}
+
+// ── Unified script validation ──
+
+/// Unified diagnostic type returned by `cmd_validate_script`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScriptDiagnostic {
+    pub line: usize,
+    pub message: String,
+    pub severity: ScriptDiagnosticSeverity,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum ScriptDiagnosticSeverity {
+    Error,
+    Warning,
+    Info,
+}
+
+/// Validate script content based on its language/file type.
+///
+/// Dispatches to the appropriate validator:
+/// - `"json"` with filename containing `MCM_blueprint` → MCM blueprint validation
+/// - `"json"` → basic JSON parse check
+/// - `"yaml"` → basic YAML parse check
+/// - `"xml"` → basic XML parse check
+/// - `"osiris"` / `"txt"` → Osiris goal structural validation
+/// - `"lua"` → empty (no Lua validator yet)
+#[tauri::command]
+pub async fn cmd_validate_script(
+    file_path: String,
+    language: String,
+    content: String,
+) -> Result<Vec<ScriptDiagnostic>, AppError> {
+    blocking(move || {
+        let diags = match language.as_str() {
+            "json" => {
+                if file_path.contains("MCM_blueprint") {
+                    let mcm_diags =
+                        crate::validation::mcm_blueprint::validate_mcm_blueprint(&content);
+                    mcm_diags
+                        .into_iter()
+                        .map(|d| ScriptDiagnostic {
+                            line: d.line,
+                            message: d.message,
+                            severity: match d.severity {
+                                crate::validation::mcm_blueprint::DiagnosticSeverity::Error => {
+                                    ScriptDiagnosticSeverity::Error
+                                }
+                                crate::validation::mcm_blueprint::DiagnosticSeverity::Warning => {
+                                    ScriptDiagnosticSeverity::Warning
+                                }
+                                crate::validation::mcm_blueprint::DiagnosticSeverity::Info => {
+                                    ScriptDiagnosticSeverity::Info
+                                }
+                            },
+                        })
+                        .collect()
+                } else {
+                    validate_json_parse(&content)
+                }
+            }
+            "yaml" => validate_yaml_parse(&content),
+            "xml" => validate_xml_parse(&content),
+            "osiris" | "txt" => {
+                let osiris_diags =
+                    crate::validation::osiris::validate_osiris_goal(&content);
+                osiris_diags
+                    .into_iter()
+                    .map(|d| ScriptDiagnostic {
+                        line: d.line,
+                        message: d.message,
+                        severity: match d.severity {
+                            crate::validation::osiris::DiagnosticSeverity::Error => {
+                                ScriptDiagnosticSeverity::Error
+                            }
+                            crate::validation::osiris::DiagnosticSeverity::Warning => {
+                                ScriptDiagnosticSeverity::Warning
+                            }
+                            crate::validation::osiris::DiagnosticSeverity::Info => {
+                                ScriptDiagnosticSeverity::Info
+                            }
+                        },
+                    })
+                    .collect()
+            }
+            "lua" => Vec::new(),
+            _ => Vec::new(),
+        };
+        Ok(diags)
+    })
+    .await
+}
+
+/// Basic JSON parse validation. Returns a single error diagnostic on parse failure.
+fn validate_json_parse(content: &str) -> Vec<ScriptDiagnostic> {
+    match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(_) => Vec::new(),
+        Err(e) => {
+            vec![ScriptDiagnostic {
+                line: e.line(),
+                message: format!("Invalid JSON: {e}"),
+                severity: ScriptDiagnosticSeverity::Error,
+            }]
+        }
+    }
+}
+
+/// Basic YAML parse validation using serde-saphyr.
+fn validate_yaml_parse(content: &str) -> Vec<ScriptDiagnostic> {
+    match serde_saphyr::from_str::<serde_json::Value>(content) {
+        Ok(_) => Vec::new(),
+        Err(e) => {
+            vec![ScriptDiagnostic {
+                line: 1,
+                message: format!("Invalid YAML: {e}"),
+                severity: ScriptDiagnosticSeverity::Error,
+            }]
+        }
+    }
+}
+
+/// Basic XML parse validation using quick-xml.
+fn validate_xml_parse(content: &str) -> Vec<ScriptDiagnostic> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut reader = Reader::from_str(content);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(e) => {
+                let pos = reader.buffer_position() as usize;
+                let line = content.get(..pos).map_or(1, |s| s.matches('\n').count() + 1);
+                return vec![ScriptDiagnostic {
+                    line,
+                    message: format!("Invalid XML: {e}"),
+                    severity: ScriptDiagnosticSeverity::Error,
+                }];
+            }
+        }
+        buf.clear();
+    }
+    Vec::new()
 }

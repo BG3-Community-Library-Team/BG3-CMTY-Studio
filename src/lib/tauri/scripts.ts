@@ -29,6 +29,14 @@ export async function scriptDelete(
   return invoke("cmd_script_delete", { modPath, filePath });
 }
 
+export async function scriptRename(
+  modPath: string,
+  oldPath: string,
+  newPath: string,
+): Promise<boolean> {
+  return invoke("cmd_script_rename", { modPath, oldPath, newPath });
+}
+
 export async function scriptList(
   modPath: string,
   prefix?: string,
@@ -162,4 +170,18 @@ export async function createFromExternalTemplate(
     sourcePath,
     variables,
   });
+}
+
+export interface ScriptDiagnostic {
+  line: number;
+  message: string;
+  severity: "Error" | "Warning" | "Info";
+}
+
+export async function validateScript(
+  filePath: string,
+  language: string,
+  content: string,
+): Promise<ScriptDiagnostic[]> {
+  return invoke("cmd_validate_script", { filePath, language, content });
 }

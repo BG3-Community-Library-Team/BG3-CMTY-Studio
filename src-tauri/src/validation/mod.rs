@@ -4,6 +4,7 @@
 //! review a single-file check. Functions validate paths, filenames, folder
 //! names, and file sizes before any I/O occurs.
 
+pub mod mcm_blueprint;
 pub mod osiris;
 pub mod se_config;
 

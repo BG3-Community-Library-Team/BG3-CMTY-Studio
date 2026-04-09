@@ -1,4 +1,5 @@
 pub mod behavior_script_handler;
+pub mod config_handler;
 pub mod delta;
 pub mod khonsu_handler;
 pub mod loca_handler;
@@ -138,6 +139,7 @@ pub static HANDLER_REGISTRY: LazyLock<Vec<Box<dyn FileTypeHandler>>> = LazyLock:
         Box::new(khonsu_handler::KhonsuHandler),
         Box::new(behavior_script_handler::BehaviorScriptHandler::new("anubis", "anubis", &[".anc", ".ann", ".anm"])),
         Box::new(behavior_script_handler::BehaviorScriptHandler::new("constellations", "constellations", &[".clc", ".cln", ".clm"])),
+        Box::new(config_handler::ConfigFileHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 });
@@ -157,6 +159,7 @@ pub fn default_handlers() -> Vec<Box<dyn FileTypeHandler>> {
         Box::new(khonsu_handler::KhonsuHandler),
         Box::new(behavior_script_handler::BehaviorScriptHandler::new("anubis", "anubis", &[".anc", ".ann", ".anm"])),
         Box::new(behavior_script_handler::BehaviorScriptHandler::new("constellations", "constellations", &[".clc", ".cln", ".clm"])),
+        Box::new(config_handler::ConfigFileHandler),
         Box::new(meta_handler::MetaLsxHandler),
     ]
 }

@@ -6,12 +6,12 @@
   import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { readModFile } from "../lib/utils/tauri.js";
+  import { scriptList, scriptRead } from "../lib/tauri/scripts.js";
   import Search from "@lucide/svelte/icons/search";
   import X from "@lucide/svelte/icons/x";
   import Clock from "@lucide/svelte/icons/clock";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import FileText from "@lucide/svelte/icons/file-text";
+  import FileCode from "@lucide/svelte/icons/file-code";
 
   let query = $state("");
   let inputEl: HTMLInputElement | undefined = $state(undefined);
@@ -31,6 +31,19 @@
   /** Recent search terms (persisted in memory for session) */
   let recentSearches: string[] = $state([]);
   const MAX_RECENT = 10;
+
+  /** File extensions eligible for script content search */
+  const SCRIPT_EXTENSIONS = new Set([
+    "lua", "khn", "txt", "xml",
+    "anc", "ann", "anm",
+    "clc", "cln", "clm",
+    "json", "yaml",
+  ]);
+
+  function getFileExtension(path: string): string {
+    const dot = path.lastIndexOf(".");
+    return dot >= 0 ? path.substring(dot + 1).toLowerCase() : "";
+  }
 
   interface SearchResult {
     section: string;
@@ -158,27 +171,18 @@
   let fileSearchVersion = 0;
 
   function navigateToFileResult(result: FileSearchResult) {
-    uiStore.openTab({
-      id: `file:${result.filePath}`,
-      label: result.fileName,
-      type: "file-preview",
-      filePath: result.filePath,
-      icon: "📄",
-      preview: false,
-    });
-    uiStore.activeView = "explorer";
+    uiStore.openScriptTab(result.filePath);
   }
 
-  // Search file contents when query changes (async, debounced)
+  // Search script/config file contents when query changes (async, debounced)
   $effect(() => {
     const q = query.trim();
     const cs = caseSensitive;
     const ww = matchWholeWord;
     const modPath = modStore.selectedModPath;
-    const files = modStore.modFiles;
     const includeFilter = filesInclude;
 
-    if (!q || !modPath || files.length === 0) {
+    if (!q || !modPath) {
       fileResults = [];
       return;
     }
@@ -186,38 +190,50 @@
     const version = ++fileSearchVersion;
     isSearchingFiles = true;
 
-    // Search files with a small delay to avoid spamming during typing
     const timer = setTimeout(async () => {
       const found: FileSearchResult[] = [];
       const MAX_FILE_RESULTS = 50;
 
-      for (const file of files) {
-        if (found.length >= MAX_FILE_RESULTS) break;
-        if (includeFilter && !file.rel_path.startsWith(includeFilter)) continue;
-        try {
-          const content = await readModFile(modPath, file.rel_path);
-          const lines = content.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            if (found.length >= MAX_FILE_RESULTS) break;
-            const line = lines[i];
-            const haystack = cs ? line : line.toLowerCase();
-            const needle = cs ? q : q.toLowerCase();
-            const matched = ww
-              ? new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, cs ? '' : 'i').test(line)
-              : haystack.includes(needle);
-            if (matched) {
-              found.push({
-                filePath: file.rel_path,
-                fileName: file.rel_path.split("/").pop() ?? file.rel_path,
-                lineNumber: i + 1,
-                lineText: line.trim().substring(0, 120),
-                extension: file.extension,
-              });
+      try {
+        // Get file list from disk via IPC (prefix narrows the walk)
+        const files = await scriptList(modPath, includeFilter || undefined);
+
+        // Filter to supported script/config extensions
+        const scriptFiles = files.filter(f => SCRIPT_EXTENSIONS.has(getFileExtension(f.path)));
+
+        for (const file of scriptFiles) {
+          if (found.length >= MAX_FILE_RESULTS) break;
+          if (version !== fileSearchVersion) return; // cancelled
+
+          try {
+            const content = await scriptRead(modPath, file.path);
+            if (!content) continue;
+
+            const lines = content.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              if (found.length >= MAX_FILE_RESULTS) break;
+              const line = lines[i];
+              const haystack = cs ? line : line.toLowerCase();
+              const needle = cs ? q : q.toLowerCase();
+              const matched = ww
+                ? new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, cs ? '' : 'i').test(line)
+                : haystack.includes(needle);
+              if (matched) {
+                found.push({
+                  filePath: file.path,
+                  fileName: file.path.split("/").pop() ?? file.path,
+                  lineNumber: i + 1,
+                  lineText: line.trim().substring(0, 120),
+                  extension: getFileExtension(file.path),
+                });
+              }
             }
+          } catch {
+            // Skip unreadable files
           }
-        } catch {
-          // Skip unreadable files
         }
+      } catch {
+        // scriptList failed — skip script search
       }
 
       if (version === fileSearchVersion) {
@@ -326,15 +342,16 @@
 
         {#if fileResults.length > 0}
           <div class="mt-3 pt-2 border-t border-[var(--th-border-700)]">
-            <div class="text-[10px] text-[var(--th-text-500)] px-1 mb-1">{fileResults.length !== 1 ? m.search_file_matches({ count: fileResults.length.toString() }) : m.search_file_match_one()}{fileResults.length >= 50 ? '+' : ''}</div>
+            <div class="text-[10px] text-[var(--th-text-500)] px-1 mb-1">{fileResults.length !== 1 ? m.search_script_matches({ count: fileResults.length.toString() }) : m.search_script_match_one()}{fileResults.length >= 50 ? '+' : ''}</div>
             {#each fileResults as fResult}
               <button
                 class="w-full text-left px-2 py-1 rounded text-xs hover:bg-[var(--th-bg-700)] flex flex-col gap-0.5"
                 onclick={() => navigateToFileResult(fResult)}
               >
                 <div class="flex items-center gap-1.5">
-                  <FileText size={10} class="text-[var(--th-text-500)] shrink-0" />
+                  <FileCode size={10} class="text-[var(--th-accent-400,#0ea5e9)] shrink-0" />
                   <span class="truncate text-[var(--th-text-200)]">{fResult.fileName}</span>
+                  <span class="text-[8px] text-[var(--th-accent-400,#0ea5e9)] bg-[var(--th-accent-500,#0ea5e9)]/10 rounded px-1 shrink-0 uppercase">.{fResult.extension}</span>
                   <span class="text-[9px] text-[var(--th-text-600)] shrink-0 ml-auto">L{fResult.lineNumber}</span>
                 </div>
                 <div class="text-[10px] text-[var(--th-text-500)] truncate pl-4">{fResult.lineText}</div>
@@ -344,7 +361,7 @@
         {/if}
 
         {#if isSearchingFiles && fileResults.length === 0}
-          <div class="text-[10px] text-[var(--th-text-500)] px-1 mt-2">{m.search_searching_files()}</div>
+          <div class="text-[10px] text-[var(--th-text-500)] px-1 mt-2">{m.search_searching_scripts()}</div>
         {/if}
       </div>
     {:else if query.trim() && modStore.scanResult}

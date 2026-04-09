@@ -38,12 +38,13 @@
   import { scanAndImport } from "../lib/services/scanService.js";
   import { m } from "../paraglide/messages.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
-  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate, listExternalTemplates, createFromExternalTemplate } from "../lib/tauri/scripts.js";
+  import { scriptDelete, touchFile, createModDirectory, moveModFile, copyModFile, scaffoldSeStructure, scaffoldKhonsuStructure, scaffoldOsirisStructure, scriptCreateFromTemplate, scriptRename, listExternalTemplates, createFromExternalTemplate } from "../lib/tauri/scripts.js";
   import type { ExternalTemplateInfo } from "../lib/tauri/scripts.js";
   import ScriptCreationModal from "./ScriptCreationModal.svelte";
   import Copy from "@lucide/svelte/icons/copy";
   import Scissors from "@lucide/svelte/icons/scissors";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 
   // ── File type badge colors ──
   const EXT_BADGE_COLORS: Record<string, string> = {
@@ -178,6 +179,38 @@
   let modName = $derived(scanResult?.mod_meta?.name ?? m.file_explorer_no_mod());
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
   let sections = $derived(scanResult?.sections ?? []);
+
+  /** Whether MCM_blueprint.json already exists in the mod root (Mods/{folder}/) */
+  let mcmBlueprintPath = $derived.by(() => {
+    if (!modFolder) return null;
+    const prefix = `Mods/${modFolder}/`;
+    const match = modStore.modFiles.find(f => f.rel_path === `${prefix}MCM_blueprint.json`);
+    return match ? `${prefix}MCM_blueprint.json` : null;
+  });
+
+  /** Open existing MCM_blueprint.json or create one from template */
+  async function openOrCreateMcmBlueprint() {
+    const modPath = modStore.selectedModPath;
+    if (!modPath || !modFolder) return;
+    if (mcmBlueprintPath) {
+      uiStore.openScriptTab(mcmBlueprintPath);
+    } else {
+      const relPath = `Mods/${modFolder}/MCM_blueprint.json`;
+      const variables: Record<string, string> = {
+        FILE_NAME: 'MCM_blueprint.json',
+        MOD_NAME: modFolder,
+        MOD_TABLE: modFolder.replace(/[^a-zA-Z0-9_]/g, '_'),
+      };
+      try {
+        await scriptCreateFromTemplate(modPath, relPath, 'mcm_blueprint', variables);
+        await refreshModFiles();
+        uiStore.openScriptTab(relPath);
+        toastStore.success("MCM Blueprint created", "MCM_blueprint.json");
+      } catch (e) {
+        toastStore.error("MCM Blueprint creation failed", String(e));
+      }
+    }
+  }
 
   // Pre-compute section lookup map and manual entry counts per section
   let sectionMap = $derived.by(() => {
@@ -398,7 +431,12 @@
     const newRelPath = `${modsFilePrefix}${parentPath}/${newName}`;
 
     try {
-      await moveModFile(modPath, oldRelPath, newRelPath);
+      // Use scriptRename for script files (extra path traversal protection), moveModFile for others
+      if (isScriptFile(inlineRenameNode.extension)) {
+        await scriptRename(modPath, oldRelPath, newRelPath);
+      } else {
+        await moveModFile(modPath, oldRelPath, newRelPath);
+      }
       // Update open tabs that reference the old path
       const oldTabId = `script:${oldRelPath}`;
       if (uiStore.openTabs.some(t => t.id === oldTabId)) {
@@ -406,7 +444,11 @@
         uiStore.openScriptTab(newRelPath);
       }
       await refreshModFiles();
-      toastStore.success("Renamed", `${oldName} → ${newName}`);
+      toastStore.success(m.file_explorer_renamed(), `${oldName} → ${newName}`);
+      // Warn about cross-references not being auto-updated
+      if (isScriptFile(inlineRenameNode.extension)) {
+        toastStore.info(m.file_explorer_rename_xref_warning_title(), m.file_explorer_rename_xref_warning());
+      }
     } catch (e) {
       toastStore.error("Rename failed", String(e));
     }
@@ -1191,6 +1233,12 @@
       return;
     }
 
+    // Localization XML files open in the localization form editor
+    if (fileNode.extension === "xml" && fileNode.relPath.startsWith("Localization/")) {
+      uiStore.openScriptTab(fullRelPath);
+      return;
+    }
+
     uiStore.openTab({
       id: `file:${fullRelPath}`,
       label: fileName,
@@ -1657,6 +1705,22 @@
           <BookOpen size={14} class="text-[var(--th-text-sky-400)]" />
           <span class="node-label">Readme</span>
         </button>
+
+        <!-- ── Root-level: Mod Configuration Menu (MCM) ── -->
+        {#if settingsStore.enableMcmSupport}
+          <button
+            class="tree-node"
+            class:active-node={mcmBlueprintPath ? activeNodeKey === `file:${mcmBlueprintPath}` : false}
+            onclick={() => openOrCreateMcmBlueprint()}
+          >
+            <span class="w-3.5 shrink-0"></span>
+            <SlidersHorizontal size={14} class="text-[var(--th-text-purple-400)]" />
+            <span class="node-label">Mod Configuration Menu</span>
+            {#if !mcmBlueprintPath}
+              <span class="ext-badge" style="background: var(--th-badge-yaml)">new</span>
+            {/if}
+          </button>
+        {/if}
 
         <!-- ── Root-level: Localization ── -->
         <div>

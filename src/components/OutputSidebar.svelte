@@ -10,16 +10,47 @@
   import { m } from "../paraglide/messages.js";
   import ExportBar from "./ExportBar.svelte";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
-  import { saveProject } from "../lib/tauri/save.js";
+  import { saveProject, validateHandlers, type HandlerWarning } from "../lib/tauri/save.js";
   import { getDbPaths } from "../lib/tauri/db-management.js";
+  import PreExportValidation from "./PreExportValidation.svelte";
 
   let isSaving = $state(false);
+  let validationWarnings: HandlerWarning[] = $state([]);
+  let showValidationModal = $state(false);
 
   async function handleSave() {
     if (!modStore.selectedModPath || isSaving) return;
     isSaving = true;
     try {
       const dbPaths = await getDbPaths();
+      // Run pre-export validation
+      const warnings = await validateHandlers(
+        dbPaths.staging,
+        dbPaths.base,
+        modStore.selectedModPath,
+        modStore.modName,
+        modStore.modFolder,
+      );
+      const hasErrors = warnings.some(w => w.severity === "Error");
+      const hasWarnings = warnings.some(w => w.severity === "Warning" || w.severity === "Info");
+      if (hasErrors || hasWarnings) {
+        validationWarnings = warnings;
+        showValidationModal = true;
+        isSaving = false;
+        return;
+      }
+      await executeSave(dbPaths);
+    } catch (e: unknown) {
+      toastStore.error("Save failed", getErrorMessage(e));
+      isSaving = false;
+    }
+  }
+
+  async function executeSave(dbPaths?: { staging: string; base: string }) {
+    if (!modStore.selectedModPath) return;
+    isSaving = true;
+    try {
+      if (!dbPaths) dbPaths = await getDbPaths();
       const result = await saveProject(
         dbPaths.staging,
         dbPaths.base,
@@ -44,6 +75,23 @@
     } finally {
       isSaving = false;
     }
+  }
+
+  function handleValidationContinue() {
+    showValidationModal = false;
+    validationWarnings = [];
+    executeSave();
+  }
+
+  function handleValidationCancel() {
+    showValidationModal = false;
+    validationWarnings = [];
+  }
+
+  function handleValidationRetry() {
+    showValidationModal = false;
+    validationWarnings = [];
+    handleSave();
   }
 
   // ---- LSX preview ----
@@ -123,5 +171,14 @@
     <ExportBar lsxPreviewText={lsxPreviewText} onexportmod={() => commandRegistry.execute('action.packageProject')} onsave={handleSave} saving={isSaving} />
   </div>
 </aside>
+
+{#if showValidationModal && validationWarnings.length > 0}
+  <PreExportValidation
+    warnings={validationWarnings}
+    oncontinue={handleValidationContinue}
+    oncancel={handleValidationCancel}
+    onretry={handleValidationRetry}
+  />
+{/if}
 
 

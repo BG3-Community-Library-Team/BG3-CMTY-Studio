@@ -21,6 +21,7 @@
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
   import EntrySummary from "./components/manual-entry/EntrySummary.svelte";
   import DuplicateModModal from "./components/DuplicateModModal.svelte";
+  import PreExportValidation from "./components/PreExportValidation.svelte";
   import { modImportService, type DuplicatePromptFn } from "./lib/services/modImportService.svelte.js";
   import { detectGameDataPath, type ModMetaInfo } from "./lib/utils/tauri.js";
   import { onMount } from "svelte";
@@ -34,7 +35,7 @@
   import { applyTheme, THEME_COMMANDS, type ThemeId } from "./lib/themes/themeManager.js";
   import { getPrefersReducedMotion } from "./lib/stores/motion.svelte.js";
   import { scanAndImport } from "./lib/services/scanService.js";
-  import { saveProject } from "./lib/tauri/save.js";
+  import { saveProject, validateHandlers, type HandlerWarning } from "./lib/tauri/save.js";
   import { getDbPaths } from "./lib/tauri/db-management.js";
   import { undoStore } from "./lib/stores/undoStore.svelte.js";
   import { open, ask } from "@tauri-apps/plugin-dialog";
@@ -502,13 +503,54 @@
     }
   });
 
-  // ── Save project via new export pipeline ──
+  // ── Save project via new export pipeline with pre-export validation gate ──
   let isSaving = $state(false);
+  let validationWarnings: HandlerWarning[] = $state([]);
+  let showValidationModal = $state(false);
+
+  /** Run validation, then either save directly or show the validation gate modal. */
   async function handleSave() {
     if (!modStore.selectedModPath || isSaving) return;
     isSaving = true;
     try {
       const dbPaths = await getDbPaths();
+      // Run pre-export validation
+      const warnings = await validateHandlers(
+        dbPaths.staging,
+        dbPaths.base,
+        modStore.selectedModPath,
+        modStore.modName,
+        modStore.modFolder,
+      );
+      const hasErrors = warnings.some(w => w.severity === "Error");
+      const hasWarnings = warnings.some(w => w.severity === "Warning" || w.severity === "Info");
+      if (hasErrors || hasWarnings) {
+        // Show the validation gate modal — save is deferred until user confirms
+        validationWarnings = warnings;
+        showValidationModal = true;
+        if (hasErrors) {
+          isSaving = false;
+          return;
+        }
+        // Warnings/info only — modal lets user proceed or cancel
+        isSaving = false;
+        return;
+      }
+      // No issues — save directly
+      await executeSave(dbPaths);
+    } catch (e: unknown) {
+      toastStore.error("Save failed", getErrorMessage(e));
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  /** Execute the actual save (called directly or after validation modal approval). */
+  async function executeSave(dbPaths?: { staging: string; base: string }) {
+    if (!modStore.selectedModPath) return;
+    isSaving = true;
+    try {
+      if (!dbPaths) dbPaths = await getDbPaths();
       const result = await saveProject(
         dbPaths.staging,
         dbPaths.base,
@@ -533,6 +575,24 @@
     } finally {
       isSaving = false;
     }
+  }
+
+  function handleValidationContinue() {
+    showValidationModal = false;
+    validationWarnings = [];
+    executeSave();
+  }
+
+  function handleValidationCancel() {
+    showValidationModal = false;
+    validationWarnings = [];
+  }
+
+  function handleValidationRetry() {
+    showValidationModal = false;
+    validationWarnings = [];
+    // Re-trigger save which will re-run validation
+    handleSave();
   }
 
   // Global keyboard shortcuts
@@ -860,6 +920,16 @@
 </div>
 
 <CreateModModal />
+
+<!-- Pre-export validation gate modal -->
+{#if showValidationModal && validationWarnings.length > 0}
+  <PreExportValidation
+    warnings={validationWarnings}
+    oncontinue={handleValidationContinue}
+    oncancel={handleValidationCancel}
+    onretry={handleValidationRetry}
+  />
+{/if}
 
 <!-- USE-03: First-run onboarding modal -->
 <FirstRunModal bind:show={showFirstRunModal} />

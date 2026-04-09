@@ -9,7 +9,7 @@ export type ActivityView = "project" | "explorer" | "editor" | "search" | "setti
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
 const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "loaded-data", "settings", "help"];
 
-export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "notifications" | "scripts";
+export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts";
 
 /** Data needed to render the summary drawer at the App layout level */
 export interface SummaryDrawerState {
