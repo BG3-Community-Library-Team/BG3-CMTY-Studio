@@ -57,6 +57,8 @@ export interface EditorTab {
   filePath?: string;
   /** When true, this tab is a temporary preview (italic label, replaced by next preview) */
   preview?: boolean;
+  /** When true, tab is pinned to the left side of the tab bar (explicit user action) */
+  pinned?: boolean;
   /** Script language for script-editor tabs */
   language?: string;
   /** For git-diff tabs: whether the diff is staged */
@@ -168,7 +170,7 @@ class UiStore {
 
     if (tab.preview) {
       // Replace the current preview tab if one exists
-      const previewIdx = this.openTabs.findIndex(t => t.preview);
+      const previewIdx = this.openTabs.findIndex(t => t.preview && !t.pinned);
       if (previewIdx >= 0) {
         this.openTabs = [
           ...this.openTabs.slice(0, previewIdx),
@@ -184,10 +186,34 @@ class UiStore {
     this.activeTabId = tab.id;
   }
 
-  /** Promote a preview tab to a permanent tab */
+  /** Promote a preview tab to a permanent (non-preview) tab. */
+  promoteTab(tabId: string): void {
+    const tab = this.openTabs.find(t => t.id === tabId);
+    if (tab && tab.preview) tab.preview = false;
+  }
+
+  /** Pin a tab — moves it to the left zone and prevents closing without unpinning. */
   pinTab(tabId: string): void {
     const tab = this.openTabs.find(t => t.id === tabId);
-    if (tab) tab.preview = false;
+    if (!tab || tab.type === "welcome") return;
+    tab.pinned = true;
+    tab.preview = false;
+    // Re-sort: pinned tabs go right after welcome
+    this._sortPinnedTabs();
+  }
+
+  /** Unpin a tab — returns it to the normal tab zone. */
+  unpinTab(tabId: string): void {
+    const tab = this.openTabs.find(t => t.id === tabId);
+    if (tab) tab.pinned = false;
+  }
+
+  /** Sort tabs so pinned tabs are first (after welcome). */
+  private _sortPinnedTabs(): void {
+    const welcome = this.openTabs.filter(t => t.type === "welcome");
+    const pinned = this.openTabs.filter(t => t.pinned && t.type !== "welcome");
+    const rest = this.openTabs.filter(t => !t.pinned && t.type !== "welcome");
+    this.openTabs = [...welcome, ...pinned, ...rest];
   }
 
   /** Close a tab by ID. If it was active, activate an adjacent tab. */
@@ -262,6 +288,7 @@ class UiStore {
       case "clc": case "cln": case "clm": return "constellations";
       case "json": return "json";
       case "yaml": case "yml": return "yaml";
+      case "txt": return "plaintext";
       default: return "lua";
     }
   }
@@ -277,7 +304,7 @@ class UiStore {
       filePath,
       language: lang,
       icon: "📝",
-      preview: false,
+      preview: true,
     });
   }
 

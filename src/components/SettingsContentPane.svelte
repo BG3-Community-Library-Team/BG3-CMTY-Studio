@@ -424,6 +424,7 @@
               <input
                 id="plugin-{key}"
                 type="text"
+                autocomplete="off"
                 class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
                 value={configurationRegistry.get(key) ?? ""}
                 oninput={(e) => configurationRegistry.set(key, (e.target as HTMLInputElement).value)}

@@ -1,7 +1,11 @@
 <script lang="ts">
   import { uiStore, type EditorTab } from "../lib/stores/uiStore.svelte.js";
   import { m } from "../paraglide/messages.js";
+  import type { ContextMenuItemDef } from "../lib/types/contextMenu.js";
+  import ContextMenu from "./ContextMenu.svelte";
   import X from "@lucide/svelte/icons/x";
+  import Pin from "@lucide/svelte/icons/pin";
+  import PinOff from "@lucide/svelte/icons/pin-off";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import FileCode from "@lucide/svelte/icons/file-code";
@@ -94,16 +98,19 @@
     tabContainerEl?.scrollBy({ left: 120, behavior: "smooth" });
   }
 
-  function handleClose(e: MouseEvent, tabId: string): void {
+  function handleClose(e: MouseEvent, tab: EditorTab): void {
     e.stopPropagation();
-    uiStore.closeTab(tabId);
+    // Pinned tabs cannot be closed until unpinned
+    if (tab.pinned) return;
+    if (tab.type === "welcome") return;
+    uiStore.closeTab(tab.id);
   }
 
-  /** Middle-click to close (not for welcome tab) */
+  /** Middle-click to close (not for welcome or pinned tabs) */
   function handleAuxClick(e: MouseEvent, tab: EditorTab): void {
     if (e.button === 1) {
       e.preventDefault();
-      if (tab.type !== "welcome") {
+      if (tab.type !== "welcome" && !tab.pinned) {
         uiStore.closeTab(tab.id);
       }
     }
@@ -141,6 +148,58 @@
     dragFromIndex = -1;
     dragOverIndex = -1;
   }
+
+  /** Context menu state */
+  let ctxVisible = $state(false);
+  let ctxX = $state(0);
+  let ctxY = $state(0);
+  let ctxTabId = $state("");
+
+  function handleContextMenu(e: MouseEvent, tab: EditorTab): void {
+    e.preventDefault();
+    ctxX = e.clientX;
+    ctxY = e.clientY;
+    ctxTabId = tab.id;
+    ctxVisible = true;
+  }
+
+  let ctxItems = $derived.by((): ContextMenuItemDef[] => {
+    const tab = tabs.find(t => t.id === ctxTabId);
+    if (!tab) return [];
+    const isWelcome = tab.type === "welcome";
+    const isPinned = !!tab.pinned;
+    return [
+      {
+        label: "Close Tab",
+        icon: X,
+        action: () => uiStore.closeTab(ctxTabId),
+        disabled: isWelcome || isPinned,
+      },
+      {
+        label: "Close Other Tabs",
+        action: () => {
+          const idsToClose = tabs
+            .filter(t => t.id !== ctxTabId && t.type !== "welcome" && !t.pinned)
+            .map(t => t.id);
+          for (const id of idsToClose) uiStore.closeTab(id);
+        },
+        disabled: tabs.filter(t => t.id !== ctxTabId && t.type !== "welcome" && !t.pinned).length === 0,
+        separator: "after",
+      },
+      {
+        label: isPinned ? "Unpin Tab" : "Pin Tab",
+        icon: isPinned ? PinOff : Pin,
+        action: () => {
+          if (isPinned) {
+            uiStore.unpinTab(ctxTabId);
+          } else {
+            uiStore.pinTab(ctxTabId);
+          }
+        },
+        disabled: isWelcome,
+      },
+    ];
+  });
 
   /** Register / unregister tab element refs (Svelte action) */
   function tabRef(el: HTMLElement, id: string) {
@@ -187,35 +246,41 @@
           title={isWelcome ? m.tab_welcome() : tab.label}
           draggable={!isWelcome}
           onclick={() => uiStore.activeTabId = tab.id}
-          ondblclick={() => uiStore.pinTab(tab.id)}
+          ondblclick={() => { if (tab.preview) uiStore.promoteTab(tab.id); }}
           onauxclick={(e: MouseEvent) => handleAuxClick(e, tab)}
           onmouseup={(e: MouseEvent) => handleAuxClick(e, tab)}
+          oncontextmenu={(e: MouseEvent) => handleContextMenu(e, tab)}
           ondragstart={(e: DragEvent) => handleDragStart(e, i, tab)}
           ondragover={(e: DragEvent) => handleDragOver(e, i)}
           ondrop={(e: DragEvent) => handleDrop(e, i)}
           ondragend={handleDragEnd}
           use:tabRef={tab.id}
         >
+          {#if tab.pinned}
+            <Pin size={10} class="tab-pin-icon shrink-0" />
+          {/if}
           {#if TabIcon}
             <TabIcon size={13} class="tab-icon shrink-0" />
           {/if}
           {#if !isWelcome}
             <span class="tab-label truncate">{tab.label}</span>
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span
-              class="tab-close"
-              role="button"
-              tabindex={-1}
-              aria-label={m.editor_tabs_close_aria({ label: tab.label })}
-              onclick={(e: MouseEvent) => handleClose(e, tab.id)}
-              onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); uiStore.closeTab(tab.id); } }}
-            >
-              {#if tab.dirty}
-                <span class="dirty-dot"></span>
-              {:else}
-                <X size={12} />
-              {/if}
-            </span>
+            {#if !tab.pinned}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
+                class="tab-close"
+                role="button"
+                tabindex={-1}
+                aria-label={m.editor_tabs_close_aria({ label: tab.label })}
+                onclick={(e: MouseEvent) => handleClose(e, tab)}
+                onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); uiStore.closeTab(tab.id); } }}
+              >
+                {#if tab.dirty}
+                  <span class="dirty-dot"></span>
+                {:else}
+                  <X size={12} />
+                {/if}
+              </span>
+            {/if}
           {/if}
         </button>
       {/each}
@@ -228,6 +293,10 @@
       </button>
     {/if}
   </div>
+{/if}
+
+{#if ctxVisible}
+  <ContextMenu x={ctxX} y={ctxY} items={ctxItems} onclose={() => { ctxVisible = false; }} />
 {/if}
 
 <style>
@@ -384,5 +453,11 @@
 
   .tab.dirty .dirty-dot {
     opacity: 1;
+  }
+
+  :global(.tab-pin-icon) {
+    color: var(--th-accent-500, #38bdf8);
+    opacity: 0.7;
+    margin-right: -3px;
   }
 </style>

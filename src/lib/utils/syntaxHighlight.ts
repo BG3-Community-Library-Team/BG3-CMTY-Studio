@@ -2,7 +2,7 @@
 
 export type HlType = 'key' | 'string' | 'comment' | 'bool' | 'num' | 'punct' | 'keyword' | 'attr' | 'text';
 
-export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "json" | "yaml" | "xml";
+export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "json" | "yaml" | "xml" | "plaintext";
 
 /** Escape HTML entities for safe rendering. */
 export function esc(s: string): string {

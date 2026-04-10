@@ -429,4 +429,34 @@ export const SECTION_CAPS: Record<string, SectionCapabilities> = {
     fieldKeys: ["Name", "SourceType", "TargetType"],
     fieldTypes: { Name: "string", SourceType: "string", TargetType: "string" },
   },
+  TextureAtlasInfo: {
+    hasFields: true,
+    nodeTypes: {
+      TextureAtlasIconSize: "Icon Size",
+      TextureAtlasPath: "Atlas Path",
+      TextureAtlasTextureSize: "Texture Size",
+    },
+    nodeTypeCaps: {
+      TextureAtlasIconSize: {
+        fieldKeys: ["Width", "Height"],
+        fieldTypes: { Width: "int", Height: "int" },
+      },
+      TextureAtlasPath: {
+        fieldKeys: ["Path", "UUID"],
+        fieldTypes: { Path: "string", UUID: "string" },
+      },
+      TextureAtlasTextureSize: {
+        fieldKeys: ["Width", "Height"],
+        fieldTypes: { Width: "int", Height: "int" },
+      },
+    },
+  },
+  IconUVList: {
+    hasFields: true,
+    fieldKeys: ["MapKey", "U1", "U2", "V1", "V2"],
+    fieldTypes: {
+      MapKey: "string",
+      U1: "float", U2: "float", V1: "float", V2: "float",
+    },
+  },
 };

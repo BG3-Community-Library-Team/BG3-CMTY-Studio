@@ -226,3 +226,47 @@ export async function gitMerge(modPath: string, branch: string): Promise<GitMerg
 export async function gitShow(modPath: string, commitOid: string): Promise<GitCommitDetail> {
   return invoke("cmd_git_show", { modPath, commitOid });
 }
+
+// ── Remote Commands ─────────────────────────────────────────
+
+export async function gitRemotes(modPath: string): Promise<GitRemoteInfo[]> {
+  return invoke("cmd_git_remotes", { modPath });
+}
+
+export async function gitAddRemote(modPath: string, name: string, url: string): Promise<void> {
+  return invoke("cmd_git_add_remote", { modPath, name, url });
+}
+
+export async function gitRemoveRemote(modPath: string, name: string): Promise<void> {
+  return invoke("cmd_git_remove_remote", { modPath, name });
+}
+
+export async function gitFetch(modPath: string, remoteName?: string): Promise<number> {
+  return invoke("cmd_git_fetch", { modPath, remoteName: remoteName ?? null });
+}
+
+export async function gitPull(modPath: string, remoteName?: string): Promise<GitPullResult> {
+  return invoke("cmd_git_pull", { modPath, remoteName: remoteName ?? null });
+}
+
+export async function gitPush(modPath: string, remoteName?: string, force?: boolean): Promise<void> {
+  return invoke("cmd_git_push", { modPath, remoteName: remoteName ?? null, force: force ?? null });
+}
+
+// ── Stash Commands ──────────────────────────────────────────
+
+export async function gitStash(modPath: string, message?: string): Promise<void> {
+  return invoke("cmd_git_stash", { modPath, message: message ?? null });
+}
+
+export async function gitStashList(modPath: string): Promise<GitStashEntry[]> {
+  return invoke("cmd_git_stash_list", { modPath });
+}
+
+export async function gitStashApply(modPath: string, index: number): Promise<void> {
+  return invoke("cmd_git_stash_apply", { modPath, index });
+}
+
+export async function gitStashDrop(modPath: string, index: number): Promise<void> {
+  return invoke("cmd_git_stash_drop", { modPath, index });
+}

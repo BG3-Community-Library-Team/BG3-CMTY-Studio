@@ -106,7 +106,7 @@
       const detail = (e as CustomEvent).detail;
       if (detail?.section === section) {
         showManualForm = true;
-        uiStore.pinTab(uiStore.activeTabId);
+        uiStore.promoteTab(uiStore.activeTabId);
       }
     }
     window.addEventListener("explorer-add-entry", onExplorerAdd);
@@ -531,7 +531,7 @@
   <!-- Header (sticky within scroll container) -->
   <button
     class="w-full flex items-center gap-3 px-4 py-3 bg-[var(--th-bg-850,#1a1a1e)] hover:bg-[var(--th-bg-850,#1a1a1e)]/80
-           text-left transition-colors sticky top-0 z-20 shadow-[0_2px_4px_rgba(0,0,0,.15)]
+           text-left transition-colors sticky top-0 z-[5] shadow-[0_2px_4px_rgba(0,0,0,.15)]
            rounded-t-lg {expanded ? '' : 'rounded-b-lg'}"
     onclick={() => setExpanded(!expanded)}
     oncontextmenu={(e) => { if (onCtxMenu) { e.preventDefault(); onCtxMenu(e); } }}
@@ -618,7 +618,7 @@
 
           <button
             class="text-xs font-medium px-3 py-1 rounded border border-sky-500/40 bg-sky-700/20 text-sky-300 hover:bg-sky-700/40 transition-colors whitespace-nowrap"
-            onclick={() => { showManualForm = !showManualForm; if (!showManualForm) return; uiStore.pinTab(uiStore.activeTabId); }}
+            onclick={() => { showManualForm = !showManualForm; if (!showManualForm) return; uiStore.promoteTab(uiStore.activeTabId); }}
           >
             {m.section_panel_add_entry()}
           </button>

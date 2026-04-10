@@ -508,6 +508,12 @@
       open = true;
       return;
     }
+    // Ctrl+K — Toggle palette (VS Code chord entry)
+    if (e.ctrlKey && !e.shiftKey && e.key === "k") {
+      e.preventDefault();
+      if (open) { closePalette(); } else { open = true; }
+      return;
+    }
     // Ctrl+P — Quick Open (entry search, no prefix)
     if (e.ctrlKey && !e.shiftKey && e.key === "p") {
       e.preventDefault();
@@ -697,7 +703,7 @@
 
   <!-- Input overlay — sits exactly on top of the trigger button -->
   <div
-    class="cp-dark-mode cp-animate-input absolute inset-0 z-[100] flex items-center shadow-[0_0_8px_2px_rgba(0,0,0,.36)] rounded-md bg-[var(--th-bg-800)] border border-[var(--th-focus-ring,#38bdf8)]"
+    class="cp-dark-mode cp-animate-input absolute inset-0 z-[100] flex items-center shadow-[0_0_8px_2px_rgba(0,0,0,.36)] rounded-t-md bg-[var(--th-bg-800)] border border-[var(--th-focus-ring,#38bdf8)]"
     role="dialog"
     aria-modal="true"
     aria-label={m.command_palette_aria()}
@@ -709,7 +715,7 @@
     <input
       bind:this={inputEl}
       type="text"
-      class="cp-input w-full h-full bg-transparent text-sm text-[var(--th-text-100)] placeholder-[var(--th-text-500)] rounded-md px-3.5 min-w-0 m-0"
+      class="cp-input w-full h-full bg-transparent text-sm text-[var(--th-text-100)] placeholder-[var(--th-text-500)] rounded-t-md px-3.5 min-w-0 m-0"
       placeholder={placeholderText}
       bind:value={query}
       onkeydown={handleKeydown}

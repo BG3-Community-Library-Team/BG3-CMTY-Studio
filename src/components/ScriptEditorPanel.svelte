@@ -3,6 +3,7 @@
   import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
   import { getCompletions, extractPrefix, type CompletionItem } from "../lib/utils/luaCompletions.js";
   import { scriptRead, scriptWrite } from "../lib/tauri/scripts.js";
+  import { inferAllSectionsFromLsxContent } from "../lib/utils/lsxRegionParser.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
@@ -16,9 +17,10 @@
     language: ScriptLanguage;
     readonly?: boolean;
     hideHeader?: boolean;
+    tabId?: string;
   }
 
-  let { filePath, language, readonly = false, hideHeader = false }: Props = $props();
+  let { filePath, language, readonly = false, hideHeader = false, tabId }: Props = $props();
 
   let content: string = $state("");
   let originalContent: string = $state("");
@@ -42,6 +44,7 @@
   let minimapVisible = $state(true);
   let minimapViewportTop = $state(0);
   let minimapViewportHeight = $state(0);
+  let minimapDragging = $state(false);
 
   // Breadcrumb dropdown state
   let bcDropdownIdx: number | null = $state(null);
@@ -69,7 +72,8 @@
     }
     bcDropdownItems = [...items.entries()]
       .map(([name, info]) => ({ name, ...info }))
-      .sort((a, b) => { if (a.isDir !== b.isDir) return a.isDir ? -1 : 1; return a.name.localeCompare(b.name); });
+      .filter(item => !item.isDir)
+      .sort((a, b) => a.name.localeCompare(b.name));
     bcDropdownIdx = idx;
   }
 
@@ -82,10 +86,44 @@
     }
   }
 
-  function bcDropdownSelect(item: { name: string; isDir: boolean; fullPath: string }) {
+  async function bcDropdownSelect(item: { name: string; isDir: boolean; fullPath: string }) {
     bcDropdownIdx = null;
     if (item.isDir) {
       uiStore.expandedNodes[`modfile:${item.fullPath}`] = true;
+      return;
+    }
+
+    const ext = item.name.split('.').pop()?.toLowerCase() ?? '';
+
+    if (ext === 'lsx' || ext === 'lsefx') {
+      // Infer category from folder path
+      const segments = item.fullPath.split('/').filter(Boolean);
+      let category = segments.length >= 2 ? segments[segments.length - 2] : '';
+      let allSections: string[] = [];
+      const modPath = modStore.projectPath || modStore.selectedModPath;
+      if (modPath) {
+        try {
+          const fileContent = await scriptRead(modPath, item.fullPath);
+          if (fileContent) {
+            allSections = inferAllSectionsFromLsxContent(fileContent);
+            if (allSections.length > 0) category = allSections[0];
+          }
+        } catch {
+          // Fall back to folder-based inference silently
+        }
+      }
+      uiStore.openTab({
+        id: `lsx:${item.fullPath}`,
+        label: item.name,
+        type: 'lsx-file',
+        filePath: item.fullPath,
+        category,
+        groupSections: allSections.length > 1 ? allSections : undefined,
+        icon: '📄',
+        preview: true,
+      });
+    } else if (ext === 'xml') {
+      uiStore.openTab({ id: `file:${item.fullPath}`, label: item.name, type: 'file-preview', filePath: item.fullPath, icon: '📄', preview: true });
     } else {
       uiStore.openScriptTab(item.fullPath);
     }
@@ -152,7 +190,7 @@
     const minimapCommentColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-comment').trim() || cs.getPropertyValue('--th-text-600').trim(), 0.6) : 'rgba(106, 106, 122, 0.6)';
     const minimapBracketColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-key').trim() || cs.getPropertyValue('--th-text-sky-400').trim(), 0.5) : 'rgba(125, 207, 255, 0.5)';
     const minimapStringColor = cs ? hexToRgba(cs.getPropertyValue('--th-syntax-string').trim() || cs.getPropertyValue('--th-text-emerald-400').trim(), 0.5) : 'rgba(169, 220, 118, 0.5)';
-    const minimapDefaultColor = 'rgba(200, 200, 220, 0.35)';
+    const minimapDefaultColor = cs ? hexToRgba(cs.getPropertyValue('--th-text-400').trim() || '#c8c8dc', 0.35) : 'rgba(200, 200, 220, 0.35)';
 
     for (let i = 0; i < minimapLines.length; i++) {
       const line = minimapLines[i];
@@ -190,15 +228,35 @@
     minimapViewportHeight = visibleLines * minimapLineHeight;
   }
 
-  function handleMinimapClick(e: MouseEvent) {
+  function scrollMinimapToY(clientY: number) {
     if (!minimapCanvas || !textareaEl) return;
     const rect = minimapCanvas.getBoundingClientRect();
-    const y = e.clientY - rect.top;
+    const y = clientY - rect.top;
     const minimapLineHeight = 3;
     const editorLineHeight = 16;
     const clickedLine = Math.floor(y / minimapLineHeight);
-    textareaEl.scrollTop = clickedLine * editorLineHeight;
+    // Center viewport on clicked line
+    const visibleLines = Math.floor(textareaEl.clientHeight / editorLineHeight);
+    textareaEl.scrollTop = (clickedLine - visibleLines / 2) * editorLineHeight;
     syncScroll();
+  }
+
+  function handleMinimapPointerDown(e: PointerEvent) {
+    if (!minimapCanvas) return;
+    minimapDragging = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrollMinimapToY(e.clientY);
+  }
+
+  function handleMinimapPointerMove(e: PointerEvent) {
+    if (!minimapDragging) return;
+    scrollMinimapToY(e.clientY);
+  }
+
+  function handleMinimapPointerUp(e: PointerEvent) {
+    if (!minimapDragging) return;
+    minimapDragging = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
   $effect(() => {
@@ -225,7 +283,7 @@
       content = textareaEl.value;
       if (!isDirty && content !== originalContent) {
         isDirty = true;
-        const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);
+        const tab = uiStore.openTabs.find(t => t.id === (tabId || `script:${filePath}`));
         if (tab) tab.dirty = true;
       }
       updateSuggestions();
@@ -306,7 +364,8 @@
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        acceptSuggestion(suggestions[selectedSuggestion]);
+        const idx = Math.min(selectedSuggestion, suggestions.length - 1);
+        if (idx >= 0) acceptSuggestion(suggestions[idx]);
         return;
       }
       if (e.key === "Escape") {
@@ -383,7 +442,7 @@
   }
 
   // Save to disk
-  async function save() {
+  export async function save() {
     if (readonly) return;
     const basePath = modStore.projectPath || modStore.selectedModPath;
     if (!basePath) return;
@@ -391,7 +450,7 @@
       await scriptWrite(basePath, filePath, content);
       originalContent = content;
       isDirty = false;
-      const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);
+      const tab = uiStore.openTabs.find(t => t.id === (tabId || `script:${filePath}`));
       if (tab) tab.dirty = false;
       toastStore.success(m.script_editor_saved_title(), m.script_editor_saved_message());
     } catch (err) {
@@ -439,7 +498,8 @@
       <span class="text-[10px] text-[var(--th-text-600)] ml-2">{m.script_editor_line_count({ count: lineCount })}</span>
     </div>
     {/if}
-    <div class="breadcrumb-bar" onclick={(e) => { if (!(e.target as HTMLElement).closest('.bc-dropdown')) bcDropdownIdx = null; }}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="breadcrumb-bar" role="toolbar" aria-label="File path" tabindex="-1" onclick={(e) => { if (!(e.target as HTMLElement).closest('.bc-dropdown')) bcDropdownIdx = null; }}>
       {#each breadcrumbs as segment, i}
         {#if i > 0}
           <span class="breadcrumb-sep">/</span>
@@ -456,11 +516,11 @@
       {/each}
     </div>
     {#if bcDropdownIdx !== null}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="bc-dropdown" role="listbox" style="top:{bcDropdownPos.top}px;left:{bcDropdownPos.left}px"
-        onclick={(e) => e.stopPropagation()}>
+      <div class="bc-dropdown" role="listbox" tabindex="-1" style="top:{bcDropdownPos.top}px;left:{bcDropdownPos.left}px"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => { if (e.key === 'Escape') bcDropdownIdx = null; }}>
         {#each bcDropdownItems as item}
-          <button class="bc-dropdown-item" class:bc-dropdown-dir={item.isDir} role="option" onclick={() => bcDropdownSelect(item)}>
+          <button class="bc-dropdown-item" class:bc-dropdown-dir={item.isDir} role="option" aria-selected="false" onclick={() => bcDropdownSelect(item)}>
             {item.name}{item.isDir ? '/' : ''}
           </button>
         {/each}
@@ -483,6 +543,7 @@
         <!-- Actual textarea -->
         <textarea
           bind:this={textareaEl}
+          id="script-textarea"
           class="editor-textarea"
           value={content}
           oninput={handleInput}
@@ -496,14 +557,24 @@
         ></textarea>
       </div>
       {#if minimapVisible}
-        <div class="minimap-container">
+        <div
+          class="minimap-container"
+          role="scrollbar"
+          tabindex="-1"
+          aria-label="Code minimap"
+          aria-controls="script-textarea"
+          aria-valuenow={Math.round(minimapViewportTop)}
+          onpointerdown={handleMinimapPointerDown}
+          onpointermove={handleMinimapPointerMove}
+          onpointerup={handleMinimapPointerUp}
+        >
           <canvas
             bind:this={minimapCanvas}
             class="minimap-canvas"
-            onclick={handleMinimapClick}
           ></canvas>
           <div
             class="minimap-viewport"
+            class:minimap-viewport-dragging={minimapDragging}
             style="top: {minimapViewportTop}px; height: {minimapViewportHeight}px;"
           ></div>
         </div>
@@ -809,7 +880,7 @@
     width: 80px;
     flex-shrink: 0;
     overflow: hidden;
-    background: var(--th-bg-900);
+    background: color-mix(in srgb, var(--th-bg-950, var(--th-bg-900)) 90%, black);
     border-left: 1px solid var(--th-border-subtle, var(--th-bg-700));
   }
 
@@ -823,8 +894,20 @@
     position: absolute;
     left: 0;
     right: 0;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: color-mix(in srgb, var(--th-accent-500, #38bdf8) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--th-accent-500, #38bdf8) 30%, transparent);
+    border-radius: 2px;
     pointer-events: none;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .minimap-container:hover .minimap-viewport {
+    background: color-mix(in srgb, var(--th-accent-500, #38bdf8) 26%, transparent);
+    border-color: color-mix(in srgb, var(--th-accent-500, #38bdf8) 40%, transparent);
+  }
+
+  .minimap-viewport-dragging {
+    background: color-mix(in srgb, var(--th-accent-500, #38bdf8) 32%, transparent) !important;
+    border-color: color-mix(in srgb, var(--th-accent-500, #38bdf8) 50%, transparent) !important;
   }
 </style>

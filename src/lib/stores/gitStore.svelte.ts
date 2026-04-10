@@ -16,6 +16,14 @@ import {
   gitDeleteBranch,
   gitMerge,
   gitShow,
+  gitFetch,
+  gitPull,
+  gitPush,
+  gitStash,
+  gitStashList,
+  gitStashApply,
+  gitStashDrop,
+  gitRemotes,
   type GitRepoInfo,
   type GitFileStatus,
   type GitFileDiff,
@@ -23,7 +31,11 @@ import {
   type GitBranchInfo,
   type GitCommitDetail,
   type GitMergeResult,
+  type GitStashEntry,
+  type GitPullResult,
+  type GitRemoteInfo,
 } from "../tauri/git.js";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 class GitStore {
   // ── Repo state ────────────────────────────────────────────
@@ -63,6 +75,19 @@ class GitStore {
   private _pollActive = false;
   private _pollTimer: ReturnType<typeof setInterval> | null = null;
   private _refreshDebounce: ReturnType<typeof setTimeout> | null = null;
+
+  // ── Sync state ────────────────────────────────────────────
+  syncProgress = $state<string | null>(null);
+  isSyncing = $state(false);
+
+  // ── Stash ─────────────────────────────────────────────────
+  stashes = $state<GitStashEntry[]>([]);
+
+  // ── Remotes ───────────────────────────────────────────────
+  remotes = $state<GitRemoteInfo[]>([]);
+
+  // ── Event listeners ───────────────────────────────────────
+  private _eventListeners: UnlistenFn[] = [];
 
   /** Total count of changed files (staged + unstaged + untracked + conflicted) for badge */
   get changedFileCount(): number {
@@ -109,6 +134,10 @@ class GitStore {
 
       // Also refresh branch list
       this.refreshBranches(modPath);
+
+      // Also refresh stash list and remotes
+      this.loadStashes(modPath);
+      this.loadRemotes(modPath);
     } catch (err) {
       console.error("Git refresh failed:", err);
       this.isRepo = false;
@@ -255,6 +284,131 @@ class GitStore {
     return result;
   }
 
+  // ── Remote operations ─────────────────────────────────────
+
+  /** Fetch from remote */
+  async fetch(modPath: string, remoteName?: string): Promise<void> {
+    this.isSyncing = true;
+    this.syncProgress = "Fetching…";
+    try {
+      await gitFetch(modPath, remoteName);
+      await this.refresh(modPath);
+    } finally {
+      this.isSyncing = false;
+      this.syncProgress = null;
+    }
+  }
+
+  /** Pull from remote (fetch + merge) */
+  async pull(modPath: string, remoteName?: string): Promise<GitPullResult> {
+    this.isSyncing = true;
+    this.syncProgress = "Pulling…";
+    try {
+      const result = await gitPull(modPath, remoteName);
+      await this.refresh(modPath);
+      await this.loadHistory(modPath);
+      return result;
+    } finally {
+      this.isSyncing = false;
+      this.syncProgress = null;
+    }
+  }
+
+  /** Push to remote */
+  async push(modPath: string, remoteName?: string, force?: boolean): Promise<void> {
+    this.isSyncing = true;
+    this.syncProgress = "Pushing…";
+    try {
+      await gitPush(modPath, remoteName, force);
+      await this.refresh(modPath);
+    } finally {
+      this.isSyncing = false;
+      this.syncProgress = null;
+    }
+  }
+
+  /** Sync: pull then push */
+  async sync(modPath: string): Promise<void> {
+    this.isSyncing = true;
+    this.syncProgress = "Syncing…";
+    try {
+      await gitPull(modPath);
+      await gitPush(modPath);
+      await this.refresh(modPath);
+      await this.loadHistory(modPath);
+    } finally {
+      this.isSyncing = false;
+      this.syncProgress = null;
+    }
+  }
+
+  // ── Stash operations ──────────────────────────────────────
+
+  /** Stash working tree changes */
+  async stash(modPath: string, message?: string): Promise<void> {
+    await gitStash(modPath, message);
+    await this.refresh(modPath);
+    await this.loadStashes(modPath);
+  }
+
+  /** Load stash list */
+  async loadStashes(modPath: string): Promise<void> {
+    try {
+      this.stashes = await gitStashList(modPath);
+    } catch {
+      this.stashes = [];
+    }
+  }
+
+  /** Apply a stash entry */
+  async stashApply(modPath: string, index: number): Promise<void> {
+    await gitStashApply(modPath, index);
+    await this.refresh(modPath);
+  }
+
+  /** Drop a stash entry */
+  async stashDrop(modPath: string, index: number): Promise<void> {
+    await gitStashDrop(modPath, index);
+    await this.loadStashes(modPath);
+  }
+
+  // ── Remote management ─────────────────────────────────────
+
+  /** Load remote list */
+  async loadRemotes(modPath: string): Promise<void> {
+    try {
+      this.remotes = await gitRemotes(modPath);
+    } catch {
+      this.remotes = [];
+    }
+  }
+
+  /** Subscribe to Tauri git events for real-time progress */
+  async setupEventListeners(): Promise<void> {
+    // Clean up any existing listeners
+    this._cleanupEventListeners();
+
+    const progressListener = await listen<{ operation: string; current: number; total: number; message: string }>(
+      "git://progress",
+      (event) => {
+        this.syncProgress = `${event.payload.operation}: ${event.payload.current}/${event.payload.total}`;
+      },
+    );
+    this._eventListeners.push(progressListener);
+
+    const statusListener = await listen("git://status-changed", () => {
+      // Will be triggered if backend emits this event
+    });
+    this._eventListeners.push(statusListener);
+  }
+
+  private _cleanupEventListeners(): void {
+    for (const unlisten of this._eventListeners) {
+      unlisten();
+    }
+    this._eventListeners = [];
+  }
+
   // ── History with pagination ───────────────────────────────
 
   /** Load more history (append to existing commits) */
@@ -292,6 +446,7 @@ class GitStore {
   startPolling(modPath: string): void {
     if (this._pollActive) return;
     this._pollActive = true;
+    this.setupEventListeners();
     this._pollTimer = setInterval(() => {
       if (this._pollActive && !this.isLoading) {
         this.refresh(modPath);
@@ -306,6 +461,7 @@ class GitStore {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
     }
+    this._cleanupEventListeners();
   }
 
   // ── Private helpers ───────────────────────────────────────

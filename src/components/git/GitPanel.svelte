@@ -7,7 +7,10 @@
   import GitCommitBox from "./GitCommitBox.svelte";
   import GitFileList from "./GitFileList.svelte";
   import GitHistoryPanel from "./GitHistoryPanel.svelte";
+  import GitStashPanel from "./GitStashPanel.svelte";
+  import GitRemoteManager from "./GitRemoteManager.svelte";
   import GitInitPrompt from "./GitInitPrompt.svelte";
+  import GitMergeConflictBanner from "./GitMergeConflictBanner.svelte";
   import ExplorerDrawer from "../ExplorerDrawer.svelte";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
@@ -25,6 +28,7 @@
 
   /** Track which drawers are present so we know which is "first" (no resize handle) */
   let hasStagedFiles = $derived(gitStore.stagedFiles.length > 0);
+  let hasStashes = $derived(gitStore.stashes.length > 0);
 </script>
 
 <div class="git-panel">
@@ -37,6 +41,10 @@
   {:else}
     <GitToolbar modPath={gitPath} />
     <GitCommitBox modPath={gitPath} />
+
+    {#if gitStore.conflictedFiles.length > 0}
+      <GitMergeConflictBanner modPath={gitPath} />
+    {/if}
 
     <div class="git-drawer-layout">
       <!-- Staged Changes (hidden when empty) -->
@@ -71,6 +79,28 @@
           {/snippet}
         </ExplorerDrawer>
       </div>
+
+      <!-- Stashes -->
+      {#if hasStashes || gitStore.changedFileCount > 0}
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-stashes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-stashes"]?.collapsed && uiStore.explorerDrawers["git-stashes"]?.height != null}>
+          <ExplorerDrawer id="git-stashes" title={m.git_stash_heading()} isFirst={false}>
+            {#snippet children()}
+              <GitStashPanel modPath={gitPath} />
+            {/snippet}
+          </ExplorerDrawer>
+        </div>
+      {/if}
+
+      <!-- Remotes -->
+      {#if gitStore.remotes.length > 0 || gitStore.isRepo}
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-remotes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-remotes"]?.collapsed && uiStore.explorerDrawers["git-remotes"]?.height != null}>
+          <ExplorerDrawer id="git-remotes" title={m.git_remote_heading()} isFirst={false}>
+            {#snippet children()}
+              <GitRemoteManager modPath={gitPath} />
+            {/snippet}
+          </ExplorerDrawer>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

@@ -755,3 +755,71 @@ pub async fn cmd_git_show(
     })
     .await
 }
+
+// ── Stash commands ──────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn cmd_git_stash(mod_path: String, message: Option<String>) -> Result<(), AppError> {
+    blocking(move || {
+        let mut repo = Repository::open(&mod_path)
+            .map_err(|e| format!("Failed to open repository: {e}"))?;
+
+        let sig = crate::git::credentials::build_signature("", "")?;
+
+        repo.stash_save(&sig, message.as_deref().unwrap_or("WIP"), None)
+            .map_err(|e| format!("Failed to stash changes: {e}"))?;
+
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_git_stash_list(mod_path: String) -> Result<Vec<GitStashEntry>, AppError> {
+    blocking(move || {
+        let mut repo = Repository::open(&mod_path)
+            .map_err(|e| format!("Failed to open repository: {e}"))?;
+
+        let mut entries = Vec::new();
+        repo.stash_foreach(|index, message, oid| {
+            entries.push(GitStashEntry {
+                index: index as u32,
+                message: message.to_string(),
+                oid: oid.to_string(),
+            });
+            true
+        })
+        .map_err(|e| format!("Failed to list stashes: {e}"))?;
+
+        Ok(entries)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_git_stash_apply(mod_path: String, index: u32) -> Result<(), AppError> {
+    blocking(move || {
+        let mut repo = Repository::open(&mod_path)
+            .map_err(|e| format!("Failed to open repository: {e}"))?;
+
+        repo.stash_apply(index as usize, None)
+            .map_err(|e| format!("Failed to apply stash @{{{index}}}: {e}"))?;
+
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cmd_git_stash_drop(mod_path: String, index: u32) -> Result<(), AppError> {
+    blocking(move || {
+        let mut repo = Repository::open(&mod_path)
+            .map_err(|e| format!("Failed to open repository: {e}"))?;
+
+        repo.stash_drop(index as usize)
+            .map_err(|e| format!("Failed to drop stash @{{{index}}}: {e}"))?;
+
+        Ok(())
+    })
+    .await
+}

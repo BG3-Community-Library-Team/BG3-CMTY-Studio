@@ -82,17 +82,81 @@ describe("UiStore", () => {
     });
   });
 
-  // ── pinTab ────────────────────────────────────────────────────────
+  // ── promoteTab ─────────────────────────────────────────────────────
 
-  describe("pinTab", () => {
+  describe("promoteTab", () => {
     it("promotes a preview tab to permanent", () => {
       uiStore.openTab({ id: "pin-me", label: "Pin", type: "file-preview", preview: true });
-      uiStore.pinTab("pin-me");
+      uiStore.promoteTab("pin-me");
       expect(uiStore.openTabs.find(t => t.id === "pin-me")?.preview).toBe(false);
     });
 
     it("no-ops for nonexistent tab", () => {
+      uiStore.promoteTab("nonexistent"); // should not throw
+    });
+  });
+
+  // ── pinTab / unpinTab ─────────────────────────────────────────────
+
+  describe("pinTab", () => {
+    it("pins a tab and moves it to the left", () => {
+      uiStore.openTab({ id: "a", label: "A", type: "section" });
+      uiStore.openTab({ id: "b", label: "B", type: "section" });
+      uiStore.pinTab("b");
+      const tab = uiStore.openTabs.find(t => t.id === "b");
+      expect(tab?.pinned).toBe(true);
+      expect(tab?.preview).toBe(false);
+      // Pinned tab should be before unpinned tab "a"
+      const bIdx = uiStore.openTabs.findIndex(t => t.id === "b");
+      const aIdx = uiStore.openTabs.findIndex(t => t.id === "a");
+      expect(bIdx).toBeLessThan(aIdx);
+    });
+
+    it("unpinTab restores normal state", () => {
+      uiStore.openTab({ id: "c", label: "C", type: "section" });
+      uiStore.pinTab("c");
+      expect(uiStore.openTabs.find(t => t.id === "c")?.pinned).toBe(true);
+      uiStore.unpinTab("c");
+      expect(uiStore.openTabs.find(t => t.id === "c")?.pinned).toBe(false);
+    });
+
+    it("pinTab no-ops for nonexistent tab", () => {
       uiStore.pinTab("nonexistent"); // should not throw
+    });
+
+    it("unpinTab no-ops for nonexistent tab", () => {
+      uiStore.unpinTab("nonexistent"); // should not throw
+    });
+
+    it("pinned tab sorts after welcome but before unpinned", () => {
+      // Welcome tab is always at index 0
+      uiStore.openTab({ id: "x", label: "X", type: "section" });
+      uiStore.openTab({ id: "y", label: "Y", type: "section" });
+      uiStore.pinTab("y");
+      const welcomeIdx = uiStore.openTabs.findIndex(t => t.id === "welcome");
+      const yIdx = uiStore.openTabs.findIndex(t => t.id === "y");
+      const xIdx = uiStore.openTabs.findIndex(t => t.id === "x");
+      expect(welcomeIdx).toBe(0);
+      expect(yIdx).toBeLessThan(xIdx);
+      expect(yIdx).toBeGreaterThan(welcomeIdx);
+    });
+
+    it("openTab skips pinned tabs when replacing previews", () => {
+      uiStore.openTab({ id: "pinned-1", label: "Pinned", type: "section" });
+      uiStore.pinTab("pinned-1");
+      uiStore.openTab({ id: "preview-1", label: "Preview", type: "file-preview", preview: true });
+      // Open another preview — should replace preview-1, not pinned-1
+      uiStore.openTab({ id: "preview-2", label: "Preview 2", type: "file-preview", preview: true });
+      expect(uiStore.openTabs.find(t => t.id === "pinned-1")).toBeTruthy();
+      expect(uiStore.openTabs.find(t => t.id === "preview-1")).toBeFalsy();
+      expect(uiStore.openTabs.find(t => t.id === "preview-2")).toBeTruthy();
+    });
+
+    it("promoteTab also clears pinned:false for already permanent tabs", () => {
+      uiStore.openTab({ id: "perm", label: "Perm", type: "section" });
+      uiStore.promoteTab("perm");
+      expect(uiStore.openTabs.find(t => t.id === "perm")?.preview).toBe(false);
+      expect(uiStore.openTabs.find(t => t.id === "perm")?.pinned).toBeFalsy();
     });
   });
 
@@ -465,8 +529,8 @@ describe("UiStore", () => {
       expect(uiStore.detectScriptLanguage("Makefile")).toBe("lua");
     });
 
-    it("non-goal .txt files default to lua", () => {
-      expect(uiStore.detectScriptLanguage("notes/readme.txt")).toBe("lua");
+    it("non-goal .txt files return plaintext", () => {
+      expect(uiStore.detectScriptLanguage("notes/readme.txt")).toBe("plaintext");
     });
   });
 
@@ -479,7 +543,7 @@ describe("UiStore", () => {
       expect(tab).toBeTruthy();
       expect(tab!.type).toBe("script-editor");
       expect(tab!.language).toBe("osiris");
-      expect(tab!.preview).toBe(false);
+      expect(tab!.preview).toBe(true);
     });
 
     it("opens a script-editor tab with explicit language override", () => {

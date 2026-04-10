@@ -743,10 +743,10 @@
     // IX-03A: Ctrl+S → save project + pin preview tab + save active file
     if (e.ctrlKey && !e.shiftKey && e.key === "s") {
       e.preventDefault();
-      // Pin the active tab if it's a preview
+      // Promote the active tab if it's a preview
       const active = uiStore.activeTab;
       if (active?.preview) {
-        uiStore.pinTab(active.id);
+        uiStore.promoteTab(active.id);
       }
       // Save active file tab if applicable
       if (active?.type === "meta-lsx") {

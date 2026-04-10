@@ -152,7 +152,7 @@
 <div
   bind:this={menuEl}
   class="ctx-container fixed z-[151] min-w-[160px] max-w-[280px] py-1 rounded-md select-none
-         bg-[var(--th-bg-600,#27272a)] border border-[var(--th-border-700,#3f3f46)] text-sm"
+         border text-sm"
   style="{menuStyle}; box-shadow: 0 2px 8px rgba(0,0,0,0.25);"
   role="menu"
   tabindex="-1"
@@ -191,13 +191,19 @@
   .ctx-header {
     padding: 4px 10px 3px;
     font-size: 10px;
-    color: var(--th-text-500);
+    color: var(--th-sidebar-text-muted, var(--th-text-500));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 260px;
-    border-bottom: 1px solid var(--th-border-700);
+    border-bottom: 1px solid var(--th-sidebar-border, var(--th-border-700));
     margin-bottom: 2px;
+  }
+  /* Context menus always use dark popover styling for cross-theme contrast */
+  .ctx-container {
+    background: var(--th-sidebar-bg-deep, var(--th-bg-600, #27272a));
+    border-color: var(--th-sidebar-border, var(--th-border-700, #3f3f46));
+    color: var(--th-sidebar-text, var(--th-text-200, #e4e4e7));
   }
   /* Legacy snippet-based API: ctx-item class support */
   .ctx-container :global(.ctx-item) {
@@ -208,13 +214,13 @@
     padding: 4px 10px;
     border: none;
     background: transparent;
-    color: var(--th-text-200);
+    color: var(--th-sidebar-text, var(--th-text-200, #e4e4e7));
     font-size: 12px;
     cursor: pointer;
     text-align: left;
     transition: background-color 0.1s;
   }
   .ctx-container :global(.ctx-item:hover) {
-    background: var(--th-bg-500, #3f3f46);
+    background: var(--th-sidebar-highlight, var(--th-bg-500, #3f3f46));
   }
 </style>

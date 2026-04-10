@@ -155,7 +155,7 @@
   <div
     bind:this={submenuEl}
     class="ctx-submenu fixed z-[153] min-w-[160px] max-w-[280px] py-1 rounded-md
-           bg-[var(--th-bg-600,#27272a)] border border-[var(--th-border-700,#3f3f46)]"
+           border"
     style="{submenuStyle}; box-shadow: 0 2px 8px rgba(0,0,0,0.25);"
     role="menu"
     tabindex="-1"
@@ -202,7 +202,7 @@
     padding: 4px 10px;
     border: none;
     background: transparent;
-    color: var(--th-text-200);
+    color: var(--th-sidebar-text, var(--th-text-200, #e4e4e7));
     font-size: 12px;
     cursor: pointer;
     text-align: left;
@@ -211,10 +211,10 @@
   }
   .ctx-menu-item.focused,
   .ctx-menu-item:hover:not(.disabled) {
-    background: var(--th-bg-500, #3f3f46);
+    background: var(--th-sidebar-highlight, var(--th-bg-500, #3f3f46));
   }
   .ctx-menu-item.disabled {
-    color: var(--th-text-600, #52525b);
+    color: var(--th-sidebar-text-muted, var(--th-text-600, #52525b));
     cursor: default;
     pointer-events: none;
   }
@@ -223,7 +223,7 @@
     align-items: center;
     flex-shrink: 0;
     width: 14px;
-    color: var(--th-text-400);
+    color: var(--th-sidebar-text-muted, var(--th-text-400));
   }
   .ctx-menu-label {
     flex: 1;
@@ -233,7 +233,7 @@
   }
   .ctx-menu-shortcut {
     font-size: 10px;
-    color: var(--th-text-500);
+    color: var(--th-sidebar-text-muted, var(--th-text-500));
     margin-left: auto;
     padding-left: 16px;
     flex-shrink: 0;
@@ -241,14 +241,19 @@
   .ctx-menu-chevron {
     display: flex;
     align-items: center;
-    color: var(--th-text-500);
+    color: var(--th-sidebar-text-muted, var(--th-text-500));
     margin-left: auto;
     padding-left: 8px;
     flex-shrink: 0;
   }
   .ctx-sep {
     height: 1px;
-    background: var(--th-border-700);
+    background: var(--th-sidebar-border, var(--th-border-700));
     margin: 4px 0;
+  }
+  .ctx-submenu {
+    background: var(--th-sidebar-bg-deep, var(--th-bg-600, #27272a));
+    border-color: var(--th-sidebar-border, var(--th-border-700, #3f3f46));
+    color: var(--th-sidebar-text, var(--th-text-200, #e4e4e7));
   }
 </style>

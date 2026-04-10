@@ -16,6 +16,7 @@
   import McmBlueprintEditor from "./McmBlueprintEditor.svelte";
   import LocalizationFileEditor from "./LocalizationFileEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
+  import TextureAtlasPanel from "./TextureAtlasPanel.svelte";
   import GitDiffView from "./git/GitDiffView.svelte";
   import GitCommitDetailView from "./git/GitCommitDetailView.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
@@ -32,6 +33,7 @@
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import Lightbulb from "@lucide/svelte/icons/lightbulb";
   import X from "@lucide/svelte/icons/x";
+  import Save from "@lucide/svelte/icons/save";
   import { open } from "@tauri-apps/plugin-dialog";
   import { scanAndImport, openProject } from "../lib/services/scanService.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
@@ -52,6 +54,7 @@
   let newModUseSE = $state(false);
   let isCreatingMod = $state(false);
   let lsxTabViewMode = $state<Record<string, "form" | "raw">>({});
+  let lsxRawEditorRef: any = $state(undefined);
 
   function resetNewModForm() {
     showNewModForm = false;
@@ -472,6 +475,14 @@
       <!-- Group tab: multiple sections, with per-child entry filters -->
       {@const groupChildren = getGroupChildren(activeTab.category ?? "")}
       {@const fallbackSections = activeTab.groupSections ?? []}
+      {#if activeTab.category === "_TextureAtlas"}
+        <!-- Texture Atlas combined form -->
+        {@const infoChild = groupChildren.find(c => c.node.name === "TextureAtlasInfo")}
+        {@const uvChild = groupChildren.find(c => c.node.name === "IconUVList")}
+        {@const infoResult = infoChild?.result ?? getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo" as Section, entries: [] }}
+        {@const uvResultTA = uvChild?.result ?? getSectionResult("IconUVList") ?? { section: "IconUVList" as Section, entries: [] }}
+        <TextureAtlasPanel infoResult={infoResult} uvResult={uvResultTA} globalFilter={modStore.globalFilter} />
+      {:else}
       <div class="section-tab-content">
         {#if groupChildren.length > 0}
           {#each groupChildren as { node, result } (node.name)}
@@ -507,6 +518,7 @@
           {/if}
         {/if}
       </div>
+      {/if}
 
     {:else if activeTab.type === "filteredSection"}
       <!-- Filtered section: shows only entries matching a filter -->
@@ -575,13 +587,26 @@
                 {m.lsx_editor_raw_mode()}
               </button>
             </div>
+            {#if activeTab.dirty}
+              <span class="text-[10px] text-amber-400 ml-1">{m.script_editor_unsaved()}</span>
+            {/if}
+            {#if lsxViewMode === 'raw'}
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors flex items-center gap-1 ml-1"
+                onclick={() => lsxRawEditorRef?.save()}
+                aria-label={m.script_editor_save_label()}
+              >
+                <Save size={12} />
+                {m.common_save()}
+              </button>
+            {/if}
             <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-500)]">.LSX</span>
           </div>
         {/if}
 
         <div class="lsx-file-content">
           {#if lsxViewMode === 'raw' && activeTab.filePath}
-            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} />
+            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
           {:else if lsxGroupSections.length > 1}
             <div class="section-tab-content">
               {#each lsxGroupSections as sectionName (sectionName)}
@@ -593,9 +618,11 @@
             </div>
           {:else if lsxCategory}
             {@const lsxResult = getSectionResult(lsxCategory) ?? { section: lsxCategory as Section, entries: [] }}
-            <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
+            <div class="section-tab-content">
+              <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
+            </div>
           {:else if activeTab.filePath}
-            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader />
+            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
           {:else}
             <div class="empty-tab">
               <FolderOpen size={32} class="text-[var(--th-text-600)] opacity-30" />
@@ -639,11 +666,12 @@
             filePath={activeTab.filePath}
             language={(activeTab.language ?? "lua") as ScriptLanguage}
             readonly={false}
+            hideHeader
           />
         {/if}
       {/if}
     {:else if activeTab.type === "readme"}
-      <ReadmeEditor />
+      <ReadmeEditor filePath={activeTab.filePath} />
     {:else if activeTab.type === "git-diff"}
       {#if activeTab.filePath}
         <GitDiffView

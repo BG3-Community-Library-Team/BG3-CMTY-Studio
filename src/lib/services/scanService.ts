@@ -12,6 +12,7 @@ import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizat
 import { parseExistingConfig } from "../utils/configParser.js";
 import { modSelectionService } from "./modSelectionService.svelte.js";
 import { detectModFolders } from "../tauri/scanning.js";
+import { ensureCmtystudioDir } from "../tauri/project-settings.js";
 import type { DetectedMod } from "../types/modSelection.js";
 
 /**
@@ -250,14 +251,19 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
   modStore.selectedModPath = modPath;
 
   try {
+    // Ensure .cmtystudio project dir exists at project root
+    const projectRoot = modStore.projectPath || modPath;
+    if (projectRoot) {
+      try { await ensureCmtystudioDir(projectRoot); } catch (e) {
+        console.warn("[scanAndImport] Failed to create .cmtystudio dir:", e);
+      }
+    }
+
     const result = await scanMod(modPath, extraScanPaths, true);
     if (gen !== scanGeneration) return; // A newer scan was started; discard stale result
     modStore.scanResult = result;
 
     undoStore.clear();
-
-    const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
-    toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
 
     // Rehydrate staging DB from mod's on-disk files (before UI becomes interactive)
     modStore.scanPhase = m.scan_phase_staging_db();
@@ -332,6 +338,10 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Load vanilla entries for combobox population
     modStore.scanPhase = m.scan_phase_loading_project();
     await loadVanillaData();
+
+    // Fire completion toast after ALL async operations have finished
+    const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);
+    toastStore.success(m.scan_complete_title(), m.scan_complete_detail({ section_count: String(result.sections.length), entry_count: String(totalEntries) }));
   } catch (e: unknown) {
     console.error("[scanAndImport] Scan failed — full error:", e);
     const msg = typeof e === "string"

@@ -35,6 +35,16 @@ export const gitPlugin: PluginModule = {
         { command: "git:createBranchFrom", title: "Create Branch From…", category: "Git", icon: "git-branch", enablement: "gitRepoActive" },
         { command: "git:deleteBranch", title: "Delete Branch", category: "Git", icon: "git-branch", enablement: "gitRepoActive" },
         { command: "git:refresh", title: "Refresh", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:init", title: "Initialize Repository", category: "Git", enablement: "modLoaded && !gitRepoActive" },
+        { command: "git:commit", title: "Commit", category: "Git", enablement: "gitRepoActive && gitHasChanges" },
+        { command: "git:stageAll", title: "Stage All Changes", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:unstageAll", title: "Unstage All Changes", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:push", title: "Push", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:pull", title: "Pull", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:fetch", title: "Fetch", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:sync", title: "Sync", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:stash", title: "Stash Changes", category: "Git", enablement: "gitRepoActive && gitHasChanges" },
+        { command: "git:stashPop", title: "Pop Stash", category: "Git", enablement: "gitRepoActive" },
       ],
       configuration: {
         title: "Git",
@@ -51,6 +61,19 @@ export const gitPlugin: PluginModule = {
             description: "Git user email for commits",
             order: 2,
           },
+          "git.autoFetchInterval": {
+            type: "string",
+            default: "off",
+            description: "Auto-fetch interval",
+            enum: ["off", "1min", "5min", "15min"],
+            order: 3,
+          },
+          "git.defaultRemote": {
+            type: "string",
+            default: "origin",
+            description: "Default remote for push/pull operations",
+            order: 4,
+          },
         },
       },
       viewsContainers: [
@@ -63,6 +86,7 @@ export const gitPlugin: PluginModule = {
       },
       statusBarItems: [
         { id: "git.branch", alignment: "left", priority: 100, when: "gitRepoActive" },
+        { id: "git.sync", alignment: "left", priority: 99, when: "gitRepoActive" },
       ],
       menus: {
         commandPalette: [
@@ -71,6 +95,16 @@ export const gitPlugin: PluginModule = {
           { command: "git:createBranchFrom", when: "gitRepoActive" },
           { command: "git:deleteBranch", when: "gitRepoActive" },
           { command: "git:refresh", when: "gitRepoActive" },
+          { command: "git:init", when: "modLoaded && !gitRepoActive" },
+          { command: "git:commit", when: "gitRepoActive && gitHasChanges" },
+          { command: "git:stageAll", when: "gitRepoActive" },
+          { command: "git:unstageAll", when: "gitRepoActive" },
+          { command: "git:push", when: "gitRepoActive" },
+          { command: "git:pull", when: "gitRepoActive" },
+          { command: "git:fetch", when: "gitRepoActive" },
+          { command: "git:sync", when: "gitRepoActive" },
+          { command: "git:stash", when: "gitRepoActive && gitHasChanges" },
+          { command: "git:stashPop", when: "gitRepoActive" },
         ],
       },
     },
@@ -166,6 +200,186 @@ export const gitPlugin: PluginModule = {
           toastStore.info(m.git_cmd_refreshed());
         },
       },
+      {
+        id: "git:init",
+        label: m.git_cmd_init(),
+        category: "action",
+        icon: "⎇",
+        when: "modLoaded && !gitRepoActive",
+        enabled: () => !gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.init(modPath);
+            toastStore.success(m.git_cmd_init());
+          } catch (e) {
+            toastStore.error(String(e));
+          }
+        },
+      },
+      {
+        id: "git:commit",
+        label: m.git_cmd_commit(),
+        category: "action",
+        icon: "✓",
+        when: "gitRepoActive && gitHasChanges",
+        enabled: () => gitStore.isRepo && gitStore.changedFileCount > 0,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.commit(modPath);
+          } catch (e) {
+            toastStore.error(String(e));
+          }
+        },
+      },
+      {
+        id: "git:stageAll",
+        label: m.git_cmd_stage_all(),
+        category: "action",
+        icon: "＋",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          await gitStore.stageAll(modPath);
+        },
+      },
+      {
+        id: "git:unstageAll",
+        label: m.git_cmd_unstage_all(),
+        category: "action",
+        icon: "－",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          // Unstage all staged files
+          const paths = gitStore.stagedFiles.map(f => f.path);
+          if (paths.length > 0) {
+            await gitStore.unstage(modPath, paths);
+          }
+        },
+      },
+      {
+        id: "git:push",
+        label: m.git_cmd_push(),
+        category: "action",
+        icon: "↑",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.push(modPath);
+            toastStore.success(m.git_push_success());
+          } catch (e) {
+            toastStore.error(m.git_push_failed(), String(e));
+          }
+        },
+      },
+      {
+        id: "git:pull",
+        label: m.git_cmd_pull(),
+        category: "action",
+        icon: "↓",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            const result = await gitStore.pull(modPath);
+            if (result.mergeResult.conflicts.length > 0) {
+              toastStore.warning(m.git_pull_failed(), `${result.mergeResult.conflicts.length} conflicts`);
+            } else {
+              toastStore.success(m.git_pull_success());
+            }
+          } catch (e) {
+            toastStore.error(m.git_pull_failed(), String(e));
+          }
+        },
+      },
+      {
+        id: "git:fetch",
+        label: m.git_cmd_fetch(),
+        category: "action",
+        icon: "⟳",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.fetch(modPath);
+            toastStore.success(m.git_fetch_success());
+          } catch (e) {
+            toastStore.error(m.git_fetch_failed(), String(e));
+          }
+        },
+      },
+      {
+        id: "git:sync",
+        label: m.git_cmd_sync(),
+        category: "action",
+        icon: "⟳",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.sync(modPath);
+            toastStore.success(m.git_sync_success());
+          } catch (e) {
+            toastStore.error(m.git_sync_failed(), String(e));
+          }
+        },
+      },
+      {
+        id: "git:stash",
+        label: m.git_cmd_stash(),
+        category: "action",
+        icon: "📦",
+        when: "gitRepoActive && gitHasChanges",
+        enabled: () => gitStore.isRepo && gitStore.changedFileCount > 0,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          const msg = window.prompt(m.git_stash_save_prompt());
+          if (msg === null) return;
+          try {
+            await gitStore.stash(modPath, msg || undefined);
+            toastStore.success(m.git_stash_save_success());
+          } catch (e) {
+            toastStore.error(m.git_stash_failed(), String(e));
+          }
+        },
+      },
+      {
+        id: "git:stashPop",
+        label: m.git_cmd_stash_pop(),
+        category: "action",
+        icon: "📦",
+        when: "gitRepoActive",
+        enabled: () => gitStore.isRepo && gitStore.stashes.length > 0,
+        execute: async () => {
+          const modPath = getGitPath();
+          if (!modPath) return;
+          try {
+            await gitStore.stashApply(modPath, 0);
+            await gitStore.stashDrop(modPath, 0);
+            toastStore.success(m.git_stash_apply_success());
+          } catch (e) {
+            toastStore.error(m.git_stash_failed(), String(e));
+          }
+        },
+      },
     ];
     commandRegistry.registerMany(commands);
 
@@ -177,6 +391,12 @@ export const gitPlugin: PluginModule = {
     if (branchItem) {
       branchItem.command = "git:switchBranch";
       branchItem.icon = "git-branch";
+    }
+
+    const syncItem = statusBarRegistry.items.find(i => i.id === "git.sync");
+    if (syncItem) {
+      syncItem.command = "git:sync";
+      syncItem.icon = "refresh-ccw";
     }
 
     // 4. Set up context key syncing and status bar text via $effect.root
@@ -207,6 +427,12 @@ export const gitPlugin: PluginModule = {
           if (behind > 0) text += ` ↓${behind}`;
           branchItem.text = text;
           branchItem.tooltip = `Git: ${branch}`;
+        }
+      });
+      $effect(() => {
+        if (syncItem) {
+          syncItem.text = gitStore.syncProgress ?? "";
+          syncItem.tooltip = gitStore.isSyncing ? "Syncing..." : "Sync";
         }
       });
     });

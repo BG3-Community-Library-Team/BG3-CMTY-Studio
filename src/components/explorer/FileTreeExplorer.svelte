@@ -122,9 +122,16 @@
       return;
     }
 
-    // .md → readme tab
+    // .md → markdown editor (ReadmeEditor with filePath)
     if (ext === "md") {
-      uiStore.openTab({ id: "readme", label: node.name, type: "readme", icon: "📝" });
+      const tabId = relPath.toLowerCase().endsWith("readme.md") ? "readme" : `readme:${relPath}`;
+      uiStore.openTab({ id: tabId, label: node.name, type: "readme", filePath: relPath, icon: "📝", preview: true });
+      return;
+    }
+
+    // Other .txt files → script editor
+    if (ext === "txt") {
+      uiStore.openScriptTab(relPath);
       return;
     }
 
@@ -455,7 +462,7 @@
           ondragstart={(event) => handleNodeDragStart(event, node)}
           ondragend={clearDragState}
           onclick={() => openFile(node)}
-          ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === node.relPath || t.id === `file:${node.relPath}`)); if (tab) uiStore.pinTab(tab.id); }}
+          ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === node.relPath || t.id === `file:${node.relPath}`)); if (tab) uiStore.promoteTab(tab.id); }}
           oncontextmenu={(e) => showContextMenu(e, node)}
           role="treeitem"
           tabindex="-1"
@@ -562,7 +569,7 @@
                     ondragstart={(event) => handleNodeDragStart(event, n)}
                     ondragend={clearDragState}
                     onclick={() => openFile(n)}
-                    ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === n.relPath || t.id === `file:${n.relPath}`)); if (tab) uiStore.pinTab(tab.id); }}
+                    ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === n.relPath || t.id === `file:${n.relPath}`)); if (tab) uiStore.promoteTab(tab.id); }}
                     oncontextmenu={(e) => showContextMenu(e, n)}
                     role="treeitem"
                     tabindex="-1"
@@ -708,9 +715,10 @@
   }
 
   .tree-node.drag-over {
-    outline: 1px dashed var(--th-accent-500, #0ea5e9);
-    outline-offset: -1px;
+    outline: 2px solid var(--th-accent-500, #0ea5e9);
+    outline-offset: -2px;
     background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 10%, transparent);
+    box-shadow: inset 0 0 4px color-mix(in srgb, var(--th-accent-500, #0ea5e9) 20%, transparent);
   }
 
   .node-label {

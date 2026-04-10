@@ -65,6 +65,7 @@ class ProjectSettingsStore {
   set<K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]): void {
     if (!PROJECT_SCOPED_KEYS.has(key)) return;
     this.overrides = { ...this.overrides, [key]: value };
+    if (!this.loaded) return; // Don't persist if store hasn't been loaded for a project
     this.#schedulePersist();
   }
 
@@ -74,6 +75,7 @@ class ProjectSettingsStore {
     const next = { ...this.overrides };
     delete next[key];
     this.overrides = next;
+    if (!this.loaded) return; // Don't persist if store hasn't been loaded for a project
     this.#schedulePersist();
   }
 
@@ -180,6 +182,7 @@ class ProjectSettingsStore {
 
   async #executePersist(): Promise<void> {
     this.#persistTimer = null;
+    if (!this.loaded) return; // Store not loaded — nowhere to persist
     const projectPath = this.#loadedProjectPath || modStore.projectPath;
     if (!projectPath || !isTauri()) return;
 

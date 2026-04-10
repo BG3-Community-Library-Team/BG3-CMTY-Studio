@@ -13,6 +13,12 @@
   import { markdownToBBCode } from "../lib/utils/bbcodeConverter.js";
   import { markdownToPlainText } from "../lib/utils/markdownToPlainText.js";
 
+  interface Props {
+    /** Optional file path (relative to mod). When set, loads that specific .md file. */
+    filePath?: string;
+  }
+
+  let { filePath }: Props = $props();
 
   let content = $state("");
   let previewMode = $state(false);
@@ -52,6 +58,23 @@ Add installation instructions here. Example:
 
   onMount(async () => {
     const modPath = modStore.selectedModPath;
+    const basePath = modStore.projectPath || modPath;
+
+    // If a specific file path was provided, load that file directly
+    if (filePath && basePath) {
+      // readTextFile needs an absolute path; filePath may be relative to the project root
+      const absPath = filePath.match(/^[a-zA-Z]:[\\/]|^\//) ? filePath : `${basePath}/${filePath}`;
+      readmePath = absPath;
+      try {
+        const existing = await readTextFile(absPath);
+        content = existing ?? "";
+      } catch {
+        content = "";
+      }
+      loaded = true;
+      return;
+    }
+
     if (!modPath) {
       content = buildTemplate();
       loaded = true;
@@ -205,7 +228,7 @@ Add installation instructions here. Example:
 <div class="readme-editor">
   <!-- Toolbar -->
   <div class="readme-toolbar">
-    <span class="readme-title">README.md</span>
+    <span class="readme-title">{filePath ? filePath.split('/').pop() ?? 'README.md' : 'README.md'}</span>
     <div class="readme-actions">
       <button
         class="readme-btn"

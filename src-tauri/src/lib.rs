@@ -2205,6 +2205,18 @@ pub fn run() {
             commands::git_branch::cmd_git_create_branch,
             commands::git_branch::cmd_git_delete_branch,
             commands::git_branch::cmd_git_merge,
+            // Git remote
+            commands::git_remote::cmd_git_remotes,
+            commands::git_remote::cmd_git_add_remote,
+            commands::git_remote::cmd_git_remove_remote,
+            commands::git_remote::cmd_git_fetch,
+            commands::git_remote::cmd_git_pull,
+            commands::git_remote::cmd_git_push,
+            // Git stash
+            commands::git_core::cmd_git_stash,
+            commands::git_core::cmd_git_stash_list,
+            commands::git_core::cmd_git_stash_apply,
+            commands::git_core::cmd_git_stash_drop,
             commands::project_settings::cmd_ensure_cmtystudio_dir,
             commands::project_settings::cmd_read_project_file,
             commands::project_settings::cmd_write_project_file,

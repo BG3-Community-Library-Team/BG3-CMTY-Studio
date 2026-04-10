@@ -5,6 +5,7 @@ pub mod filesystem;
 pub mod generate;
 pub mod git_branch;
 pub mod git_core;
+pub mod git_remote;
 pub mod http;
 pub mod mod_import;
 pub mod package;

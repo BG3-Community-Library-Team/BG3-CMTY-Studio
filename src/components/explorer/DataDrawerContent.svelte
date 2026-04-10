@@ -4,7 +4,7 @@
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { schemaStore } from "../../lib/stores/schemaStore.svelte.js";
-  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems, keyboardReorder } from "./dragReorder.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems, keyboardReorder, type DragReorderState } from "./dragReorder.js";
   import {
     BG3_CORE_FOLDERS,
     BG3_ADDITIONAL_FOLDERS,
@@ -130,6 +130,37 @@
   // ── Drag-to-reorder state ──
 
   let dragState = $state(createDragReorderState());
+
+  // Per-parent child drag states for sub-node reordering
+  let childDragStates = $state<Record<string, DragReorderState>>({});
+
+  // Eagerly create child drag states for each parent folder node
+  $effect(() => {
+    const allNodes = [...enrichedCoreFolders, ...mergedAdditionalSections];
+    for (const n of allNodes) {
+      if (n.children && !childDragStates[n.name]) {
+        childDragStates[n.name] = createDragReorderState();
+      }
+    }
+  });
+
+  /** Read-only accessor — never mutates from template */
+  const _fallbackDragState: DragReorderState = createDragReorderState();
+  function getChildDragState(parentName: string): DragReorderState {
+    return childDragStates[parentName] ?? _fallbackDragState;
+  }
+
+  function onChildReorder(parentName: string, draggedId: string, targetId: string, position: "before" | "after") {
+    uiStore.reorderNode(`data:${parentName}`, draggedId, targetId, position);
+  }
+
+  function getOrderedChildren(parentName: string, children: FolderNode[]): FolderNode[] {
+    if (!children || children.length === 0) return children;
+    const defaultIds = children.map(c => c.name);
+    const orderedIds = uiStore.getOrderedNodes(`data:${parentName}`, defaultIds);
+    const childMap = new Map(children.map(c => [c.name, c]));
+    return orderedIds.map(id => childMap.get(id)).filter((c): c is FolderNode => !!c);
+  }
 
   /** All root-level node IDs: core folders + additional sections (flattened), sorted by has-entries then alphabetical */
   let defaultNodeIds = $derived.by((): string[] => {
@@ -644,14 +675,15 @@
 
                 {#if isExpanded}
                   <div class="tree-children">
-                    {#each node.children as child (child.name)}
+                    {#each getOrderedChildren(node.name, node.children) as child (child.name)}
                       {@const childCount = getGroupCount(child)}
                       {@const childActive = hasModFiles(child)}
                       {@const childExpanded = uiStore.expandedNodes[child.name] ?? false}
                       {@const childFCls = folderFilterClass(child.label, child.children)}
+                      {@const cds = getChildDragState(node.name)}
 
                       {#if child.children}
-                        <div class="tree-node {childFCls}" class:has-files={childActive} role="treeitem" aria-selected={false} aria-expanded={childExpanded} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
+                        <div class="tree-node {childFCls}" class:has-files={childActive} class:drop-before={cds.dropTargetId === child.name && cds.dropPosition === "before"} class:drop-after={cds.dropTargetId === child.name && cds.dropPosition === "after"} draggable={true} ondragstart={(e) => handleDragStart(e, child.name, node.name, cds)} ondragover={(e) => handleDragOver(e, child.name, node.name, cds)} ondrop={(e) => handleDrop(e, child.name, node.name, cds, (d, t, p) => onChildReorder(node.name, d, t, p))} ondragend={() => handleDragEnd(cds)} role="treeitem" tabindex="0" aria-selected={false} aria-expanded={childExpanded} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
                           <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
                             <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
                           </span>
@@ -676,7 +708,7 @@
                           </div>
                         {/if}
                       {:else}
-                        <button class="tree-node {childFCls}" class:has-files={childActive} class:active-node={isActiveNode(child)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
+                        <button class="tree-node {childFCls}" class:has-files={childActive} class:active-node={isActiveNode(child)} class:drop-before={cds.dropTargetId === child.name && cds.dropPosition === "before"} class:drop-after={cds.dropTargetId === child.name && cds.dropPosition === "after"} draggable={true} ondragstart={(e) => handleDragStart(e, child.name, node.name, cds)} ondragover={(e) => handleDragOver(e, child.name, node.name, cds)} ondrop={(e) => handleDrop(e, child.name, node.name, cds, (d, t, p) => onChildReorder(node.name, d, t, p))} ondragend={() => handleDragEnd(cds)} onclick={() => openNode(child)} ondblclick={() => openNode(child, false)} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
                           <span class="w-3.5 shrink-0"></span>
                           <File size={14} class={childActive ? "text-[var(--th-text-sky-400)]" : "text-[var(--th-text-600)] opacity-40"} />
                           <span class="node-label truncate" class:text-muted={!childActive}>{child.label}</span>
@@ -769,16 +801,45 @@
   :global(.tree-node.drop-before),
   :global(.tree-node.drop-after) {
     position: relative;
+    background: color-mix(in srgb, var(--th-accent-500) 8%, transparent) !important;
   }
 
   :global(.tree-node.drop-before)::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
+    top: -1px;
+    left: 8px;
     right: 0;
     height: 2px;
     background: var(--th-accent-500);
+    box-shadow: 0 0 4px var(--th-accent-500);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  :global(.tree-node.drop-before)::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--th-accent-500);
+    background: var(--th-bg-900, #1a1a2e);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.tree-node.drop-after)::before {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 8px;
+    right: 0;
+    height: 2px;
+    background: var(--th-accent-500);
+    box-shadow: 0 0 4px var(--th-accent-500);
     pointer-events: none;
     z-index: 1;
   }
@@ -786,12 +847,14 @@
   :global(.tree-node.drop-after)::after {
     content: '';
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--th-accent-500);
+    bottom: -4px;
+    left: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--th-accent-500);
+    background: var(--th-bg-900, #1a1a2e);
     pointer-events: none;
-    z-index: 1;
+    z-index: 2;
   }
 </style>
