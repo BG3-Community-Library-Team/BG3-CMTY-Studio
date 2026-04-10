@@ -89,7 +89,8 @@ export function markdownToPlainText(markdown: string): string {
   // Clean up excessive blank lines (max 2 consecutive)
   let text = out.join("\n");
   text = text.replace(/\n{3,}/g, "\n\n");
-  return text.trim() + "\n";
+  // Strip leading/trailing blank lines but preserve indentation
+  return text.replace(/^\n+/, "").replace(/\n+$/, "") + "\n";
 }
 
 /** Strip inline Markdown formatting from a single line. */

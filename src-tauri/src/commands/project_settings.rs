@@ -16,7 +16,7 @@ pub async fn cmd_ensure_cmtystudio_dir(project_path: String) -> Result<(), AppEr
     let dir = PathBuf::from(&project_path).join(CMTYSTUDIO_DIR);
     validate_within_project(&dir, &project_path)?;
     std::fs::create_dir_all(&dir)
-        .map_err(|e| AppError::io_error(format!("Failed to create .cmtystudio dir: {}", e)))?;
+        .map_err(|e| AppError::io_error(format!("Failed to create .cmtystudio dir: {e}")))?;
     Ok(())
 }
 
@@ -37,8 +37,7 @@ pub async fn cmd_read_project_file(
         Ok(content) => Ok(content),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok("{}".to_string()),
         Err(e) => Err(AppError::io_error(format!(
-            "Failed to read {}: {}",
-            filename, e
+            "Failed to read {filename}: {e}"
         ))),
     }
 }
@@ -54,8 +53,7 @@ pub async fn cmd_write_project_file(
 
     if content.len() > MAX_CONTENT_SIZE {
         return Err(AppError::invalid_input(format!(
-            "Content exceeds maximum size of {} bytes",
-            MAX_CONTENT_SIZE
+            "Content exceeds maximum size of {MAX_CONTENT_SIZE} bytes"
         )));
     }
 
@@ -65,17 +63,17 @@ pub async fn cmd_write_project_file(
 
     // Ensure the directory exists
     std::fs::create_dir_all(&dir)
-        .map_err(|e| AppError::io_error(format!("Failed to create .cmtystudio dir: {}", e)))?;
+        .map_err(|e| AppError::io_error(format!("Failed to create .cmtystudio dir: {e}")))?;
 
     // Atomic write: write to temp file, then rename
-    let tmp_path = dir.join(format!(".{}.tmp", filename));
+    let tmp_path = dir.join(format!(".{filename}.tmp"));
     std::fs::write(&tmp_path, &content)
-        .map_err(|e| AppError::io_error(format!("Failed to write temp file: {}", e)))?;
+        .map_err(|e| AppError::io_error(format!("Failed to write temp file: {e}")))?;
 
     std::fs::rename(&tmp_path, &file_path).map_err(|e| {
         // Clean up temp file on rename failure
         let _ = std::fs::remove_file(&tmp_path);
-        AppError::io_error(format!("Failed to rename temp file: {}", e))
+        AppError::io_error(format!("Failed to rename temp file: {e}"))
     })?;
 
     Ok(())
@@ -84,11 +82,11 @@ pub async fn cmd_write_project_file(
 /// Validate that a resolved path is within the project directory.
 fn validate_within_project(path: &Path, project_path: &str) -> Result<(), AppError> {
     let canonical_project = std::fs::canonicalize(project_path)
-        .map_err(|e| AppError::io_error(format!("Cannot resolve project path: {}", e)))?;
+        .map_err(|e| AppError::io_error(format!("Cannot resolve project path: {e}")))?;
 
     let canonical_path = if path.exists() {
         std::fs::canonicalize(path)
-            .map_err(|e| AppError::io_error(format!("Cannot resolve path: {}", e)))?
+            .map_err(|e| AppError::io_error(format!("Cannot resolve path: {e}")))?
     } else {
         // For non-existent paths, canonicalize the parent and append the filename
         let parent = path
@@ -98,16 +96,16 @@ fn validate_within_project(path: &Path, project_path: &str) -> Result<(), AppErr
         // Parent might not exist yet either (e.g. .cmtystudio/ not created yet),
         // so walk up until we find an existing ancestor
         let mut existing_ancestor = parent.to_path_buf();
-        let mut missing_parts: Vec<&std::ffi::OsStr> = Vec::new();
+        let mut missing_parts: Vec<std::ffi::OsString> = Vec::new();
 
         // Collect the filename component of the original path
         if let Some(fname) = path.file_name() {
-            missing_parts.push(fname);
+            missing_parts.push(fname.to_os_string());
         }
 
         while !existing_ancestor.exists() {
             if let Some(fname) = existing_ancestor.file_name() {
-                missing_parts.push(fname);
+                missing_parts.push(fname.to_os_string());
             }
             existing_ancestor = match existing_ancestor.parent() {
                 Some(p) => p.to_path_buf(),
@@ -118,7 +116,7 @@ fn validate_within_project(path: &Path, project_path: &str) -> Result<(), AppErr
         }
 
         let mut result = std::fs::canonicalize(&existing_ancestor)
-            .map_err(|e| AppError::io_error(format!("Cannot resolve ancestor path: {}", e)))?;
+            .map_err(|e| AppError::io_error(format!("Cannot resolve ancestor path: {e}")))?;
 
         // Re-append the missing components in reverse order
         for part in missing_parts.into_iter().rev() {
@@ -144,8 +142,7 @@ fn validate_filename(filename: &str) -> Result<(), AppError> {
     }
     if !ALLOWED_FILENAMES.contains(&filename) {
         return Err(AppError::security(format!(
-            "Filename not allowed: {}",
-            filename
+            "Filename not allowed: {filename}"
         )));
     }
     Ok(())

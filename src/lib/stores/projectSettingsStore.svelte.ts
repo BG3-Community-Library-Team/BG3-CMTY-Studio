@@ -92,7 +92,7 @@ class ProjectSettingsStore {
     }
 
     // 2. Global settingsStore fallback (for keys that exist on both stores)
-    const globalVal = (settingsStore as Record<string, unknown>)[key];
+    const globalVal = (settingsStore as unknown as Record<string, unknown>)[key];
     if (globalVal !== undefined && globalVal !== null) {
       return globalVal as NonNullable<ProjectSettings[K]>;
     }

@@ -32,10 +32,10 @@ describe("TC-001: FileExplorer component", () => {
 
   it("renders explorer header", () => {
     const { container } = render(FileExplorer);
-    // The header contains an uppercase "Explorer" label
+    // The header is rendered via ExplorerHeader component (i18n keys in test mode)
     const header = container.querySelector(".explorer-header");
     expect(header).toBeTruthy();
-    expect(header!.textContent).toContain("Explorer");
+    expect(header!.textContent!.toUpperCase()).toContain("EXPLORER");
   });
 
   it("shows empty state when no mod is loaded", () => {

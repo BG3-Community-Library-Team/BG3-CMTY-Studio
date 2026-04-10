@@ -566,13 +566,12 @@ describe("UiStore", () => {
       expect(uiStore.openTabs.map(t => t.id)).toEqual(before);
     });
 
-    it("moves tab forward correctly", () => {
+    it("welcome tab is immovable (protected by EX-8)", () => {
       uiStore.openTab({ id: "a", label: "A", type: "section" });
       uiStore.openTab({ id: "b", label: "B", type: "section" });
-      // welcome=0, a=1, b=2 → move welcome to 2
+      // welcome=0, a=1, b=2 → attempt to move welcome to 2 — should be no-op
       uiStore.moveTab(0, 2);
-      expect(uiStore.openTabs[0].id).toBe("a");
-      expect(uiStore.openTabs[2].id).toBe("welcome");
+      expect(uiStore.openTabs[0].id).toBe("welcome");
     });
   });
 
