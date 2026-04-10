@@ -54,23 +54,6 @@ export function validateEntry(entry: SelectedEntry): ValidationResult {
     return { valid: true, issues };
   }
 
-  // Check for actionable changes
-  const hasActionable = entry.changes.some(c =>
-    c.change_type !== "EntireEntryNew" && (
-      c.added_values.length > 0 ||
-      c.removed_values.length > 0 ||
-      c.mod_value != null ||
-      c.change_type === "BooleanChanged" ||
-      c.change_type === "FieldChanged" ||
-      c.change_type === "SpellFieldChanged"
-    )
-  );
-
-  if (!hasActionable) {
-    issues.push({ level: "warning", message: "No actionable changes \u2014 entry will produce no output" });
-    return { valid: false, issues };
-  }
-
   // UUID format check
   if (entry.uuid && identityFieldIsGuid(entry) && !UUID_RE.test(entry.uuid)) {
     issues.push({ level: "warning", message: `UUID format invalid: ${entry.uuid}` });

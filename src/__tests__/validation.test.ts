@@ -66,7 +66,7 @@ describe("validateEntry", () => {
     expect(result.issues.some(i => i.message.includes("UUID format invalid"))).toBe(true);
   });
 
-  it("returns invalid when no actionable changes (all non-matching types)", () => {
+  it("returns valid when changes have no added/removed values (actionable check removed)", () => {
     const result = validateEntry(makeEntry({
       changes: [makeChange({
         change_type: "SelectorAdded",
@@ -75,8 +75,8 @@ describe("validateEntry", () => {
         mod_value: null,
       })],
     }));
-    expect(result.valid).toBe(false);
-    expect(result.issues[0].message).toContain("No actionable changes");
+    expect(result.valid).toBe(true);
+    expect(result.issues.every(i => !i.message.includes("No actionable changes"))).toBe(true);
   });
 
   it("returns valid with warning for removal-only entries", () => {

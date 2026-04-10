@@ -435,7 +435,7 @@
         const existingFieldKeys = new Set(fields.map(f => f.key));
         for (const key of effectiveCaps.fieldKeys ?? []) {
           if (!existingFieldKeys.has(key)) {
-            fields = [...fields, { key, value: "" }];
+            fields = [...fields, { key, value: _rawAttrs?.[key] ?? "" }];
           }
         }
       }
@@ -443,7 +443,7 @@
         const existingBoolKeys = new Set(booleans.map(b => b.key));
         for (const key of effectiveCaps.booleanKeys ?? []) {
           if (!existingBoolKeys.has(key)) {
-            booleans = [...booleans, { key, value: false }];
+            booleans = [...booleans, { key, value: (_rawAttrs?.[key] ?? "").toLowerCase() === "true" }];
           }
         }
       }

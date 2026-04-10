@@ -189,6 +189,7 @@
           onclick={() => uiStore.activeTabId = tab.id}
           ondblclick={() => uiStore.pinTab(tab.id)}
           onauxclick={(e: MouseEvent) => handleAuxClick(e, tab)}
+          onmouseup={(e: MouseEvent) => handleAuxClick(e, tab)}
           ondragstart={(e: DragEvent) => handleDragStart(e, i, tab)}
           ondragover={(e: DragEvent) => handleDragOver(e, i)}
           ondrop={(e: DragEvent) => handleDrop(e, i)}

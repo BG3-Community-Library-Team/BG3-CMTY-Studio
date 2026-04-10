@@ -5,12 +5,15 @@
 import { m } from "../../paraglide/messages.js";
 
 export type ActivityView = "project" | "explorer" | "editor" | "search" | "git" | "settings" | "loaded-data" | "help";
+export type ExplorerDrawerId = "data" | "scripts" | "localization";
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
 const EXPLORER_DRAWERS_STORAGE_KEY = "bg3-cmty-explorer-drawers";
+const EXPLORER_DRAWER_ORDER_STORAGE_KEY = "bg3-cmty-explorer-drawer-order";
 const EXPLORER_NODE_ORDER_STORAGE_KEY = "bg3-cmty-explorer-node-order";
 const EXPLORER_VIEW_MODE_STORAGE_KEY = "bg3-cmty-explorer-view-mode";
 const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "git", "loaded-data", "settings", "help"];
+const DEFAULT_EXPLORER_DRAWER_ORDER: ExplorerDrawerId[] = ["data", "scripts", "localization"];
 
 export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts" | "git";
 
@@ -313,6 +316,7 @@ class UiStore {
     this.sidebarVisible = true;
     this.explorerViewMode = "studio";
     this.explorerDrawers = {};
+    this.explorerDrawerOrder = [...DEFAULT_EXPLORER_DRAWER_ORDER];
     this.explorerNodeOrder = {};
   }
 
@@ -323,12 +327,29 @@ class UiStore {
   /** Per-drawer collapsed/height state (keyed by drawer id) */
   explorerDrawers: Record<string, { collapsed: boolean; height: number | null }> = $state(UiStore.#loadExplorerDrawers());
 
+  /** Persisted explorer drawer order */
+  explorerDrawerOrder: ExplorerDrawerId[] = $state(UiStore.#loadExplorerDrawerOrder());
+
   static #loadExplorerViewMode(): "studio" | "file-tree" {
     try {
       const raw = localStorage.getItem(EXPLORER_VIEW_MODE_STORAGE_KEY);
       if (raw === "studio" || raw === "file-tree") return raw;
     } catch { /* fallback */ }
     return "studio";
+  }
+
+  static #loadExplorerDrawerOrder(): ExplorerDrawerId[] {
+    try {
+      const raw = localStorage.getItem(EXPLORER_DRAWER_ORDER_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        const known = new Set<string>(DEFAULT_EXPLORER_DRAWER_ORDER);
+        const valid = parsed.filter((id): id is ExplorerDrawerId => known.has(id));
+        const missing = DEFAULT_EXPLORER_DRAWER_ORDER.filter(id => !valid.includes(id));
+        return [...valid, ...missing];
+      }
+    } catch { /* fallback */ }
+    return [...DEFAULT_EXPLORER_DRAWER_ORDER];
   }
 
   static #loadExplorerDrawers(): Record<string, { collapsed: boolean; height: number | null }> {
@@ -358,6 +379,17 @@ class UiStore {
     const current = this.explorerDrawers[drawerId];
     this.explorerDrawers[drawerId] = { ...(current || { collapsed: false }), height };
     this.#persistExplorerDrawers();
+  }
+
+  setExplorerDrawerOrder(order: ExplorerDrawerId[]): void {
+    const valid = order.filter((id, index, list) =>
+      DEFAULT_EXPLORER_DRAWER_ORDER.includes(id) && list.indexOf(id) === index,
+    );
+    const missing = DEFAULT_EXPLORER_DRAWER_ORDER.filter(id => !valid.includes(id));
+    this.explorerDrawerOrder = [...valid, ...missing];
+    try {
+      localStorage.setItem(EXPLORER_DRAWER_ORDER_STORAGE_KEY, JSON.stringify(this.explorerDrawerOrder));
+    } catch { /* quota exceeded — silently ignore */ }
   }
 
   #persistExplorerDrawers(): void {
@@ -424,8 +456,12 @@ class UiStore {
         const insertIdx = position === "before" ? targetIdx : targetIdx + 1;
         order.splice(insertIdx, 0, draggedId);
       } else {
-        // Target not yet in order list — add both
-        order.push(draggedId);
+        // Target not yet in order list — insert both in correct relative position
+        if (position === "before") {
+          order.push(draggedId, targetId);
+        } else {
+          order.push(targetId, draggedId);
+        }
       }
       this.explorerNodeOrder = {
         ...this.explorerNodeOrder,

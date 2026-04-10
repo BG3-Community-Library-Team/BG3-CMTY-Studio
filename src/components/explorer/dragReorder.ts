@@ -110,6 +110,27 @@ export function handleDragEnd(state: DragReorderState): void {
   state.dropPosition = null;
 }
 
+// ── Keyboard reorder ──
+
+/**
+ * Move an item up or down in an array by keyboard shortcut.
+ * Returns the new array, or null if the move is invalid.
+ */
+export function keyboardReorder<T>(
+  items: T[],
+  currentIndex: number,
+  direction: "up" | "down",
+): T[] | null {
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= items.length) return null;
+  const newItems = [...items];
+  [newItems[currentIndex], newItems[targetIndex]] = [
+    newItems[targetIndex],
+    newItems[currentIndex],
+  ];
+  return newItems;
+}
+
 // ── Pin-to-top context menu items ──
 
 export function getPinContextMenuItems(

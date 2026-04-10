@@ -106,6 +106,14 @@ describe("Explorer Reorder (uiStore node ordering)", () => {
   // ── reorderNode ───────────────────────────────────────────
 
   describe("reorderNode", () => {
+    it("preserves relative placement when the first reorder seeds an empty order list", () => {
+      uiStore.reorderNode("drawer1", "c", "b", "after");
+
+      const state = uiStore.explorerNodeOrder["drawer1"];
+      expect(state.order).toEqual(["b", "c"]);
+      expect(uiStore.getOrderedNodes("drawer1", ["a", "b", "c", "d"])).toEqual(["b", "c", "a", "d"]);
+    });
+
     it("moves a node before another in unpinned list", () => {
       // Establish initial order
       uiStore.reorderNode("drawer1", "a", "b", "before");

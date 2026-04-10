@@ -32,7 +32,7 @@
   let activeIndex = $state(-1);
   let containerEl: HTMLElement | undefined = $state();
   let columnCount = $state(10); // safe default, recalculated on mount
-  let swatchEls: HTMLButtonElement[] = [];
+  let swatchEls: HTMLButtonElement[] = $state([]);
 
   // --- Search filter ---
   let filterText = $state("");

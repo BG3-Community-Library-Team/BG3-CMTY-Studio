@@ -491,7 +491,18 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                 if !mod_entries.is_empty() {
                     used_consolidated_stats = true;
                     raw_stats_entries.extend(mod_entries.clone());
-                    let diffs = diff_stats(&mod_entries, &vanilla_stats);
+                    let mut diffs = diff_stats(&mod_entries, &vanilla_stats);
+                    let rel_path = entry
+                        .path()
+                        .strip_prefix(&mod_root)
+                        .unwrap_or(entry.path())
+                        .to_string_lossy()
+                        .to_string();
+                    for d in &mut diffs {
+                        if d.source_file.is_empty() {
+                            d.source_file.clone_from(&rel_path);
+                        }
+                    }
                     section_results
                         .entry(Section::Spells)
                         .or_default()
@@ -530,7 +541,18 @@ pub fn scan_mod(mod_path: &str, vanilla_db_path: &Path, extra_scan_paths: &[Stri
                     .unwrap_or("");
                 let mod_entries = parse_stats_file_typed(&content, Some(file_stem));
                 raw_stats_entries.extend(mod_entries.clone());
-                let diffs = diff_stats(&mod_entries, &vanilla_stats);
+                let mut diffs = diff_stats(&mod_entries, &vanilla_stats);
+                let rel_path = entry
+                    .path()
+                    .strip_prefix(&mod_root)
+                    .unwrap_or(entry.path())
+                    .to_string_lossy()
+                    .to_string();
+                for d in &mut diffs {
+                    if d.source_file.is_empty() {
+                        d.source_file.clone_from(&rel_path);
+                    }
+                }
                 section_results
                     .entry(Section::Spells)
                     .or_default()

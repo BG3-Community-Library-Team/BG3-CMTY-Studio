@@ -51,6 +51,7 @@
   let newModFolder = $state("");
   let newModUseSE = $state(false);
   let isCreatingMod = $state(false);
+  let lsxTabViewMode = $state<Record<string, "form" | "raw">>({});
 
   function resetNewModForm() {
     showNewModForm = false;
@@ -92,6 +93,25 @@
       console.error("Dialog error:", e);
     }
   }
+
+  function getLsxTabViewMode(tabId: string): "form" | "raw" {
+    return lsxTabViewMode[tabId] ?? "form";
+  }
+
+  function setLsxTabViewMode(tabId: string, mode: "form" | "raw"): void {
+    lsxTabViewMode = { ...lsxTabViewMode, [tabId]: mode };
+  }
+
+  // Clean up lsxTabViewMode entries when tabs are closed
+  $effect(() => {
+    const openIds = new Set(uiStore.openTabs.map(t => t.id));
+    const staleKeys = Object.keys(lsxTabViewMode).filter(k => !openIds.has(k));
+    if (staleKeys.length > 0) {
+      const next = { ...lsxTabViewMode };
+      for (const k of staleKeys) delete next[k];
+      lsxTabViewMode = next;
+    }
+  });
 
   let activeTab = $derived(uiStore.activeTab);
   let sections = $derived(modStore.scanResult?.sections ?? []);
@@ -523,11 +543,56 @@
       <MetaLsxForm />
 
     {:else if activeTab.type === "lsx-file"}
-      <!-- Additional Data / non-CF LSX folder editor -->
       {@const lsxCategory = activeTab.category ?? ""}
       {@const lsxResult = getSectionResult(lsxCategory) ?? { section: lsxCategory as Section, entries: [] }}
-      <div class="section-tab-content">
-        <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
+      {@const lsxViewMode = getLsxTabViewMode(activeTab.id)}
+      <div class="lsx-file-tab">
+        {#if activeTab.filePath}
+          <div class="editor-header">
+            <FileCode size={14} class="text-[var(--th-text-400)] flex-shrink-0" />
+            <span class="text-xs font-medium text-[var(--th-text-200)] truncate">
+              {activeTab.filePath.split("/").pop() ?? activeTab.filePath.split("\\").pop() ?? activeTab.filePath}
+            </span>
+            <div class="ml-auto flex items-center gap-2" role="tablist" aria-label="View mode">
+              <button
+                class="mode-toggle"
+                class:active={lsxViewMode === 'form'}
+                onclick={() => setLsxTabViewMode(activeTab.id, 'form')}
+                role="tab"
+                aria-selected={lsxViewMode === 'form'}
+                onkeydown={(e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setLsxTabViewMode(activeTab.id, lsxViewMode === 'form' ? 'raw' : 'form'); e.preventDefault(); }}}
+              >
+                {m.lsx_editor_form_mode()}
+              </button>
+              <button
+                class="mode-toggle"
+                class:active={lsxViewMode === 'raw'}
+                onclick={() => setLsxTabViewMode(activeTab.id, 'raw')}
+                role="tab"
+                aria-selected={lsxViewMode === 'raw'}
+                onkeydown={(e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setLsxTabViewMode(activeTab.id, lsxViewMode === 'form' ? 'raw' : 'form'); e.preventDefault(); }}}
+              >
+                {m.lsx_editor_raw_mode()}
+              </button>
+            </div>
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-500)]">.LSX</span>
+          </div>
+        {/if}
+
+        <div class="lsx-file-content">
+          {#if lsxViewMode === 'raw' && activeTab.filePath}
+            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} />
+          {:else if lsxCategory}
+            <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
+          {:else if activeTab.filePath}
+            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} />
+          {:else}
+            <div class="empty-tab">
+              <FolderOpen size={32} class="text-[var(--th-text-600)] opacity-30" />
+              <p class="text-sm text-[var(--th-text-500)] mt-2">No form view is available for this LSX file.</p>
+            </div>
+          {/if}
+        </div>
       </div>
 
     {:else if activeTab.type === "localization"}
@@ -692,4 +757,55 @@
   :global(.hl-bool) { color: #ff9e64; }
   :global(.hl-num) { color: #ff9e64; }
   :global(.hl-punct) { color: #89929b; }
+
+  .lsx-file-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .lsx-file-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: var(--th-bg-900);
+    border-bottom: 1px solid var(--th-border-800);
+    flex-shrink: 0;
+  }
+
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--th-text-400);
+    background: var(--th-bg-800);
+    border: 1px solid var(--th-border-subtle, var(--th-border-700));
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .mode-toggle:hover {
+    color: var(--th-text-200);
+    background: var(--th-bg-700);
+  }
+
+  .mode-toggle.active {
+    background: var(--th-accent, #4a9eff);
+    color: var(--th-text-on-accent, #fff);
+    border-color: var(--th-accent, #4a9eff);
+  }
 </style>

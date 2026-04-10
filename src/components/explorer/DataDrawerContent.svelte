@@ -4,7 +4,7 @@
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { projectStore, sectionToTable } from "../../lib/stores/projectStore.svelte.js";
   import { schemaStore } from "../../lib/stores/schemaStore.svelte.js";
-  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems } from "./dragReorder.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems, keyboardReorder } from "./dragReorder.js";
   import {
     BG3_CORE_FOLDERS,
     BG3_ADDITIONAL_FOLDERS,
@@ -51,8 +51,19 @@
   import Search from "@lucide/svelte/icons/search";
   import FileCode from "@lucide/svelte/icons/file-code";
   import PinIcon from "@lucide/svelte/icons/pin";
-  import type { SectionResult, DiffEntry } from "../../lib/types/index.js";
+  import type { SectionResult } from "../../lib/types/index.js";
   import type { ContextMenuItemDef } from "../../lib/types/contextMenu.js";
+  import {
+    getSectionCount as _getSectionCount,
+    getGroupCount as _getGroupCount,
+    hasModFiles as _hasModFiles,
+    hasSection,
+  } from "../../lib/utils/sectionCounts.js";
+  import {
+    discoverSections,
+    enrichCoreFolders,
+    mergeAdditionalSections,
+  } from "../../lib/utils/folderDiscovery.js";
 
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
@@ -95,125 +106,37 @@
     return m;
   });
 
-  function getSectionCount(Section: string | undefined, entryFilter?: { field: string; value: string }): number {
-    if (!Section) return 0;
-    const sec = sectionMap.get(Section);
-    let autoCount = 0;
-    if (sec) {
-      if (entryFilter) {
-        autoCount = sec.entries.filter((e: DiffEntry) =>
-          entryFilter.field === "node_id" ? e.node_id === entryFilter.value : e.raw_attributes?.[entryFilter.field] === entryFilter.value
-        ).length;
-      } else {
-        autoCount = sec.entries.length;
-      }
-    }
-    const manualCount = entryFilter ? 0 : (manualCountBySection.get(Section) ?? 0);
-    return autoCount + manualCount;
+  function getSectionCount(section: string | undefined, entryFilter?: { field: string; value: string }): number {
+    return _getSectionCount(sectionMap, manualCountBySection, section, entryFilter);
   }
 
   function getGroupCount(node: FolderNode): number {
-    if (node.groupSections) {
-      return node.groupSections.reduce((sum, sec) => sum + getSectionCount(sec), 0);
-    }
-    if (node.Section) return getSectionCount(node.Section, node.entryFilter);
-    if (node.children) {
-      return node.children.reduce((sum, child) => sum + getGroupCount(child), 0);
-    }
-    return 0;
+    return _getGroupCount(sectionMap, manualCountBySection, node);
   }
 
   function hasModFiles(node: FolderNode): boolean {
-    if (node.Section) {
-      if (node.entryFilter) return getSectionCount(node.Section, node.entryFilter) > 0;
-      return sections.some((s: SectionResult) => s.section === node.Section);
-    }
-    if (node.children) return node.children.some(hasModFiles);
-    if (node.groupSections) {
-      return node.groupSections.some(sec =>
-        sections.some((s: SectionResult) => s.section === sec),
-      );
-    }
-    return false;
-  }
-
-  function hasSection(node: FolderNode): boolean {
-    if (node.Section) return true;
-    if (node.groupSections) return true;
-    if (node.children) return node.children.some(hasSection);
-    return false;
+    return _hasModFiles(sectionMap, manualCountBySection, node);
   }
 
   // ── Discovered sections ──
 
-  let allDiscovered = $derived.by((): { cc: FolderNode[]; content: FolderNode[]; vfx: FolderNode[]; sound: FolderNode[]; general: FolderNode[] } => {
+  let allDiscovered = $derived.by(() => {
     if (!schemaStore.loaded) return { cc: [], content: [], vfx: [], sound: [], general: [] };
-    const cc: FolderNode[] = [];
-    const content: FolderNode[] = [];
-    const vfx: FolderNode[] = [];
-    const sound: FolderNode[] = [];
-    const general: FolderNode[] = [];
-    for (const [sectionKey, schemas] of schemaStore.sectionEntries()) {
-      if (STATIC_SIDEBAR_SECTIONS.has(sectionKey)) continue;
-      if (SECTIONS_EXCLUDED_FROM_DISCOVERY.has(sectionKey)) continue;
-      if (sectionKey.startsWith("stats:")) continue;
-      if (schemas.every(s => s.attributes.length === 0)) continue;
-      const primary = schemas[0];
-      if (!primary) continue;
-      const node: FolderNode = {
-        name: sectionKey,
-        label: sectionKey.replace(/([A-Z])/g, " $1").trim(),
-        nodeTypes: schemas.map(s => s.node_id),
-        Section: sectionKey,
-        regionId: sectionKey,
-      };
-      if (sectionKey.startsWith("CharacterCreation")) cc.push(node);
-      else if (/^Effect/i.test(sectionKey)) vfx.push(node);
-      else if (/Bank/i.test(sectionKey) || /Visual/i.test(sectionKey)) content.push(node);
-      else if (/^Sound/i.test(sectionKey) && sectionKey !== "Sound") sound.push(node);
-      else general.push(node);
-    }
-    const sorter = (a: FolderNode, b: FolderNode) => a.label.localeCompare(b.label);
-    cc.sort(sorter); content.sort(sorter); vfx.sort(sorter); sound.sort(sorter); general.sort(sorter);
-    return { cc, content, vfx, sound, general };
+    return discoverSections(schemaStore.sectionEntries(), STATIC_SIDEBAR_SECTIONS, SECTIONS_EXCLUDED_FROM_DISCOVERY);
   });
 
-  let enrichedCoreFolders = $derived.by((): FolderNode[] => {
-    const { cc: ccExtra, content: contentExtra, vfx: vfxExtra } = allDiscovered;
-    if (ccExtra.length === 0 && contentExtra.length === 0 && vfxExtra.length === 0) return BG3_CORE_FOLDERS;
-    return BG3_CORE_FOLDERS.map(f => {
-      if (f.name === "_CharacterCreation" && f.children && ccExtra.length > 0) return { ...f, children: [...f.children, ...ccExtra] };
-      if (f.name === "_Content" && f.children && contentExtra.length > 0) return { ...f, children: [...f.children, ...contentExtra] };
-      if (f.name === "_VFX" && f.children && vfxExtra.length > 0) return { ...f, children: [...f.children, ...vfxExtra] };
-      return f;
-    });
-  });
+  let enrichedCoreFolders = $derived(enrichCoreFolders(BG3_CORE_FOLDERS, allDiscovered));
 
-  let mergedAdditionalSections = $derived.by((): FolderNode[] => {
-    const combined = [...BG3_ADDITIONAL_FOLDERS];
-    const soundExtra = allDiscovered.sound;
-    if (soundExtra.length > 0) {
-      for (let i = 0; i < combined.length; i++) {
-        const node = combined[i];
-        if (node.name === "_Sound" && node.children && soundExtra.length > 0) {
-          combined[i] = { ...node, children: [...node.children, ...soundExtra] };
-        }
-      }
-    }
-    combined.push(...allDiscovered.general);
-    combined.sort((a, b) => a.label.localeCompare(b.label));
-    return combined;
-  });
+  let mergedAdditionalSections = $derived(mergeAdditionalSections(BG3_ADDITIONAL_FOLDERS, allDiscovered));
 
   // ── Drag-to-reorder state ──
 
   let dragState = $state(createDragReorderState());
 
-  /** All root-level node IDs: core folders + "_Additional_" separator + additional sections */
+  /** All root-level node IDs: core folders + additional sections (flattened) */
   let defaultNodeIds = $derived.by((): string[] => {
     const ids: string[] = [];
     for (const f of enrichedCoreFolders) ids.push(f.name);
-    ids.push("_Additional_");
     for (const f of mergedAdditionalSections) ids.push(f.name);
     return ids;
   });
@@ -242,11 +165,36 @@
   /** Set of core folder names (vs additional sections) for path resolution */
   let coreNodeNames = $derived(new Set(enrichedCoreFolders.map(f => f.name)));
 
-  /** Whether an additional node should be hidden (not pinned, and _Additional_ is collapsed) */
-  function isAdditionalHidden(nodeId: string): boolean {
-    if (coreNodeNames.has(nodeId) || nodeId === "_Additional_") return false;
-    if (uiStore.isNodePinned("data", nodeId)) return false;
-    return !isAdditionalExpanded;
+  /** Whether an additional node should be hidden — always false now (flattened) */
+  function isAdditionalHidden(_nodeId: string): boolean {
+    return false;
+  }
+
+  // ── Keyboard reorder + announcements ──
+
+  let announceMessage = $state("");
+
+  function announce(msg: string): void {
+    announceMessage = "";
+    requestAnimationFrame(() => { announceMessage = msg; });
+  }
+
+  function handleNodeKeydown(e: KeyboardEvent, nodeId: string, idx: number): void {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const direction = e.key === "ArrowUp" ? "up" : "down";
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= orderedNodeIds.length) return;
+    const targetId = orderedNodeIds[targetIdx];
+    const position = direction === "up" ? "before" : "after";
+    uiStore.reorderNode("data", nodeId, targetId, position);
+    const label = nodeMap.get(nodeId)?.label ?? nodeId;
+    announce(m.explorer_reorder_announce({ name: label, position: String(targetIdx + 1) }));
+    requestAnimationFrame(() => {
+      const nodes = document.querySelectorAll<HTMLElement>('.data-content > [role="treeitem"]');
+      nodes[targetIdx]?.focus();
+    });
   }
 
   // ── Active node tracking ──
@@ -313,9 +261,7 @@
 
   // ── Expansion state ──
 
-  let isPublicExpanded = $derived(uiStore.expandedNodes["Public"] !== false);
   let isAdditionalExpanded = $derived(uiStore.expandedNodes["_Additional"] ?? false);
-  let isModsExpanded = $derived(uiStore.expandedNodes["Mods"] ?? false);
 
   // ── Data section context menu ──
 
@@ -376,7 +322,7 @@
     if (!ctxSection) return;
     const table = sectionToTable(ctxSection);
     await projectStore.refreshSection(table);
-    toastStore.success("Section refreshed");
+    toastStore.success(m.explorer_section_refreshed());
   }
 
   async function ctxOpenInFileManager() {
@@ -409,7 +355,7 @@
     }
     if (ctxHasSection) {
       items.push({ label: m.file_explorer_add_entry(), icon: File, action: ctxAddEntry });
-      items.push({ label: "Refresh Section", icon: RefreshCw, action: ctxRefreshSection });
+      items.push({ label: m.explorer_refresh_section(), icon: RefreshCw, action: ctxRefreshSection });
       items.push({ label: m.file_explorer_view_vanilla(), icon: Package, action: ctxViewVanillaData });
     }
     if (ctxHasPath) {
@@ -471,11 +417,11 @@
     if (inlineCreateType === 'file') {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
       try { await touchFile(modPath, relPath); modStore.modFiles = await listModFiles(modPath); uiStore.openScriptTab(relPath); }
-      catch (e) { toastStore.error("Failed to create file", String(e)); }
+      catch (e) { toastStore.error(m.explorer_create_file_failed(), String(e)); }
     } else {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
       try { await createModDirectory(modPath, relPath); modStore.modFiles = await listModFiles(modPath); }
-      catch (e) { toastStore.error("Failed to create folder", String(e)); }
+      catch (e) { toastStore.error(m.explorer_create_folder_failed(), String(e)); }
     }
     isCommittingCreate = false;
     cancelInlineCreate();
@@ -525,7 +471,7 @@
       if (uiStore.openTabs.some(t => t.id === oldTabId)) { uiStore.closeTab(oldTabId); uiStore.openScriptTab(newRelPath); }
       modStore.modFiles = await listModFiles(modPath);
       toastStore.success(m.file_explorer_renamed(), `${node.name} → ${newName}`);
-    } catch (e) { toastStore.error("Rename failed", String(e)); }
+    } catch (e) { toastStore.error(m.explorer_rename_failed(), String(e)); }
     isCommittingRename = false;
     cancelInlineRename();
   }
@@ -547,7 +493,7 @@
       else await copyModFile(modPath, srcRelPath, destRelPath);
       modStore.modFiles = await listModFiles(modPath);
       if (clipboardOp === 'cut') { clipboardNode = null; clipboardOp = null; }
-    } catch (e) { toastStore.error("Paste failed", String(e)); }
+    } catch (e) { toastStore.error(m.explorer_paste_failed(), String(e)); }
   }
 
   async function deleteScriptFile(node: FileTreeNode) {
@@ -560,6 +506,7 @@
       const tabId = `script:${fullPath}`;
       if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
       modStore.modFiles = await listModFiles(modPath);
+      announce(m.explorer_delete_announce({ name: node.name }));
       toastStore.success(m.file_explorer_delete_script(), node.name);
     } catch (e) { toastStore.error(m.file_explorer_delete_script(), String(e)); }
   }
@@ -607,21 +554,7 @@
 </script>
 
 <div class="data-content" onclick={hideContextMenu} role="none">
-  <!-- ── Public/{ModFolder} ── -->
-  <div class="tree-section">
-    <button class="tree-node" onclick={() => uiStore.toggleNode("Public")} oncontextmenu={(e) => showContextMenu(e, `${modStore.selectedModPath}/Public/${modFolder}`, `Public/${modFolder}`)}>
-      <ChevronRight size={14} class="chevron {isPublicExpanded ? 'expanded' : ''}" />
-      {#if isPublicExpanded}
-        <FolderOpen size={14} class="text-[var(--th-text-amber-400)]" />
-      {:else}
-        <Folder size={14} class="text-[var(--th-text-amber-400)]" />
-      {/if}
-      <span class="node-label">Public/{modFolder}</span>
-    </button>
-
-    {#if isPublicExpanded}
-      <div class="tree-children">
-        {#each orderedNodeIds as nodeId, idx (nodeId)}
+  {#each orderedNodeIds as nodeId, idx (nodeId)}
           {#if idx === firstUnpinnedIdx && hasPinnedNodes}
             <div class="pin-divider"></div>
           {/if}
@@ -638,6 +571,7 @@
               ondrop={(e) => handleDrop(e, "_Additional_", "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
               ondragend={() => handleDragEnd(dragState)}
               oncontextmenu={(e) => showContextMenu(e, "", "Additional Data", undefined, undefined, true, "_Additional_")}
+              onkeydown={(e) => handleNodeKeydown(e, "_Additional_", idx)}
               role="treeitem"
               tabindex="0"
               aria-selected={false}
@@ -679,6 +613,7 @@
                   ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
                   ondragend={() => handleDragEnd(dragState)}
                   oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, pathKind), node.label, node.Section, node, true, nodeId)}
+                  onkeydown={(e) => handleNodeKeydown(e, nodeId, idx)}
                   role="treeitem"
                   tabindex="0"
                   aria-selected={false}
@@ -771,6 +706,7 @@
                   onclick={() => openNode(node)}
                   ondblclick={() => openNode(node, false)}
                   oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, pathKind), node.label, node.Section, node, true, nodeId)}
+                  onkeydown={(e) => handleNodeKeydown(e, nodeId, idx)}
                 >
                   {#if isPinned}
                     <PinIcon size={10} class="pin-indicator" />
@@ -790,126 +726,7 @@
               {/if}
             {/if}
           {/if}
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <!-- ── Mods/{ModFolder} ── -->
-  <div class="tree-section">
-    <button class="tree-node" onclick={() => uiStore.toggleNode("Mods")} oncontextmenu={(e) => showContextMenu(e, resolveNodePath("", "mods"), `Mods/${modFolder}`)}>
-      <ChevronRight size={14} class="chevron {isModsExpanded ? 'expanded' : ''}" />
-      {#if isModsExpanded}
-        <FolderOpen size={14} class="text-[var(--th-text-indigo-400)]" />
-      {:else}
-        <Folder size={14} class="text-[var(--th-text-indigo-400)]" />
-      {/if}
-      <span class="node-label">Mods/{modFolder}</span>
-    </button>
-
-    {#if isModsExpanded}
-      <div class="tree-children">
-        {#if modFileDisplayTree.length > 0}
-          {#snippet modFileNode(node: FileTreeNode)}
-            {@const nodeFCls = fileFilterClass(node.name, node.children)}
-            {#if node.isFile}
-              <button
-                class="tree-node has-files {nodeFCls}"
-                class:active-node={isActiveFile(node.relPath)}
-                onclick={() => openFilePreview(node)}
-                ondblclick={() => openFilePreview(node, false)}
-                oncontextmenu={(e) => showFileContextMenu(e, node)}
-                onkeydown={(e) => { if (e.key === 'Delete') { deleteScriptFile(node); } }}
-                onmouseenter={() => { hoveredNode = node.relPath; }}
-                onmouseleave={() => { hoveredNode = null; }}
-              >
-                <span class="w-3.5 shrink-0"></span>
-                <File size={14} class="text-[var(--th-text-emerald-400)]" />
-                <span class="node-label truncate">{node.name}</span>
-                {#if hoveredNode === node.relPath}
-                  <span class="hover-actions">
-                    <span role="button" tabindex="0" class="hover-action-btn" title="New File" onclick={(e) => { e.stopPropagation(); const p = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(p, 'file'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const p = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(p, 'file'); } }}>
-                      <FilePlus2 size={12} />
-                    </span>
-                    <span role="button" tabindex="0" class="hover-action-btn" title="New Folder" onclick={(e) => { e.stopPropagation(); const p = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(p, 'folder'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const p = node.relPath.substring(0, node.relPath.lastIndexOf('/')); startInlineCreate(p, 'folder'); } }}>
-                      <FolderPlus size={12} />
-                    </span>
-                  </span>
-                {:else}
-                  {#if getOsirisBadge(node.relPath, node.extension)}
-                    {@const osiBadge = getOsirisBadge(node.relPath, node.extension)!}
-                    <span class="ext-badge" style="background: {osiBadge.color}">{osiBadge.label}</span>
-                  {:else if node.extension}
-                    <span class="ext-badge" style="background: {EXT_BADGE_COLORS[node.extension] ?? EXT_BADGE_FALLBACK}">.{node.extension}</span>
-                  {/if}
-                  {#if getSeContextBadge(node.relPath)}
-                    {@const seBadge = getSeContextBadge(node.relPath)!}
-                    <span class="se-ctx-badge" style="background: {seBadge.color}">{seBadge.label}</span>
-                  {/if}
-                {/if}
-              </button>
-            {:else}
-              {@const expanded = uiStore.expandedNodes[`modfile:${node.relPath}`] ?? false}
-              <button class="tree-node has-files {nodeFCls}"
-                onclick={() => uiStore.toggleNode(`modfile:${node.relPath}`)}
-                oncontextmenu={(e) => showFileContextMenu(e, node)}
-                onmouseenter={() => { hoveredNode = node.relPath; }}
-                onmouseleave={() => { hoveredNode = null; }}
-              >
-                <ChevronRight size={14} class="chevron {expanded ? 'expanded' : ''}" />
-                {#if expanded}
-                  <FolderOpen size={14} class="text-[var(--th-text-indigo-400)]" />
-                {:else}
-                  <Folder size={14} class="text-[var(--th-text-indigo-400)]" />
-                {/if}
-                <span class="node-label truncate">{node.name}</span>
-                {#if hoveredNode === node.relPath}
-                  <span class="hover-actions">
-                    <span role="button" tabindex="0" class="hover-action-btn" title="New File" onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'file'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'file'); } }}>
-                      <FilePlus2 size={12} />
-                    </span>
-                    <span role="button" tabindex="0" class="hover-action-btn" title="New Folder" onclick={(e) => { e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); startInlineCreate(node.relPath, 'folder'); } }}>
-                      <FolderPlus size={12} />
-                    </span>
-                  </span>
-                {/if}
-              </button>
-              {#if expanded && node.children}
-                <div class="tree-children">
-                  {#if inlineCreateParent === node.relPath}
-                    <div class="tree-node inline-create">
-                      <span class="w-3.5 shrink-0"></span>
-                      {#if inlineCreateType === 'folder'}
-                        <Folder size={14} class="text-[var(--th-text-indigo-400)]" />
-                      {:else}
-                        <File size={14} class="text-[var(--th-text-emerald-400)]" />
-                      {/if}
-                      <input
-                        bind:this={inlineCreateInput}
-                        bind:value={inlineCreateName}
-                        class="inline-create-input"
-                        placeholder={inlineCreateType === 'folder' ? 'folder name' : 'filename.lua'}
-                        onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); } if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); } }}
-                        onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
-                      />
-                    </div>
-                  {/if}
-                  {#each node.children as child (child.relPath)}
-                    {@render modFileNode(child)}
-                  {/each}
-                </div>
-              {/if}
-            {/if}
-          {/snippet}
-          {#each filteredModFileDisplayTree as treeNode (treeNode.relPath)}
-            {@render modFileNode(treeNode)}
-          {/each}
-        {:else}
-          <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">No text files found</span>
-        {/if}
-      </div>
-    {/if}
-  </div>
+  {/each}
 </div>
 
 <!-- Section context menu -->
@@ -917,73 +734,9 @@
   <ContextMenu x={ctxX} y={ctxY} header={ctxLabel} headerTitle={ctxPath || ctxLabel} onclose={hideContextMenu} items={ctxItems} />
 {/if}
 
-<!-- File tree context menu -->
-{#if fileCtxVisible && fileCtxNode}
-  <ContextMenu x={fileCtxX} y={fileCtxY} header={fileCtxNode.name} onclose={hideContextMenu}>
-    {#if isScriptFile(fileCtxNode.extension)}
-      <button class="ctx-item" onclick={() => { const fullPath = `${modsFilePrefix}${fileCtxNode!.relPath}`; uiStore.openScriptTab(fullPath); hideContextMenu(); }} role="menuitem">
-        <Pencil size={12} class="shrink-0" />
-        {m.file_explorer_edit_script()}
-      </button>
-      <button class="ctx-item" onclick={async () => { const node = fileCtxNode; if (!node) return; await deleteScriptFile(node); hideContextMenu(); }} role="menuitem">
-        <Trash2 size={12} class="shrink-0" />
-        {m.file_explorer_delete_script()}
-      </button>
-    {/if}
-    <button class="ctx-item" onclick={() => { if (!fileCtxNode) return; const node = fileCtxNode; hideContextMenu(); startInlineRename(node); }} role="menuitem">
-      <Pencil size={12} class="shrink-0" />
-      Rename
-    </button>
-    {#if !fileCtxNode.isFile}
-      <button class="ctx-item" onclick={() => { startInlineCreate(fileCtxNode!.relPath, 'file'); hideContextMenu(); }} role="menuitem">
-        <FilePlus2 size={12} class="shrink-0" />
-        New File
-      </button>
-      <button class="ctx-item" onclick={() => { startInlineCreate(fileCtxNode!.relPath, 'folder'); hideContextMenu(); }} role="menuitem">
-        <FolderPlus size={12} class="shrink-0" />
-        New Folder
-      </button>
-      <button class="ctx-item" onclick={() => { const folderPath = `${modsFilePrefix}${fileCtxNode!.relPath}`; uiStore.searchFilesInclude = folderPath; uiStore.showSearchPanel = true; uiStore.activeView = "search"; hideContextMenu(); }} role="menuitem">
-        <Search size={12} class="shrink-0" />
-        Find in Folder...
-      </button>
-    {:else}
-      <div class="ctx-separator"></div>
-      <button class="ctx-item" onclick={() => { const parentPath = fileCtxNode!.relPath.substring(0, fileCtxNode!.relPath.lastIndexOf('/')); startInlineCreate(parentPath, 'file'); hideContextMenu(); }} role="menuitem">
-        <FilePlus2 size={12} class="shrink-0" />
-        New File
-      </button>
-    {/if}
-    <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={() => { clipboardNode = fileCtxNode; clipboardOp = 'cut'; hideContextMenu(); }} role="menuitem">
-      <Scissors size={12} class="shrink-0" />
-      Cut
-    </button>
-    <button class="ctx-item" onclick={() => { clipboardNode = fileCtxNode; clipboardOp = 'copy'; hideContextMenu(); }} role="menuitem">
-      <Copy size={12} class="shrink-0" />
-      Copy
-    </button>
-    {#if clipboardNode}
-      <button class="ctx-item" onclick={async () => { await pasteClipboardNode(fileCtxNode!); hideContextMenu(); }} role="menuitem">
-        <ClipboardIcon size={12} class="shrink-0" />
-        Paste
-      </button>
-    {/if}
-    <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && fileCtxNode) { try { await revealPath(`${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`); } catch (e) { toastStore.error(m.file_explorer_open_failed_title(), String(e)); } } hideContextMenu(); }} role="menuitem">
-      <FolderOpen size={12} class="shrink-0" />
-      Reveal in File Manager
-    </button>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && fileCtxNode) { const fullPath = `${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`; await navigator.clipboard.writeText(fullPath.replace(/\//g, '\\')); } hideContextMenu(); }} role="menuitem">
-      <Copy size={12} class="shrink-0" />
-      Copy Path
-    </button>
-    <button class="ctx-item" onclick={async () => { if (fileCtxNode) { await navigator.clipboard.writeText(`${modsFilePrefix}${fileCtxNode.relPath}`); } hideContextMenu(); }} role="menuitem">
-      <Copy size={12} class="shrink-0" />
-      Copy Relative Path
-    </button>
-  </ContextMenu>
-{/if}
+<div class="sr-only" aria-live="polite" aria-atomic="true">
+  {announceMessage}
+</div>
 
 <style>
   .data-content {

@@ -4,7 +4,8 @@
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { revealPath, listModFiles } from "../../lib/utils/tauri.js";
-  import { touchFile, createModDirectory, deleteModPath, moveModFile } from "../../lib/tauri/scripts.js";
+  import { touchFile, createModDirectory, deleteModPath, moveModFile, scriptRead } from "../../lib/tauri/scripts.js";
+  import { inferSectionFromLsxContent } from "../../lib/utils/lsxRegionParser.js";
   import { buildFileTree, isScriptFile, getComputedZoom } from "./explorerShared.js";
   import type { FileTreeNode } from "./explorerShared.js";
   import type { ContextMenuItemDef } from "../../lib/types/contextMenu.js";
@@ -19,12 +20,14 @@
   const PREFIX = "filetree:";
 
   let tree = $derived(buildFileTree(modStore.modFiles));
+  let modFolder = $derived(modStore.scanResult?.mod_meta?.folder ?? "");
 
   /** Active node key derived from the current tab */
   let activeNodeKey = $derived.by(() => {
     const tab = uiStore.activeTab;
     if (!tab) return "";
     if (tab.type === "script-editor" && tab.filePath) return tab.filePath;
+    if (tab.type === "lsx-file" && tab.filePath) return tab.filePath;
     if (tab.type === "file-preview" && tab.filePath) return tab.filePath;
     if (tab.type === "readme") return "readme";
     if (tab.type === "localization") return "localization";
@@ -44,7 +47,7 @@
 
   // ── File opening ──
 
-  function openFile(node: FileTreeNode): void {
+  async function openFile(node: FileTreeNode): Promise<void> {
     const ext = node.extension?.toLowerCase() ?? "";
     const relPath = node.relPath;
 
@@ -67,7 +70,31 @@
         uiStore.openTab({ id: "meta.lsx", label: "meta.lsx", type: "meta-lsx", category: "meta", icon: "⚙" });
         return;
       }
-      uiStore.openTab({ id: `file:${relPath}`, label: node.name, type: "file-preview", filePath: relPath, icon: "📄", preview: true });
+
+      // Try region-based section detection, fall back to folder inference
+      let category = inferLsxCategory(relPath);
+      const modPath = modStore.selectedModPath;
+      if (modPath) {
+        try {
+          const content = await scriptRead(modPath, relPath);
+          if (content) {
+            const regionCategory = inferSectionFromLsxContent(content);
+            if (regionCategory) category = regionCategory;
+          }
+        } catch {
+          // Fall back to folder-based inference silently
+        }
+      }
+
+      uiStore.openTab({
+        id: `lsx:${relPath}`,
+        label: node.name,
+        type: "lsx-file",
+        filePath: relPath,
+        category,
+        icon: "📄",
+        preview: true,
+      });
       return;
     }
 
@@ -165,6 +192,58 @@
   }
 
   // ── Tree refresh ──
+
+  let draggedRelPath = $state<string | null>(null);
+  let dropFolderPath = $state<string | null>(null);
+
+  function clearDragState(): void {
+    draggedRelPath = null;
+    dropFolderPath = null;
+  }
+
+  function handleNodeDragStart(event: DragEvent, node: FileTreeNode): void {
+    draggedRelPath = node.relPath;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", node.relPath);
+    }
+  }
+
+  function canDropInto(folderPath: string): boolean {
+    if (!draggedRelPath) return false;
+    if (draggedRelPath === folderPath) return false;
+    return !folderPath.startsWith(`${draggedRelPath}/`);
+  }
+
+  function handleFolderDragOver(event: DragEvent, node: FileTreeNode): void {
+    if (!canDropInto(node.relPath)) return;
+    event.preventDefault();
+    dropFolderPath = node.relPath;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  }
+
+  async function handleFolderDrop(event: DragEvent, node: FileTreeNode): Promise<void> {
+    event.preventDefault();
+    const modPath = modStore.selectedModPath;
+    const srcRelPath = draggedRelPath;
+    const validDrop = !!srcRelPath && srcRelPath !== node.relPath && !node.relPath.startsWith(`${srcRelPath}/`);
+    clearDragState();
+    if (!modPath || !srcRelPath || !validDrop) return;
+
+    const entryName = srcRelPath.split("/").pop();
+    if (!entryName) return;
+    const destRelPath = `${node.relPath}/${entryName}`;
+    if (destRelPath === srcRelPath) return;
+
+    try {
+      await moveModFile(modPath, srcRelPath, destRelPath);
+      toastStore.success(m.file_tree_renamed?.({ name: entryName }) ?? `Moved ${entryName}`);
+      uiStore.expandNode(PREFIX + node.relPath);
+      await refreshTree();
+    } catch (err) {
+      toastStore.error("Error", String(err));
+    }
+  }
 
   async function refreshTree(): Promise<void> {
     const modPath = modStore.selectedModPath;
@@ -318,6 +397,16 @@
     const depth = relPath.split("/").length - 1;
     return depth * 16;
   }
+
+  function inferLsxCategory(relPath: string): string {
+    const segments = relPath.split("/").filter(Boolean);
+    if (segments.length < 2) return "";
+    const parent = segments[segments.length - 2] ?? "";
+    if (parent && parent !== modFolder && parent !== "Public" && parent !== "Mods") {
+      return parent;
+    }
+    return segments[2] ?? "";
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -344,6 +433,9 @@
           class="tree-node"
           class:active-node={activeNodeKey === node.relPath}
           style="padding-left: {depthPx(node.relPath) + 4}px"
+          draggable="true"
+          ondragstart={(event) => handleNodeDragStart(event, node)}
+          ondragend={clearDragState}
           onclick={() => openFile(node)}
           ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === node.relPath || t.id === `file:${node.relPath}`)); if (tab) uiStore.pinTab(tab.id); }}
           oncontextmenu={(e) => showContextMenu(e, node)}
@@ -379,7 +471,14 @@
       {:else}
         <button
           class="tree-node"
+          class:drag-over={dropFolderPath === node.relPath}
           style="padding-left: {depthPx(node.relPath) + 4}px"
+          draggable="true"
+          ondragstart={(event) => handleNodeDragStart(event, node)}
+          ondragover={(event) => handleFolderDragOver(event, node)}
+          ondrop={(event) => void handleFolderDrop(event, node)}
+          ondragleave={() => { if (dropFolderPath === node.relPath) dropFolderPath = null; }}
+          ondragend={clearDragState}
           onclick={() => toggleExpand(node.relPath)}
           oncontextmenu={(e) => showContextMenu(e, node)}
           role="treeitem"
@@ -441,6 +540,9 @@
                     class="tree-node"
                     class:active-node={activeNodeKey === n.relPath}
                     style="padding-left: {depth * 16 + 4}px"
+                    draggable="true"
+                    ondragstart={(event) => handleNodeDragStart(event, n)}
+                    ondragend={clearDragState}
                     onclick={() => openFile(n)}
                     ondblclick={() => { const tab = uiStore.openTabs.find(t => t.preview && (t.filePath === n.relPath || t.id === `file:${n.relPath}`)); if (tab) uiStore.pinTab(tab.id); }}
                     oncontextmenu={(e) => showContextMenu(e, n)}
@@ -476,7 +578,14 @@
                 {:else}
                   <button
                     class="tree-node"
+                    class:drag-over={dropFolderPath === n.relPath}
                     style="padding-left: {depth * 16 + 4}px"
+                    draggable="true"
+                    ondragstart={(event) => handleNodeDragStart(event, n)}
+                    ondragover={(event) => handleFolderDragOver(event, n)}
+                    ondrop={(event) => void handleFolderDrop(event, n)}
+                    ondragleave={() => { if (dropFolderPath === n.relPath) dropFolderPath = null; }}
+                    ondragend={clearDragState}
                     onclick={() => toggleExpand(n.relPath)}
                     oncontextmenu={(e) => showContextMenu(e, n)}
                     role="treeitem"
@@ -575,6 +684,12 @@
     width: 2px;
     border-radius: 1px;
     background: var(--th-accent-500, #0ea5e9);
+  }
+
+  .tree-node.drag-over {
+    outline: 1px dashed var(--th-accent-500, #0ea5e9);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 10%, transparent);
   }
 
   .node-label {

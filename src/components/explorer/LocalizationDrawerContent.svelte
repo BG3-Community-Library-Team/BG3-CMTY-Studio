@@ -20,7 +20,7 @@
     countFileTreeMatches,
   } from "./explorerShared.js";
   import { fileExists } from "../../lib/tauri/mod-management.js";
-  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems } from "./dragReorder.js";
+  import { createDragReorderState, handleDragStart, handleDragOver, handleDrop, handleDragEnd, getPinContextMenuItems, keyboardReorder } from "./dragReorder.js";
   import ContextMenu from "../ContextMenu.svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import File from "@lucide/svelte/icons/file";
@@ -37,8 +37,6 @@
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
   let modsFilePrefix = $derived(modFolder ? `Mods/${modFolder}/` : "");
-
-  let isLocalizationExpanded = $derived(uiStore.expandedNodes["_Localization"] ?? false);
 
   let activeNodeKey = $derived.by(() => {
     const tab = uiStore.activeTab;
@@ -84,11 +82,6 @@
     return filterSearchTree(orderedLocalizationTree, explorerFilter.query, explorerFilter.fuzzy);
   });
 
-  let locaFilterMatchCount = $derived.by(() => {
-    if (!explorerFilter.active || !explorerFilter.query) return 0;
-    return countFileTreeMatches(localizationTree, explorerFilter.query, explorerFilter.fuzzy);
-  });
-
   function locaFileFilterClass(name: string, children?: FileTreeNode[]): string {
     const q = explorerFilter.query;
     if (!explorerFilter.active || !q) return '';
@@ -99,7 +92,7 @@
 
   // ── Drag-to-move state ──
 
-  let dragState = createDragReorderState();
+  let dragState = $state(createDragReorderState());
 
   function getNodeFolder(relPath: string): string {
     // relPath is like "Localization/English/foo.xml" or "Localization/bar.xml"
@@ -124,7 +117,7 @@
     const destAbsolute = `${modPath}/${destFull}`;
     const exists = await fileExists(destAbsolute);
     if (exists) {
-      if (!confirm(`"${draggedName}" already exists in ${targetFolder}. Overwrite?`)) return;
+      if (!confirm(m.explorer_confirm_overwrite({ name: draggedName, folder: targetFolder }))) return;
     }
 
     try {
@@ -136,9 +129,9 @@
         uiStore.openScriptTab(destFull);
       }
       await refreshModFiles();
-      toastStore.success("File moved", `${draggedName} → ${targetFolder}`);
+      toastStore.success(m.explorer_file_moved(), m.explorer_file_moved_desc({ name: draggedName, folder: targetFolder }));
     } catch (e) {
-      toastStore.error("Move failed", String(e));
+      toastStore.error(m.explorer_move_failed(), String(e));
     }
   }
 
@@ -157,7 +150,7 @@
     const destAbsolute = `${modPath}/${destFull}`;
     const exists = await fileExists(destAbsolute);
     if (exists) {
-      if (!confirm(`"${draggedName}" already exists in Localization root. Overwrite?`)) return;
+      if (!confirm(m.explorer_confirm_overwrite({ name: draggedName, folder: "Localization" }))) return;
     }
 
     try {
@@ -168,9 +161,9 @@
         uiStore.openScriptTab(destFull);
       }
       await refreshModFiles();
-      toastStore.success("File moved", `${draggedName} → Localization/`);
+      toastStore.success(m.explorer_file_moved(), m.explorer_file_moved_desc({ name: draggedName, folder: "Localization/" }));
     } catch (e) {
-      toastStore.error("Move failed", String(e));
+      toastStore.error(m.explorer_move_failed(), String(e));
     }
   }
 
@@ -182,6 +175,35 @@
     // draggedId is a file relPath, targetId is where it was dropped
     // Find the target node to determine the destination folder
     handleFileMoveToFolder(draggedId, targetId);
+  }
+
+  // ── Keyboard reorder + announcements ──
+
+  let announceMessage = $state("");
+
+  function announce(msg: string): void {
+    announceMessage = "";
+    requestAnimationFrame(() => { announceMessage = msg; });
+  }
+
+  function handleLocaNodeKeydown(e: KeyboardEvent, node: FileTreeNode): void {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const direction = e.key === "ArrowUp" ? "up" : "down";
+    const currentIdx = orderedLocalizationTree.findIndex(n => n.relPath === node.relPath);
+    if (currentIdx < 0) return;
+    const targetIdx = direction === "up" ? currentIdx - 1 : currentIdx + 1;
+    if (targetIdx < 0 || targetIdx >= orderedLocalizationTree.length) return;
+    const targetNode = orderedLocalizationTree[targetIdx];
+    const position = direction === "up" ? "before" : "after";
+    onLocaReorder(node.relPath, targetNode.relPath, position);
+    announce(m.explorer_reorder_announce({ name: node.name, position: String(targetIdx + 1) }));
+    requestAnimationFrame(() => {
+      const container = document.querySelector('.loca-content');
+      const nodes = container?.querySelectorAll<HTMLElement>('.tree-node.has-files, .tree-node[draggable="true"]');
+      nodes?.[targetIdx]?.focus();
+    });
   }
 
   // ── Context menus ──
@@ -275,18 +297,18 @@
         await scriptCreateFromTemplate(modPath, relPath, pendingTemplateId, variables);
         await refreshModFiles();
         uiStore.openScriptTab(relPath);
-        toastStore.success("Template created", name);
+        toastStore.success(m.explorer_template_created(), name);
       } catch (e) {
-        toastStore.error("Template creation failed", String(e));
+        toastStore.error(m.explorer_template_creation_failed(), String(e));
       }
     } else if (inlineCreateType === 'file') {
       const relPath = `Mods/${modFolder}/${inlineCreateParent}/${name}`;
       try { await touchFile(modPath, relPath); await refreshModFiles(); uiStore.openScriptTab(relPath); }
-      catch (e) { toastStore.error("Failed to create file", String(e)); }
+      catch (e) { toastStore.error(m.explorer_create_file_failed(), String(e)); }
     } else {
       const relPath = `Mods/${modFolder}/${inlineCreateParent}/${name}`;
       try { await createModDirectory(modPath, relPath); await refreshModFiles(); }
-      catch (e) { toastStore.error("Failed to create folder", String(e)); }
+      catch (e) { toastStore.error(m.explorer_create_folder_failed(), String(e)); }
     }
     isCommittingCreate = false;
     cancelInlineCreate();
@@ -336,7 +358,7 @@
       if (uiStore.openTabs.some(t => t.id === oldTabId)) { uiStore.closeTab(oldTabId); uiStore.openScriptTab(newRelPath); }
       await refreshModFiles();
       toastStore.success(m.file_explorer_renamed(), `${node.name} → ${newName}`);
-    } catch (e) { toastStore.error("Rename failed", String(e)); }
+    } catch (e) { toastStore.error(m.explorer_rename_failed(), String(e)); }
     isCommittingRename = false;
     cancelInlineRename();
   }
@@ -355,36 +377,6 @@
 </script>
 
 <div class="loca-content" onclick={hideContextMenu} role="none">
-  <!-- Header row (Localization label + open tab) -->
-  <div
-    class="tree-node"
-    class:active-node={activeNodeKey === 'localization-root'}
-    role="treeitem"
-    tabindex="-1"
-    aria-selected={activeNodeKey === 'localization-root'}
-    aria-expanded={isLocalizationExpanded}
-    oncontextmenu={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const zoom = getComputedZoom(e.currentTarget as HTMLElement);
-      locaCtxX = e.clientX / zoom;
-      locaCtxY = e.clientY / zoom;
-      locaCtxVisible = true;
-    }}
-  >
-    <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode('_Localization'); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode('_Localization'); } }} role="button" tabindex="0" aria-label="Toggle Localization">
-      <ChevronRight size={14} class="chevron {isLocalizationExpanded ? 'expanded' : ''}" />
-    </span>
-    <button class="tree-node-label" onclick={() => uiStore.openTab({ id: "section:Localization", label: "Localization", type: "localization", category: "Localization", icon: "🌐" })}>
-      <Languages size={14} class="text-[var(--th-text-amber-400)]" />
-      <span class="node-label">Localization</span>
-      {#if locaFilterMatchCount > 0}
-        <span class="filter-match-count">{locaFilterMatchCount}</span>
-      {/if}
-    </button>
-  </div>
-
-  {#if isLocalizationExpanded}
     <div
       class="tree-children"
       role="group"
@@ -422,7 +414,8 @@
             <button
               class="tree-node has-files {lFCls}"
               class:active-node={isActiveFile(node.relPath)}
-              class:drag-over={dragState.dropTargetId === node.relPath && dragState.draggedId !== node.relPath}
+              class:drop-before={dragState.dropTargetId === node.relPath && dragState.dropPosition === "before" && dragState.draggedId !== node.relPath}
+              class:drop-after={dragState.dropTargetId === node.relPath && dragState.dropPosition === "after" && dragState.draggedId !== node.relPath}
               draggable="true"
               ondragstart={(e) => handleDragStart(e, node.relPath, nodeFolder, dragState)}
               ondragover={(e) => handleDragOver(e, node.relPath, nodeFolder, dragState, true)}
@@ -430,6 +423,7 @@
               ondragend={() => handleDragEnd(dragState)}
               onclick={() => openFilePreview(node)}
               ondblclick={() => openFilePreview(node, false)}
+              onkeydown={(e) => handleLocaNodeKeydown(e, node)}
               oncontextmenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -530,7 +524,7 @@
             bind:this={inlineCreateInput}
             bind:value={inlineCreateName}
             class="inline-create-input"
-            placeholder={inlineCreateType === 'folder' ? 'folder name' : 'filename.xml'}
+            placeholder={inlineCreateType === 'folder' ? m.explorer_placeholder_folder_name() : m.explorer_placeholder_filename({ ext: '.xml' })}
             onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitInlineCreate(); } if (e.key === 'Escape') { e.preventDefault(); cancelInlineCreate(); } }}
             onblur={() => { if (inlineCreateName.trim()) commitInlineCreate(); else cancelInlineCreate(); }}
           />
@@ -541,10 +535,9 @@
           {@render locaNode(treeNode)}
         {/each}
       {:else if inlineCreateParent !== 'Localization'}
-        <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">No localization files</span>
+        <span class="tree-node text-muted" style="padding-left: 28px; cursor: default; font-size: 11px; opacity: 0.5;">{m.explorer_no_localization_files()}</span>
       {/if}
     </div>
-  {/if}
 </div>
 
 <!-- Localization root context menu -->
@@ -552,24 +545,24 @@
   <ContextMenu x={locaCtxX} y={locaCtxY} header="Localization" onclose={hideContextMenu}>
     <button class="ctx-item" onclick={() => { startInlineCreate('Localization', 'file'); locaCtxVisible = false; }} role="menuitem">
       <FilePlus2 size={12} class="shrink-0" />
-      New File
+      {m.explorer_new_file()}
     </button>
     <button class="ctx-item" onclick={() => { startInlineCreate('Localization', 'folder'); locaCtxVisible = false; }} role="menuitem">
       <FolderPlus size={12} class="shrink-0" />
-      New Folder
+      {m.explorer_new_folder()}
     </button>
     <button class="ctx-item" onclick={() => { createLocalizationTemplate(); locaCtxVisible = false; }} role="menuitem">
       <FilePlus2 size={12} class="shrink-0" />
-      New Contentlist XML
+      {m.explorer_new_contentlist_xml()}
     </button>
     <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && modFolder) { try { await revealPath(`${modPath}/Mods/${modFolder}/Localization`); } catch (e) { toastStore.error("Open failed", String(e)); } } locaCtxVisible = false; }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && modFolder) { try { await revealPath(`${modPath}/Mods/${modFolder}/Localization`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaCtxVisible = false; }} role="menuitem">
       <FolderOpen size={12} class="shrink-0" />
-      Open in File Manager
+      {m.file_explorer_open_in_file_manager()}
     </button>
     <button class="ctx-item" onclick={async () => { locaCtxVisible = false; await refreshModFiles(); }} role="menuitem">
       <RefreshCw size={12} class="shrink-0" />
-      Refresh
+      {m.explorer_refresh()}
     </button>
   </ContextMenu>
 {/if}
@@ -594,48 +587,67 @@
     {/if}
     <button class="ctx-item" onclick={() => { if (!locaFileCtxNode) return; const node = locaFileCtxNode; locaFileCtxVisible = false; startInlineRename(node); }} role="menuitem">
       <Pencil size={12} class="shrink-0" />
-      Rename
+      {m.file_explorer_rename()}
     </button>
     <button
       class="ctx-item"
       onclick={async () => {
         if (!locaFileCtxNode) return;
-        const fullPath = `${modsFilePrefix}${locaFileCtxNode.relPath}`;
+        const node = locaFileCtxNode;
+        const fullPath = `${modsFilePrefix}${node.relPath}`;
         const modPath = modStore.selectedModPath;
         if (!modPath) return;
+
+        // Capture focus target before deletion
+        const idx = orderedLocalizationTree.findIndex(n => n.relPath === node.relPath);
+        const container = document.querySelector('.loca-content');
+        const siblings = container?.querySelectorAll<HTMLElement>('.tree-node.has-files');
+        let focusTarget: HTMLElement | null = null;
+        if (siblings && idx >= 0) {
+          if (idx < siblings.length - 1) focusTarget = siblings[idx + 1] as HTMLElement;
+          else if (idx > 0) focusTarget = siblings[idx - 1] as HTMLElement;
+        }
+
         try {
           await scriptDelete(modPath, fullPath);
           const tabId = `script:${fullPath}`;
           if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
           await refreshModFiles();
-          toastStore.success("File deleted", locaFileCtxNode.name);
-        } catch (e) { toastStore.error("Delete failed", String(e)); }
+          announce(m.explorer_delete_announce({ name: node.name }));
+          toastStore.success(m.explorer_file_deleted(), node.name);
+          if (focusTarget) requestAnimationFrame(() => focusTarget.focus());
+        } catch (e) { toastStore.error(m.explorer_delete_failed(), String(e)); }
         locaFileCtxVisible = false;
       }}
       role="menuitem"
     >
       <Trash2 size={12} class="shrink-0" />
-      Delete
+      {m.file_explorer_delete()}
     </button>
     <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && locaFileCtxNode) { try { await revealPath(`${modPath}/${modsFilePrefix}${locaFileCtxNode.relPath}`); } catch (e) { toastStore.error("Open failed", String(e)); } } locaFileCtxVisible = false; }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && locaFileCtxNode) { try { await revealPath(`${modPath}/${modsFilePrefix}${locaFileCtxNode.relPath}`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaFileCtxVisible = false; }} role="menuitem">
       <FolderOpen size={12} class="shrink-0" />
-      Open in File Manager
+      {m.file_explorer_open_in_file_manager()}
     </button>
-    <button class="ctx-item" onclick={async () => { if (locaFileCtxNode) { await navigator.clipboard.writeText(`${modsFilePrefix}${locaFileCtxNode.relPath}`); toastStore.success("Copied", "Relative path copied to clipboard"); } locaFileCtxVisible = false; }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { if (locaFileCtxNode) { await navigator.clipboard.writeText(`${modsFilePrefix}${locaFileCtxNode.relPath}`); toastStore.success(m.explorer_copied(), m.explorer_relative_path_copied()); } locaFileCtxVisible = false; }} role="menuitem">
       <Copy size={12} class="shrink-0" />
-      Copy Path
+      {m.file_explorer_copy_path()}
     </button>
   </ContextMenu>
 {/if}
+
+<div class="sr-only" aria-live="polite" aria-atomic="true">
+  {announceMessage}
+</div>
 
 <style>
   .loca-content {
     padding: 0 4px;
   }
-  .loca-content :global(.drag-over) {
-    outline: 1px dashed var(--th-accent-500);
-    outline-offset: -1px;
-    background: color-mix(in srgb, var(--th-accent-500) 10%, transparent);
+  .loca-content :global(.drop-before) {
+    box-shadow: inset 0 2px 0 0 var(--th-accent-500);
+  }
+  .loca-content :global(.drop-after) {
+    box-shadow: inset 0 -2px 0 0 var(--th-accent-500);
   }
 </style>

@@ -44,6 +44,7 @@ export class PreviewWorkerClient {
   #generation = 0;
   #latestResult: PreviewResult | null = null;
   #abortController: AbortController | null = null;
+  #pendingResolve: ((value: PreviewResult | null) => void) | null = null;
 
   constructor(debounceMs = 50) {
     this.#debounceMs = debounceMs;
@@ -70,6 +71,8 @@ export class PreviewWorkerClient {
     if (this.#timer !== null) {
       clearTimeout(this.#timer);
       this.#timer = null;
+      this.#pendingResolve?.(null);
+      this.#pendingResolve = null;
     }
 
     // T2-4 / PF-002: Abort any in-flight IPC call so the main thread
@@ -81,12 +84,20 @@ export class PreviewWorkerClient {
     this.#abortController = controller;
 
     return new Promise<PreviewResult | null>((resolve) => {
+      const settle = (value: PreviewResult | null) => {
+        if (this.#pendingResolve === resolve) {
+          this.#pendingResolve = null;
+        }
+        resolve(value);
+      };
+
+      this.#pendingResolve = resolve;
       this.#timer = setTimeout(() => {
         this.#timer = null;
 
         // Stale check — a newer generate() call was made during the debounce
         if (id !== this.#generation || controller.signal.aborted) {
-          resolve(null);
+          settle(null);
           return;
         }
 
@@ -95,7 +106,7 @@ export class PreviewWorkerClient {
         requestAnimationFrame(async () => {
           // Double-check staleness after the rAF
           if (id !== this.#generation || controller.signal.aborted) {
-            resolve(null);
+            settle(null);
             return;
           }
 
@@ -121,20 +132,20 @@ export class PreviewWorkerClient {
 
             // Final stale check after async generation
             if (id !== this.#generation || controller.signal.aborted) {
-              resolve(null);
+              settle(null);
               return;
             }
             const highlightedHtml = highlightFn(previewText);
             const result: PreviewResult = { previewText, highlightedHtml, generationId: id };
             this.#latestResult = result;
-            resolve(result);
+            settle(result);
           } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {
-              resolve(null);
+              settle(null);
               return;
             }
             console.error("PF-023: preview generation failed", err);
-            resolve(null);
+            settle(null);
           }
         });
       }, this.#debounceMs);
@@ -156,6 +167,10 @@ export class PreviewWorkerClient {
     if (this.#timer !== null) {
       clearTimeout(this.#timer);
       this.#timer = null;
+    }
+    if (this.#pendingResolve) {
+      this.#pendingResolve(null);
+      this.#pendingResolve = null;
     }
     if (this.#abortController) {
       this.#abortController.abort();

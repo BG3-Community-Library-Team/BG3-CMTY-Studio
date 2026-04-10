@@ -64,6 +64,7 @@ function populateFromRawAttributes(
   const boolKeys = BOOLEAN_KEYS[section] ?? new Set();
   const fieldKeys = FIELD_KEYS[section] ?? new Set();
   const stringKeys = STRING_KEYS[section] ?? new Set();
+  const hasAnyMappings = boolKeys.size > 0 || fieldKeys.size > 0 || stringKeys.size > 0;
 
   let strIdx = 0;
 
@@ -142,6 +143,10 @@ function populateFromRawAttributes(
         fields[`${FIELD_PREFIX.String}:${strIdx}:Values`] = value;
         strIdx++;
       }
+    } else if (!hasAnyMappings) {
+      // Sections without hardcoded attribute maps (e.g., Stats/Spells):
+      // encode all remaining attributes as generic fields
+      fields[`${FIELD_PREFIX.Field}:${key}`] = value;
     }
   }
 
@@ -305,8 +310,10 @@ export function changesToManualFields(
   }
   if (entry.display_name) fields["Name"] = entry.display_name;
 
-  // For new entries, populate from raw LSX attributes instead of changes
-  const isNew = entry.changes.length === 1 && entry.changes[0].change_type === "EntireEntryNew";
+  // For new entries, populate from raw LSX attributes instead of changes.
+  // Stats entries (from diff_stats) have changes: [] with populated raw_attributes.
+  const isNew = (entry.changes.length === 1 && entry.changes[0].change_type === "EntireEntryNew")
+    || entry.changes.length === 0;
   if (isNew && rawAttributes && Object.keys(rawAttributes).length > 0) {
     return populateFromRawAttributes(fields, entry.section, rawAttributes, rawChildren);
   }

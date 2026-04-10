@@ -20,11 +20,13 @@
     help: { label: () => m.activity_bar_help(), icon: HelpCircle },
   };
 
+  let modReady = $derived(!!modStore.scanResult && !modStore.isScanning);
+
   let views = $derived(
     uiStore.activityBarOrder
-      .filter(id => id !== "search" || modStore.scanResult)
-      .filter(id => id !== "project" || modStore.scanResult)
-      .filter(id => id !== "git" || modStore.projectPath || modStore.selectedModPath)
+      .filter(id => id !== "search" || modReady)
+      .filter(id => id !== "project" || modReady)
+      .filter(id => id !== "git" || modReady)
       .filter(id => id in VIEW_REGISTRY)
       .map(id => ({ id, label: VIEW_REGISTRY[id].label(), icon: VIEW_REGISTRY[id].icon }))
   );

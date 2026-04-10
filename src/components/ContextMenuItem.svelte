@@ -158,6 +158,7 @@
            bg-[var(--th-bg-600,#27272a)] border border-[var(--th-border-700,#3f3f46)]"
     style="{submenuStyle}; box-shadow: 0 2px 8px rgba(0,0,0,0.25);"
     role="menu"
+    tabindex="-1"
     onpointerenter={handleSubmenuPointerEnter}
     onpointerleave={handleSubmenuPointerLeave}
   >

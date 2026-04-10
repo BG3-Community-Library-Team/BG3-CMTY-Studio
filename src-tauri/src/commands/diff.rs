@@ -123,9 +123,7 @@ pub fn diff_section(
 }
 
 /// Diff stats entries (for Spells section).
-/// Only includes entries that exist in vanilla and have been modified.
-/// New spells that don't exist in vanilla are excluded — CF config
-/// only supports modifying pre-existing spell/status entries.
+/// Includes both vanilla overrides (Modified) and brand-new entries (New).
 pub fn diff_stats(
     mod_entries: &[crate::models::StatsEntry],
     vanilla: &HashMap<String, crate::models::StatsEntry>,
@@ -133,8 +131,21 @@ pub fn diff_stats(
     let mut results = Vec::new();
 
     for mod_entry in mod_entries {
-        // Skip entries not in vanilla — new spells aren't relevant for CF config
         let Some(vanilla_entry) = vanilla.get(&mod_entry.name) else {
+            // New entry not in vanilla — include so the explorer tree shows it
+            results.push(DiffEntry {
+                uuid: mod_entry.name.clone(),
+                display_name: mod_entry.name.clone(),
+                source_file: String::new(),
+                entry_kind: EntryKind::New,
+                changes: vec![],
+                node_id: mod_entry.entry_type.clone(),
+                region_id: String::new(),
+                raw_attributes: mod_entry.data.clone(),
+                raw_attribute_types: HashMap::new(),
+                raw_children: HashMap::new(),
+                commented: false,
+            });
             continue;
         };
 
@@ -974,6 +985,31 @@ mod tests {
         assert_eq!(results[0].entry_kind, EntryKind::Modified);
         assert_eq!(results[0].changes.len(), 1);
         assert_eq!(results[0].changes[0].field, "Damage");
+    }
+
+    #[test]
+    fn test_diff_stats_new_entries_included() {
+        let vanilla: HashMap<String, crate::models::StatsEntry> = HashMap::new();
+
+        let mod_entries = vec![crate::models::StatsEntry {
+            name: "MyCustomSpell".to_string(),
+            entry_type: "SpellData".to_string(),
+            parent: Some("Projectile_MainHandAttack".to_string()),
+            data: {
+                let mut d = HashMap::new();
+                d.insert("SpellType".to_string(), "Projectile".to_string());
+                d.insert("Damage".to_string(), "2d6".to_string());
+                d
+            },
+        }];
+
+        let results = diff_stats(&mod_entries, &vanilla);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry_kind, EntryKind::New);
+        assert_eq!(results[0].display_name, "MyCustomSpell");
+        assert_eq!(results[0].node_id, "SpellData");
+        assert!(results[0].changes.is_empty());
+        assert_eq!(results[0].raw_attributes.get("Damage").unwrap(), "2d6");
     }
 
     #[test]
