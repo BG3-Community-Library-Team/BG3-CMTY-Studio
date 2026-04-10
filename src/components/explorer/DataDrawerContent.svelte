@@ -68,17 +68,15 @@
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
   let sections = $derived(scanResult?.sections ?? []);
-  let modsFilePrefix = $derived(modFolder ? `Mods/${modFolder}/` : "");
+  let modsFilePrefix = $derived(modStore.modFilesPrefix);
 
   // ── File tree data ──
 
   let modFileTree = $derived.by(() => {
-    const folder = modStore.scanResult?.mod_meta?.folder;
-    if (!folder) return buildFileTree(modStore.modFiles);
-    const prefix = `Mods/${folder}/`;
+    if (!modsFilePrefix) return buildFileTree(modStore.modFiles);
     const filtered = modStore.modFiles
-      .filter(f => f.rel_path.startsWith(prefix))
-      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }))
+      .filter(f => f.rel_path.startsWith(modsFilePrefix))
+      .map(f => ({ ...f, rel_path: f.rel_path.slice(modsFilePrefix.length) }))
       .filter(f => !f.rel_path.startsWith('Localization/') && f.rel_path !== 'Localization');
     return buildFileTree(filtered);
   });
@@ -133,12 +131,16 @@
 
   let dragState = $state(createDragReorderState());
 
-  /** All root-level node IDs: core folders + additional sections (flattened) */
+  /** All root-level node IDs: core folders + additional sections (flattened), sorted by has-entries then alphabetical */
   let defaultNodeIds = $derived.by((): string[] => {
-    const ids: string[] = [];
-    for (const f of enrichedCoreFolders) ids.push(f.name);
-    for (const f of mergedAdditionalSections) ids.push(f.name);
-    return ids;
+    const all: FolderNode[] = [...enrichedCoreFolders, ...mergedAdditionalSections];
+    all.sort((a, b) => {
+      const aActive = hasModFiles(a) ? 0 : 1;
+      const bActive = hasModFiles(b) ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return a.label.localeCompare(b.label);
+    });
+    return all.map(f => f.name);
   });
 
   /** Ordered root-level IDs respecting user pin/reorder state */
@@ -223,7 +225,7 @@
   // ── Node paths ──
 
   function resolveNodePath(nodeKey: string, kind: "root" | "public-folder" | "public-child" | "mods" | "meta" | "additional"): string {
-    const base = modStore.selectedModPath;
+    const base = modStore.projectPath || modStore.selectedModPath;
     if (!base) return "";
     switch (kind) {
       case "root": return base;
@@ -242,10 +244,10 @@
     if (node.isGroup && node.groupSections) {
       uiStore.openTab({ id: `group:${node.name}`, label: node.label, type: "group", category: node.name, groupSections: node.groupSections, icon: "📁", preview });
     } else if (node.Section && node.entryFilter) {
-      uiStore.openTab({ id: `filtered:${node.name}`, label: node.label, type: "filteredSection", category: node.Section, entryFilter: node.entryFilter, icon: "📄", preview });
+      uiStore.openTab({ id: `filtered:${node.name}`, label: node.label, type: "filteredSection", category: node.Section, entryFilter: node.entryFilter, regionId: node.regionId, icon: "📄", preview });
     } else if (node.Section) {
       const tabType = node.Section === "Localization" ? "localization" as const : "section" as const;
-      uiStore.openTab({ id: `section:${node.Section}`, label: node.label, type: tabType, category: node.Section, icon: "📄", preview });
+      uiStore.openTab({ id: node.regionId ? `section:${node.Section}:${node.regionId}` : `section:${node.Section}`, label: node.label, type: tabType, category: node.Section, regionId: node.regionId, icon: "📄", preview });
     } else {
       uiStore.openTab({ id: `folder:${node.name}`, label: node.label, type: "lsx-file", category: node.name, icon: "📄", preview });
     }
@@ -412,15 +414,15 @@
     if (!inlineCreateName.trim() || !inlineCreateParent || !inlineCreateType) { cancelInlineCreate(); return; }
     isCommittingCreate = true;
     const name = inlineCreateName.trim();
-    const modPath = modStore.selectedModPath;
-    if (!modPath) { isCommittingCreate = false; cancelInlineCreate(); return; }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) { isCommittingCreate = false; cancelInlineCreate(); return; }
     if (inlineCreateType === 'file') {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
-      try { await touchFile(modPath, relPath); modStore.modFiles = await listModFiles(modPath); uiStore.openScriptTab(relPath); }
+      try { await touchFile(basePath, relPath); modStore.modFiles = await listModFiles(basePath); uiStore.openScriptTab(relPath); }
       catch (e) { toastStore.error(m.explorer_create_file_failed(), String(e)); }
     } else {
       const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
-      try { await createModDirectory(modPath, relPath); modStore.modFiles = await listModFiles(modPath); }
+      try { await createModDirectory(basePath, relPath); modStore.modFiles = await listModFiles(basePath); }
       catch (e) { toastStore.error(m.explorer_create_folder_failed(), String(e)); }
     }
     isCommittingCreate = false;
@@ -459,17 +461,17 @@
     const node = inlineRenameNode;
     const newName = inlineRenameName.trim();
     if (newName === node.name) { isCommittingRename = false; cancelInlineRename(); return; }
-    const modPath = modStore.selectedModPath;
-    if (!modPath) { isCommittingRename = false; cancelInlineRename(); return; }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) { isCommittingRename = false; cancelInlineRename(); return; }
     const oldRelPath = `${modsFilePrefix}${node.relPath}`;
     const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/'));
     const newRelPath = `${modsFilePrefix}${parentPath}/${newName}`;
     try {
-      if (isScriptFile(node.extension)) await scriptRename(modPath, oldRelPath, newRelPath);
-      else await moveModFile(modPath, oldRelPath, newRelPath);
+      if (isScriptFile(node.extension)) await scriptRename(basePath, oldRelPath, newRelPath);
+      else await moveModFile(basePath, oldRelPath, newRelPath);
       const oldTabId = `script:${oldRelPath}`;
       if (uiStore.openTabs.some(t => t.id === oldTabId)) { uiStore.closeTab(oldTabId); uiStore.openScriptTab(newRelPath); }
-      modStore.modFiles = await listModFiles(modPath);
+      modStore.modFiles = await listModFiles(basePath);
       toastStore.success(m.file_explorer_renamed(), `${node.name} → ${newName}`);
     } catch (e) { toastStore.error(m.explorer_rename_failed(), String(e)); }
     isCommittingRename = false;
@@ -483,15 +485,15 @@
 
   async function pasteClipboardNode(targetNode: FileTreeNode) {
     if (!clipboardNode || !clipboardOp) return;
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
     const srcRelPath = `${modsFilePrefix}${clipboardNode.relPath}`;
     const destDir = targetNode.isFile ? targetNode.relPath.substring(0, targetNode.relPath.lastIndexOf('/')) : targetNode.relPath;
     const destRelPath = `${modsFilePrefix}${destDir}/${clipboardNode.name}`;
     try {
-      if (clipboardOp === 'cut') await moveModFile(modPath, srcRelPath, destRelPath);
-      else await copyModFile(modPath, srcRelPath, destRelPath);
-      modStore.modFiles = await listModFiles(modPath);
+      if (clipboardOp === 'cut') await moveModFile(basePath, srcRelPath, destRelPath);
+      else await copyModFile(basePath, srcRelPath, destRelPath);
+      modStore.modFiles = await listModFiles(basePath);
       if (clipboardOp === 'cut') { clipboardNode = null; clipboardOp = null; }
     } catch (e) { toastStore.error(m.explorer_paste_failed(), String(e)); }
   }
@@ -499,13 +501,13 @@
   async function deleteScriptFile(node: FileTreeNode) {
     if (!node.isFile || (!isScriptFile(node.extension) && node.extension !== 'json')) return;
     const fullPath = `${modsFilePrefix}${node.relPath}`;
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
     try {
-      await scriptDelete(modPath, fullPath);
+      await scriptDelete(basePath, fullPath);
       const tabId = `script:${fullPath}`;
       if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
-      modStore.modFiles = await listModFiles(modPath);
+      modStore.modFiles = await listModFiles(basePath);
       announce(m.explorer_delete_announce({ name: node.name }));
       toastStore.success(m.file_explorer_delete_script(), node.name);
     } catch (e) { toastStore.error(m.file_explorer_delete_script(), String(e)); }
@@ -649,7 +651,7 @@
                       {@const childFCls = folderFilterClass(child.label, child.children)}
 
                       {#if child.children}
-                        <div class="tree-node {childFCls}" class:has-files={childActive} role="treeitem" aria-selected={false} aria-expanded={childExpanded}>
+                        <div class="tree-node {childFCls}" class:has-files={childActive} role="treeitem" aria-selected={false} aria-expanded={childExpanded} oncontextmenu={(e) => showContextMenu(e, resolveNodePath(child.name, pathKind === 'additional' ? 'additional' : 'public-child'), child.label, child.Section, child)}>
                           <span class="chevron-hit" onclick={(e) => { e.stopPropagation(); uiStore.toggleNode(child.name); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); uiStore.toggleNode(child.name); } }} role="button" tabindex="0" aria-label="Toggle {child.label}">
                             <ChevronRight size={14} class="chevron {childExpanded ? 'expanded' : ''}" />
                           </span>
@@ -764,11 +766,32 @@
   }
 
   /* ── Drop indicators ── */
-  :global(.tree-node.drop-before) {
-    box-shadow: inset 0 2px 0 0 var(--th-accent-500);
+  :global(.tree-node.drop-before),
+  :global(.tree-node.drop-after) {
+    position: relative;
   }
 
-  :global(.tree-node.drop-after) {
-    box-shadow: inset 0 -2px 0 0 var(--th-accent-500);
+  :global(.tree-node.drop-before)::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--th-accent-500);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  :global(.tree-node.drop-after)::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--th-accent-500);
+    pointer-events: none;
+    z-index: 1;
   }
 </style>

@@ -634,8 +634,8 @@ export const BG3_ADDITIONAL_FOLDERS: FolderNode[] = [
 
   { name: "FixedHotBarSlots", label: "Fixed Hotbar Slots", Section: "FixedHotBarSlots", regionId: "FixedHotBarSlots" },
   {
-    name: "_GUI",
-    label: "GUI",
+    name: "_TextureAtlas",
+    label: "Texture Atlas",
     isGroup: true,
     groupSections: ["TextureAtlasInfo", "IconUVList"],
     children: [

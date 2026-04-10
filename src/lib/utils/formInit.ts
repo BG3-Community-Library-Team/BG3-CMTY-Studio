@@ -146,6 +146,14 @@ export function buildFormState(input: BuildFormStateInput): FormState {
           s.fields.push({ key, value: rawVal });
         }
       }
+    } else if (rawAttributes) {
+      // Fallback: populate fields from rawAttributes when no fieldKeys defined
+      const used = new Set(s.fields.map(f => f.key));
+      for (const [key, value] of Object.entries(rawAttributes)) {
+        if (!used.has(key)) {
+          s.fields.push({ key, value: value ?? "" });
+        }
+      }
     }
     if (caps.stringTypes) {
       const used = new Set(s.strings.map(st => st.type));

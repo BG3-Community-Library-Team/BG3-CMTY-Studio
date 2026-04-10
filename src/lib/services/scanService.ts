@@ -296,10 +296,10 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
       }
     }
 
-    // Load previewable text files from mod directory
+    // Load previewable text files from project directory (or mod directory as fallback)
     modStore.scanPhase = m.scan_phase_indexing_files();
     try {
-      modStore.modFiles = await listModFiles(modPath);
+      modStore.modFiles = await listModFiles(modStore.projectPath || modPath);
     } catch (err) {
       console.warn("Failed to list mod files:", err);
     }

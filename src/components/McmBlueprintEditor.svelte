@@ -13,8 +13,6 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Save from "@lucide/svelte/icons/save";
-  import Code from "@lucide/svelte/icons/code";
-  import FileText from "@lucide/svelte/icons/file-text";
   import Plus from "@lucide/svelte/icons/plus";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -397,27 +395,36 @@
             {parseError}
           </span>
         {/if}
-        <button class="mode-toggle" onclick={toggleMode}>
-          {#if rawMode}
-            <FileText size={12} />
-            <span>{m.mcm_editor_form()}</span>
-          {:else}
-            <Code size={12} />
-            <span>{m.mcm_editor_raw_json()}</span>
-          {/if}
-        </button>
-        {#if !rawMode}
+        <div class="mode-pill" role="tablist" aria-label="View mode">
+          <button
+            class="mode-pill-option"
+            class:active={!rawMode}
+            onclick={() => { if (rawMode) toggleMode(); }}
+            role="tab"
+            aria-selected={!rawMode}
+          >
+            {m.mcm_editor_form()}
+          </button>
+          <button
+            class="mode-pill-option"
+            class:active={rawMode}
+            onclick={() => { if (!rawMode) toggleMode(); }}
+            role="tab"
+            aria-selected={rawMode}
+          >
+            Raw JSON
+          </button>
+        </div>
           <button class="save-btn" onclick={saveForm}>
             <Save size={12} />
             {m.mcm_editor_save()}
           </button>
-        {/if}
       </div>
     </div>
 
     {#if rawMode}
       <div class="flex-1 min-h-0">
-        <ScriptEditorPanel {filePath} language="json" hideHeader />
+        <ScriptEditorPanel {filePath} language="json" />
       </div>
     {:else}
       <div class="form-body">
@@ -720,7 +727,35 @@
     flex-shrink: 0;
   }
 
-  .mode-toggle, .save-btn {
+  .mode-pill {
+    display: inline-flex;
+    border-radius: 9999px;
+    border: 1px solid var(--th-border-700);
+    background: var(--th-bg-800);
+    overflow: hidden;
+  }
+
+  .mode-pill-option {
+    font-size: 10px;
+    padding: 2px 10px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+
+  .mode-pill-option:hover {
+    color: var(--th-text-200);
+  }
+
+  .mode-pill-option.active {
+    background: var(--th-accent, #4a9eff);
+    color: var(--th-text-on-accent, #fff);
+  }
+
+  .save-btn {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -728,20 +763,15 @@
     padding: 2px 8px;
     border-radius: 4px;
     color: var(--th-text-400);
-    background: var(--th-bg-800);
-    border: 1px solid var(--th-border-subtle, var(--th-border-700));
+    background: transparent;
+    border: none;
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
   }
 
-  .mode-toggle:hover, .save-btn:hover {
+  .save-btn:hover {
     color: var(--th-text-200);
     background: var(--th-bg-700);
-  }
-
-  .save-btn {
-    background: transparent;
-    border: none;
   }
 
   .form-body {

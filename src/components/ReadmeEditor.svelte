@@ -7,12 +7,12 @@
   import Eye from "@lucide/svelte/icons/eye";
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Save from "@lucide/svelte/icons/save";
-  import FileDown from "@lucide/svelte/icons/file-down";
+  // FileDown removed — BBCode uses ClipboardCopy since it copies to clipboard
   import FileText from "@lucide/svelte/icons/file-text";
   import ClipboardCopy from "@lucide/svelte/icons/clipboard-copy";
   import { markdownToBBCode } from "../lib/utils/bbcodeConverter.js";
   import { markdownToPlainText } from "../lib/utils/markdownToPlainText.js";
-  import { save } from "@tauri-apps/plugin-dialog";
+
 
   let content = $state("");
   let previewMode = $state(false);
@@ -90,38 +90,33 @@ Add installation instructions here. Example:
   }
 
   async function handleExportTxt() {
+    if (!readmePath) {
+      toastStore.error("Cannot export", "No README path resolved");
+      return;
+    }
     try {
       const plainText = markdownToPlainText(content);
-      const filePath = await save({
-        defaultPath: "README.txt",
-        filters: [{ name: "Text Files", extensions: ["txt"] }],
-      });
-      if (!filePath) return;
-      await writeTextFile(filePath, plainText);
-      toastStore.success("Exported to " + filePath);
+      const txtPath = readmePath.replace(/\.[^.]+$/, ".txt");
+      await writeTextFile(txtPath, plainText);
+      toastStore.success("Exported to " + txtPath);
     } catch (e: unknown) {
       toastStore.error("Export failed", getErrorMessage(e));
     }
   }
 
-  async function handleCopyPlainText() {
-    try {
-      const plainText = markdownToPlainText(content);
-      await navigator.clipboard.writeText(plainText);
-      toastStore.success("Plain text copied to clipboard");
-    } catch (e: unknown) {
-      toastStore.error("Copy failed", getErrorMessage(e));
-    }
-  }
-
   /** Basic markdown → HTML renderer. Strips <script> tags for safety. */
   function renderMarkdown(md: string): string {
-    let html = md;
+    // Normalize Windows line endings
+    let html = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-    // Fenced code blocks
+    // Collect fenced code blocks before line splitting so inner
+    // newlines don't get re-processed as markdown.
+    const codeBlocks: string[] = [];
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
       const escaped = escapeHtml(code.trimEnd());
-      return `<pre class="md-pre"><code>${escaped}</code></pre>`;
+      const idx = codeBlocks.length;
+      codeBlocks.push(`<pre class="md-pre"><code>${escaped}</code></pre>`);
+      return `\x00CODEBLOCK${idx}\x00`;
     });
 
     // Split into lines for block-level processing
@@ -130,10 +125,11 @@ Add installation instructions here. Example:
     let inList = false;
 
     for (const line of lines) {
-      // Skip lines inside <pre> blocks (already handled)
-      if (line.includes("<pre") || line.includes("</pre>")) {
+      // Restore code block placeholders
+      const cbMatch = line.match(/^\x00CODEBLOCK(\d+)\x00$/);
+      if (cbMatch) {
         if (inList) { out.push("</ul>"); inList = false; }
-        out.push(line);
+        out.push(codeBlocks[Number(cbMatch[1])]);
         continue;
       }
 
@@ -188,6 +184,8 @@ Add installation instructions here. Example:
     s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     // Italic (underscore)
     s = s.replace(/(?<!\w)_(.+?)_(?!\w)/g, "<em>$1</em>");
+    // Images (must come before links)
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="md-img" />');
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
     return s;
@@ -238,14 +236,7 @@ Add installation instructions here. Example:
         <FileText size={14} />
         <span>.txt</span>
       </button>
-      <button
-        class="readme-btn"
-        onclick={handleCopyPlainText}
-        title="Copy as Plain Text"
-      >
-        <ClipboardCopy size={14} />
-        <span>Plain Text</span>
-      </button>
+
       <button
         class="readme-btn"
         onclick={async () => {
@@ -255,7 +246,7 @@ Add installation instructions here. Example:
         }}
         title="Convert to BBCode and copy to clipboard"
       >
-        <FileDown size={14} />
+        <ClipboardCopy size={14} />
         <span>BBCode</span>
       </button>
     </div>
@@ -386,10 +377,10 @@ Add installation instructions here. Example:
     font-size: 14px;
   }
 
-  .readme-preview :global(h1) { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.3em; color: var(--th-text-100); border-bottom: 1px solid var(--th-border-700); padding-bottom: 0.2em; }
-  .readme-preview :global(h2) { font-size: 1.4em; font-weight: 600; margin: 0.5em 0 0.2em; color: var(--th-text-100); }
-  .readme-preview :global(h3) { font-size: 1.15em; font-weight: 600; margin: 0.4em 0 0.2em; color: var(--th-text-200); }
-  .readme-preview :global(h4) { font-size: 1em; font-weight: 600; margin: 0.3em 0 0.15em; color: var(--th-text-200); }
+  .readme-preview :global(.md-h1) { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.3em; color: var(--th-text-100); border-bottom: 1px solid var(--th-border-700); padding-bottom: 0.2em; }
+  .readme-preview :global(.md-h2) { font-size: 1.4em; font-weight: 600; margin: 0.5em 0 0.2em; color: var(--th-text-100); }
+  .readme-preview :global(.md-h3) { font-size: 1.15em; font-weight: 600; margin: 0.4em 0 0.2em; color: var(--th-text-200); }
+  .readme-preview :global(.md-h4) { font-size: 1em; font-weight: 600; margin: 0.3em 0 0.15em; color: var(--th-text-200); }
   .readme-preview :global(p) { margin: 0.15em 0; }
   .readme-preview :global(strong) { font-weight: 600; color: var(--th-text-100); }
   .readme-preview :global(em) { font-style: italic; }
@@ -400,5 +391,6 @@ Add installation instructions here. Example:
   .readme-preview :global(.md-pre) { background: var(--th-bg-800); border: 1px solid var(--th-border-700); border-radius: 6px; padding: 12px 16px; overflow-x: auto; margin: 0.5em 0; }
   .readme-preview :global(.md-pre code) { font-family: monospace; font-size: 13px; color: var(--th-text-300); }
   .readme-preview :global(.md-link) { color: var(--th-accent-400, #38bdf8); text-decoration: underline; }
+  .readme-preview :global(.md-img) { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5em 0; }
   .readme-preview :global(br) { display: block; margin: 0.3em 0; content: ""; }
 </style>

@@ -22,7 +22,7 @@
   {@render children()}
   {#snippet failed(error, reset)}
     <div class="flex flex-col items-center justify-center gap-3 p-6 text-center h-full">
-      <AlertTriangle size={24} class="text-amber-400" />
+      <AlertTriangle size={24} class="text-[var(--th-text-amber-400)]" />
       <p class="text-sm text-[var(--th-text-300)]">
         {m.error_boundary_message({ name })}
       </p>

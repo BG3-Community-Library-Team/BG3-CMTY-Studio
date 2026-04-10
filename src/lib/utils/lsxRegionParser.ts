@@ -58,3 +58,12 @@ export function inferSectionFromLsxContent(xmlContent: string): string {
   if (regions.length === 0) return "";
   return regionToSection(regions[0]);
 }
+
+/**
+ * Parse LSX content and return ALL section names for multi-region files.
+ * Returns deduplicated array of section names derived from all regions.
+ */
+export function inferAllSectionsFromLsxContent(xmlContent: string): string[] {
+  const regions = extractLsxRegions(xmlContent);
+  return regions.map(regionToSection);
+}

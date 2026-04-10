@@ -513,7 +513,7 @@
       {@const filteredResult = getFilteredSectionResult(activeTab.category ?? "", activeTab.entryFilter ?? { field: "", value: "" })}
       {#if filteredResult}
         <div class="section-tab-content">
-          <SectionPanel sectionResult={filteredResult} globalFilter={modStore.globalFilter} displayLabel={activeTab.label} entryFilter={activeTab.entryFilter} />
+          <SectionPanel sectionResult={filteredResult} globalFilter={modStore.globalFilter} displayLabel={activeTab.label} entryFilter={activeTab.entryFilter} regionId={activeTab.regionId} />
         </div>
       {:else}
         <div class="empty-tab">
@@ -528,7 +528,7 @@
       {@const sectionResult = getSectionResult(activeTab.category ?? "")}
       {#if sectionResult}
         <div class="section-tab-content">
-          <SectionPanel {sectionResult} globalFilter={modStore.globalFilter} />
+          <SectionPanel {sectionResult} globalFilter={modStore.globalFilter} regionId={activeTab.regionId} />
         </div>
       {:else}
         <div class="empty-tab">
@@ -544,7 +544,7 @@
 
     {:else if activeTab.type === "lsx-file"}
       {@const lsxCategory = activeTab.category ?? ""}
-      {@const lsxResult = getSectionResult(lsxCategory) ?? { section: lsxCategory as Section, entries: [] }}
+      {@const lsxGroupSections = activeTab.groupSections ?? []}
       {@const lsxViewMode = getLsxTabViewMode(activeTab.id)}
       <div class="lsx-file-tab">
         {#if activeTab.filePath}
@@ -553,9 +553,9 @@
             <span class="text-xs font-medium text-[var(--th-text-200)] truncate">
               {activeTab.filePath.split("/").pop() ?? activeTab.filePath.split("\\").pop() ?? activeTab.filePath}
             </span>
-            <div class="ml-auto flex items-center gap-2" role="tablist" aria-label="View mode">
+            <div class="mode-pill ml-auto" role="tablist" aria-label="View mode">
               <button
-                class="mode-toggle"
+                class="mode-pill-option"
                 class:active={lsxViewMode === 'form'}
                 onclick={() => setLsxTabViewMode(activeTab.id, 'form')}
                 role="tab"
@@ -565,7 +565,7 @@
                 {m.lsx_editor_form_mode()}
               </button>
               <button
-                class="mode-toggle"
+                class="mode-pill-option"
                 class:active={lsxViewMode === 'raw'}
                 onclick={() => setLsxTabViewMode(activeTab.id, 'raw')}
                 role="tab"
@@ -582,10 +582,20 @@
         <div class="lsx-file-content">
           {#if lsxViewMode === 'raw' && activeTab.filePath}
             <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} />
+          {:else if lsxGroupSections.length > 1}
+            <div class="section-tab-content">
+              {#each lsxGroupSections as sectionName (sectionName)}
+                {@const sectionResult = getSectionResult(sectionName) ?? { section: sectionName as Section, entries: [] }}
+                <div class="group-section">
+                  <SectionPanel sectionResult={sectionResult} globalFilter={modStore.globalFilter} displayLabel={sectionName} />
+                </div>
+              {/each}
+            </div>
           {:else if lsxCategory}
+            {@const lsxResult = getSectionResult(lsxCategory) ?? { section: lsxCategory as Section, entries: [] }}
             <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
           {:else if activeTab.filePath}
-            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} />
+            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader />
           {:else}
             <div class="empty-tab">
               <FolderOpen size={32} class="text-[var(--th-text-600)] opacity-30" />
@@ -784,28 +794,31 @@
     flex-shrink: 0;
   }
 
-  .mode-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    color: var(--th-text-400);
+  .mode-pill {
+    display: inline-flex;
+    border-radius: 9999px;
+    border: 1px solid var(--th-border-700);
     background: var(--th-bg-800);
-    border: 1px solid var(--th-border-subtle, var(--th-border-700));
+    overflow: hidden;
+  }
+
+  .mode-pill-option {
+    font-size: 10px;
+    padding: 2px 10px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-400);
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
   }
 
-  .mode-toggle:hover {
+  .mode-pill-option:hover {
     color: var(--th-text-200);
-    background: var(--th-bg-700);
   }
 
-  .mode-toggle.active {
+  .mode-pill-option.active {
     background: var(--th-accent, #4a9eff);
     color: var(--th-text-on-accent, #fff);
-    border-color: var(--th-accent, #4a9eff);
   }
 </style>

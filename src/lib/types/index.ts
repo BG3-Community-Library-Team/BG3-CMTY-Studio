@@ -338,6 +338,8 @@ export interface SelectedEntry {
   raw_children?: Record<string, string[]>;
   /** LSX attribute types for each raw_attribute key (e.g. "guid", "FixedString"). */
   raw_attribute_types?: Record<string, string>;
+  /** The staging DB table name (e.g. "lsx__RootTemplates", "stats__Armor"). */
+  table_name?: string;
 }
 
 /** Lightweight vanilla entry info for combobox population. */

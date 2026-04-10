@@ -43,6 +43,54 @@
   let minimapViewportTop = $state(0);
   let minimapViewportHeight = $state(0);
 
+  // Breadcrumb dropdown state
+  let bcDropdownIdx: number | null = $state(null);
+  let bcDropdownItems: { name: string; isDir: boolean; fullPath: string }[] = $state([]);
+  let bcDropdownPos = $state({ top: 0, left: 0 });
+
+  function toggleBreadcrumbDropdown(idx: number, e: MouseEvent) {
+    if (bcDropdownIdx === idx) { bcDropdownIdx = null; return; }
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    bcDropdownPos = { top: rect.bottom + 2, left: rect.left };
+    const parentPath = breadcrumbs.slice(0, idx).join('/');
+    const prefix = parentPath ? parentPath + '/' : '';
+    const items = new Map<string, { isDir: boolean; fullPath: string }>();
+    for (const f of modStore.modFiles) {
+      if (!f.rel_path.startsWith(prefix)) continue;
+      const rest = f.rel_path.slice(prefix.length);
+      const slashIdx = rest.indexOf('/');
+      if (slashIdx === -1) {
+        items.set(rest, { isDir: false, fullPath: f.rel_path });
+      } else {
+        const dirName = rest.slice(0, slashIdx);
+        if (!items.has(dirName)) items.set(dirName, { isDir: true, fullPath: prefix + dirName });
+      }
+    }
+    bcDropdownItems = [...items.entries()]
+      .map(([name, info]) => ({ name, ...info }))
+      .sort((a, b) => { if (a.isDir !== b.isDir) return a.isDir ? -1 : 1; return a.name.localeCompare(b.name); });
+    bcDropdownIdx = idx;
+  }
+
+  // Close breadcrumb dropdown on outside click
+  function handleGlobalClick(e: MouseEvent) {
+    if (bcDropdownIdx === null) return;
+    const t = e.target as HTMLElement;
+    if (!t.closest('.bc-dropdown') && !t.closest('.breadcrumb-segment')) {
+      bcDropdownIdx = null;
+    }
+  }
+
+  function bcDropdownSelect(item: { name: string; isDir: boolean; fullPath: string }) {
+    bcDropdownIdx = null;
+    if (item.isDir) {
+      uiStore.expandedNodes[`modfile:${item.fullPath}`] = true;
+    } else {
+      uiStore.openScriptTab(item.fullPath);
+    }
+  }
+
   // Derived
   let breadcrumbs = $derived(filePath.split('/').filter(Boolean));
   let lines = $derived(content.split("\n"));
@@ -52,15 +100,15 @@
   // Load file content
   $effect(() => {
     const path = filePath;
-    const modPath = modStore.selectedModPath;
-    if (!path || !modPath) {
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!path || !basePath) {
       error = "No mod folder selected";
       isLoading = false;
       return;
     }
     isLoading = true;
     error = null;
-    scriptRead(modPath, path).then(text => {
+    scriptRead(basePath, path).then(text => {
       // Normalize line endings: CRLF → LF, stray CR → LF
       const normalized = (text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       content = normalized;
@@ -337,10 +385,10 @@
   // Save to disk
   async function save() {
     if (readonly) return;
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
     try {
-      await scriptWrite(modPath, filePath, content);
+      await scriptWrite(basePath, filePath, content);
       originalContent = content;
       isDirty = false;
       const tab = uiStore.openTabs.find(t => t.id === `script:${filePath}`);
@@ -357,6 +405,7 @@
   });
 </script>
 
+<svelte:window onclick={handleGlobalClick} />
 <div class="script-editor-panel">
   {#if isLoading}
     <div class="editor-empty">
@@ -390,24 +439,36 @@
       <span class="text-[10px] text-[var(--th-text-600)] ml-2">{m.script_editor_line_count({ count: lineCount })}</span>
     </div>
     {/if}
-    <div class="breadcrumb-bar">
+    <div class="breadcrumb-bar" onclick={(e) => { if (!(e.target as HTMLElement).closest('.bc-dropdown')) bcDropdownIdx = null; }}>
       {#each breadcrumbs as segment, i}
         {#if i > 0}
           <span class="breadcrumb-sep">/</span>
         {/if}
-        <button
-          class="breadcrumb-segment"
-          class:breadcrumb-active={i === breadcrumbs.length - 1}
-          onclick={() => {
-            const path = breadcrumbs.slice(0, i + 1).join('/');
-            const folderPath = `modfile:${path}`;
-            uiStore.expandedNodes[folderPath] = true;
-          }}
-        >
-          {segment}
-        </button>
+        <span class="bc-segment-wrap">
+          <button
+            class="breadcrumb-segment"
+            class:breadcrumb-active={i === breadcrumbs.length - 1}
+            onclick={(e) => { e.stopPropagation(); toggleBreadcrumbDropdown(i, e); }}
+          >
+            {segment}
+          </button>
+        </span>
       {/each}
     </div>
+    {#if bcDropdownIdx !== null}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="bc-dropdown" role="listbox" style="top:{bcDropdownPos.top}px;left:{bcDropdownPos.left}px"
+        onclick={(e) => e.stopPropagation()}>
+        {#each bcDropdownItems as item}
+          <button class="bc-dropdown-item" class:bc-dropdown-dir={item.isDir} role="option" onclick={() => bcDropdownSelect(item)}>
+            {item.name}{item.isDir ? '/' : ''}
+          </button>
+        {/each}
+        {#if bcDropdownItems.length === 0}
+          <span class="bc-dropdown-empty">No items</span>
+        {/if}
+      </div>
+    {/if}
     <div class="editor-body">
       <!-- Line numbers gutter -->
       <div class="editor-gutter" bind:this={gutterEl} aria-hidden="true">
@@ -693,6 +754,53 @@
   .breadcrumb-sep {
     color: var(--th-text-600);
     font-size: 10px;
+  }
+
+  .bc-segment-wrap {
+    position: relative;
+  }
+
+  .bc-dropdown {
+    position: fixed;
+    z-index: 9999;
+    min-width: 160px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--th-bg-700);
+    border: 1px solid var(--th-border-700);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    padding: 2px 0;
+  }
+
+  .bc-dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 3px 10px;
+    font-size: 11px;
+    background: none;
+    border: none;
+    color: var(--th-text-300);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .bc-dropdown-item:hover {
+    background: var(--th-accent-700, var(--th-bg-600));
+    color: var(--th-text-100);
+  }
+
+  .bc-dropdown-dir {
+    color: var(--th-text-sky-400, var(--th-text-200));
+  }
+
+  .bc-dropdown-empty {
+    display: block;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--th-text-600);
+    font-style: italic;
   }
 
   /* Minimap */

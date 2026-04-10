@@ -5,7 +5,7 @@
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { revealPath, listModFiles } from "../../lib/utils/tauri.js";
   import { touchFile, createModDirectory, deleteModPath, moveModFile, scriptRead } from "../../lib/tauri/scripts.js";
-  import { inferSectionFromLsxContent } from "../../lib/utils/lsxRegionParser.js";
+  import { inferAllSectionsFromLsxContent } from "../../lib/utils/lsxRegionParser.js";
   import { buildFileTree, isScriptFile, getComputedZoom } from "./explorerShared.js";
   import type { FileTreeNode } from "./explorerShared.js";
   import type { ContextMenuItemDef } from "../../lib/types/contextMenu.js";
@@ -21,6 +21,21 @@
 
   let tree = $derived(buildFileTree(modStore.modFiles));
   let modFolder = $derived(modStore.scanResult?.mod_meta?.folder ?? "");
+
+  /** Base path for resolving file tree entries — project folder if available, else mod folder */
+  let treeBasePath = $derived(modStore.projectPath || modStore.selectedModPath);
+
+  // Auto-expand Mods and Public root folders on first load
+  $effect(() => {
+    if (tree.length > 0) {
+      for (const node of tree) {
+        const key = PREFIX + node.relPath;
+        if ((node.name === "Mods" || node.name === "Public") && uiStore.expandedNodes[key] === undefined) {
+          uiStore.expandedNodes[key] = true;
+        }
+      }
+    }
+  });
 
   /** Active node key derived from the current tab */
   let activeNodeKey = $derived.by(() => {
@@ -73,12 +88,14 @@
 
       // Try region-based section detection, fall back to folder inference
       let category = inferLsxCategory(relPath);
-      const modPath = modStore.selectedModPath;
+      let allSections: string[] = [];
+      const modPath = treeBasePath;
       if (modPath) {
         try {
           const content = await scriptRead(modPath, relPath);
           if (content) {
-            const regionCategory = inferSectionFromLsxContent(content);
+            allSections = inferAllSectionsFromLsxContent(content);
+            const regionCategory = allSections.length > 0 ? allSections[0] : "";
             if (regionCategory) category = regionCategory;
           }
         } catch {
@@ -92,6 +109,7 @@
         type: "lsx-file",
         filePath: relPath,
         category,
+        groupSections: allSections.length > 1 ? allSections : undefined,
         icon: "📄",
         preview: true,
       });
@@ -164,7 +182,7 @@
   // ── Clipboard / Reveal helpers ──
 
   async function copyAbsolutePath(node: FileTreeNode): Promise<void> {
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     if (!modPath) return;
     const fullPath = `${modPath}/${node.relPath}`.replace(/\//g, "\\");
     try {
@@ -183,7 +201,7 @@
   }
 
   async function revealInFileManager(node: FileTreeNode): Promise<void> {
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     if (!modPath) return;
     const fullPath = `${modPath}/${node.relPath}`;
     try { await revealPath(fullPath); }
@@ -224,7 +242,7 @@
 
   async function handleFolderDrop(event: DragEvent, node: FileTreeNode): Promise<void> {
     event.preventDefault();
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     const srcRelPath = draggedRelPath;
     const validDrop = !!srcRelPath && srcRelPath !== node.relPath && !node.relPath.startsWith(`${srcRelPath}/`);
     clearDragState();
@@ -246,10 +264,10 @@
   }
 
   async function refreshTree(): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
     try {
-      modStore.modFiles = await listModFiles(modPath);
+      modStore.modFiles = await listModFiles(basePath);
     } catch (err) {
       console.warn("Failed to refresh file tree:", err);
     }
@@ -273,7 +291,7 @@
       inlineCreate = null;
       return;
     }
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     if (!modPath) { inlineCreate = null; return; }
 
     const relPath = inlineCreate.parentPath
@@ -316,7 +334,7 @@
       inlineRename = null;
       return;
     }
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     if (!modPath) { inlineRename = null; return; }
 
     const parentPath = inlineRename.relPath.includes("/")
@@ -346,7 +364,7 @@
 
   async function confirmDelete(node: FileTreeNode): Promise<void> {
     hideContextMenu();
-    const modPath = modStore.selectedModPath;
+    const modPath = treeBasePath;
     if (!modPath) return;
     const name = node.name;
     if (!confirm(m.file_tree_delete_confirm?.({ name }) ?? `Delete "${name}"?`)) return;
@@ -646,6 +664,9 @@
 <style>
   .filetree-content {
     padding: 0 4px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .tree-node {

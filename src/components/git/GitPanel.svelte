@@ -2,12 +2,13 @@
   import { m } from "../../paraglide/messages.js";
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
+  import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import GitToolbar from "./GitToolbar.svelte";
   import GitCommitBox from "./GitCommitBox.svelte";
   import GitFileList from "./GitFileList.svelte";
   import GitHistoryPanel from "./GitHistoryPanel.svelte";
   import GitInitPrompt from "./GitInitPrompt.svelte";
-  import Drawer from "../Drawer.svelte";
+  import ExplorerDrawer from "../ExplorerDrawer.svelte";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
 
@@ -22,9 +23,8 @@
     };
   });
 
-  let stagedCollapsed = $state(false);
-  let changesCollapsed = $state(false);
-  let historyCollapsed = $state(false);
+  /** Track which drawers are present so we know which is "first" (no resize handle) */
+  let hasStagedFiles = $derived(gitStore.stagedFiles.length > 0);
 </script>
 
 <div class="git-panel">
@@ -38,31 +38,39 @@
     <GitToolbar modPath={gitPath} />
     <GitCommitBox modPath={gitPath} />
 
-    <!-- Staged Changes (hidden when empty) -->
-    {#if gitStore.stagedFiles.length > 0}
-    <div class="git-section">
-      <Drawer title={m.git_staged_changes()} count={gitStore.stagedFiles.length} bind:collapsed={stagedCollapsed}>
-        <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
-      </Drawer>
-    </div>
-    {/if}
+    <div class="git-drawer-layout">
+      <!-- Staged Changes (hidden when empty) -->
+      {#if hasStagedFiles}
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-staged"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-staged"]?.collapsed && uiStore.explorerDrawers["git-staged"]?.height != null}>
+          <ExplorerDrawer id="git-staged" title={m.git_staged_changes()} isFirst={true}>
+            {#snippet children()}
+              <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
+            {/snippet}
+          </ExplorerDrawer>
+        </div>
+      {/if}
 
-    <!-- Changes (unstaged + untracked) -->
-    <div class="git-section">
-      <Drawer title={m.git_changes()} count={gitStore.unstagedFiles.length + gitStore.untrackedFiles.length} bind:collapsed={changesCollapsed}>
-        {#if gitStore.unstagedFiles.length > 0 || gitStore.untrackedFiles.length > 0}
-          <GitFileList files={[...gitStore.unstagedFiles, ...gitStore.untrackedFiles]} staged={false} modPath={gitPath} />
-        {:else}
-          <p class="git-no-changes">{m.git_no_changes()}</p>
-        {/if}
-      </Drawer>
-    </div>
+      <!-- Changes (unstaged + untracked) -->
+      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-changes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-changes"]?.collapsed && uiStore.explorerDrawers["git-changes"]?.height != null}>
+        <ExplorerDrawer id="git-changes" title={m.git_changes()} isFirst={!hasStagedFiles}>
+          {#snippet children()}
+            {#if gitStore.unstagedFiles.length > 0 || gitStore.untrackedFiles.length > 0}
+              <GitFileList files={[...gitStore.unstagedFiles, ...gitStore.untrackedFiles]} staged={false} modPath={gitPath} />
+            {:else}
+              <p class="git-no-changes">{m.git_no_changes()}</p>
+            {/if}
+          {/snippet}
+        </ExplorerDrawer>
+      </div>
 
-    <!-- History -->
-    <div class="git-section git-history-section">
-      <Drawer title={m.git_history_heading()} bind:collapsed={historyCollapsed}>
-        <GitHistoryPanel modPath={gitPath} />
-      </Drawer>
+      <!-- History -->
+      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-history"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-history"]?.collapsed && uiStore.explorerDrawers["git-history"]?.height != null}>
+        <ExplorerDrawer id="git-history" title={m.git_history_heading()} isFirst={false}>
+          {#snippet children()}
+            <GitHistoryPanel modPath={gitPath} />
+          {/snippet}
+        </ExplorerDrawer>
+      </div>
     </div>
   {/if}
 </div>
@@ -72,7 +80,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--th-sidebar-bg, var(--th-bg-900));
     color: var(--th-text-200);
   }
@@ -88,8 +96,25 @@
     font-size: 0.85rem;
   }
 
-  .git-section + .git-section {
-    border-top: 1px solid var(--th-bg-700);
+  .git-drawer-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+  }
+
+  .git-drawer-slot {
+    position: relative;
+    min-height: 0;
+    flex: 1 1 0%;
+    overflow: hidden;
+  }
+
+  .git-drawer-slot.drawer-collapsed,
+  .git-drawer-slot.drawer-sized {
+    flex: 0 0 auto;
   }
 
   .git-no-changes {
@@ -97,13 +122,5 @@
     font-size: 0.8rem;
     color: var(--th-text-500);
     font-style: italic;
-  }
-
-  .git-history-section {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
   }
 </style>

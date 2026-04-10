@@ -623,11 +623,11 @@
       </button>
     {/if}
     <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && fileCtxNode) { try { await revealPath(`${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`); } catch (e) { toastStore.error(m.file_explorer_open_failed_title(), String(e)); } } hideContextMenu(); }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const basePath = modStore.projectPath || modStore.selectedModPath; if (basePath && fileCtxNode) { try { await revealPath(`${basePath}/${modsFilePrefix}${fileCtxNode.relPath}`); } catch (e) { toastStore.error(m.file_explorer_open_failed_title(), String(e)); } } hideContextMenu(); }} role="menuitem">
       <FolderOpen size={12} class="shrink-0" />
       {m.explorer_context_menu_reveal_in_file_explorer()}
     </button>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && fileCtxNode) { const fullPath = `${modPath}/${modsFilePrefix}${fileCtxNode.relPath}`; await navigator.clipboard.writeText(fullPath.replace(/\//g, '\\')); } hideContextMenu(); }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const basePath = modStore.projectPath || modStore.selectedModPath; if (basePath && fileCtxNode) { const fullPath = `${basePath}/${modsFilePrefix}${fileCtxNode.relPath}`; await navigator.clipboard.writeText(fullPath.replace(/\//g, '\\')); } hideContextMenu(); }} role="menuitem">
       <Copy size={12} class="shrink-0" />
       {m.file_explorer_copy_path()}
     </button>

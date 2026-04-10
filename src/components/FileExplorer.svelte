@@ -19,8 +19,6 @@
   import { explorerFilter } from "./explorer/explorerShared.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Cog from "@lucide/svelte/icons/cog";
-  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
-  import Package from "@lucide/svelte/icons/package";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
   import { keyboardReorder } from "./explorer/dragReorder.js";
@@ -76,9 +74,9 @@
   });
 
   async function refreshModFiles(): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
-    try { modStore.modFiles = await listModFiles(modPath); }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
+    try { modStore.modFiles = await listModFiles(basePath); }
     catch (err) { console.warn("Failed to refresh mod files:", err); }
   }
 
@@ -120,6 +118,12 @@
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", drawerId);
+      // Use only the drawer header as drag image
+      const slot = event.currentTarget as HTMLElement;
+      const header = slot.querySelector('.drawer-header');
+      if (header) {
+        event.dataTransfer.setDragImage(header as HTMLElement, event.offsetX, 12);
+      }
     }
   }
 
@@ -184,44 +188,23 @@
       header?.focus();
     });
   }
+
+  // ── Resize state removed — resize is now inside ExplorerDrawer ──
 </script>
 
 <div class="file-explorer" role="none" onkeydown={handleExplorerKeydown}>
-  <ExplorerHeader />
+  <ExplorerHeader
+    {isReady}
+    onrefresh={async () => {
+      refreshingAll = true;
+      try { await Promise.all([projectStore.refreshAllSections(), refreshModFiles()]); }
+      finally { refreshingAll = false; }
+    }}
+    onpackage={() => commandRegistry.execute('action.packageProject')}
+    onopenproject={openProjectFolder}
+    refreshing={refreshingAll}
+  />
   <ExplorerTreeFilter bind:this={filterRef} onfocusfirstmatch={focusFirstMatch} />
-
-  <div class="explorer-toolbar">
-    {#if scanResult}
-      <button
-        class="ml-auto p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
-        title="Refresh all sections"
-        aria-label="Refresh all sections"
-        onclick={async () => {
-          refreshingAll = true;
-          try { await Promise.all([projectStore.refreshAllSections(), refreshModFiles()]); }
-          finally { refreshingAll = false; }
-        }}
-      >
-        <RefreshCw size={14} class={refreshingAll ? 'animate-spin' : ''} />
-      </button>
-      <button
-        class="p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
-        title="Package project"
-        aria-label="Package project"
-        onclick={() => commandRegistry.execute('action.packageProject')}
-      >
-        <Package size={14} />
-      </button>
-      <button
-        class="p-1 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors"
-        title="Open a different project"
-        aria-label="Open project folder"
-        onclick={openProjectFolder}
-      >
-        <FolderOpen size={14} />
-      </button>
-    {/if}
-  </div>
 
   {#if !isReady}
     <div class="empty-state">
@@ -269,10 +252,12 @@
       </div>
 
       <div class="drawer-layout">
-        {#each drawerDefs as drawer (drawer.id)}
+        {#each drawerDefs as drawer, i (drawer.id)}
+          {@const hasStoredHeight = !drawer.collapsed && uiStore.explorerDrawers[drawer.id]?.height != null}
           <div
             class="drawer-slot"
             class:drawer-collapsed={drawer.collapsed}
+            class:drawer-sized={hasStoredHeight}
             class:drop-before={dropDrawerId === drawer.id && dropDrawerPosition === 'before'}
             class:drop-after={dropDrawerId === drawer.id && dropDrawerPosition === 'after'}
             role="presentation"
@@ -283,7 +268,7 @@
             ondragend={clearDrawerDragState}
             onkeydown={(e) => handleDrawerKeydown(e, drawer.id)}
           >
-            <ExplorerDrawer id={drawer.id} title={drawer.title} defaultOpen={!drawer.collapsed}>
+            <ExplorerDrawer id={drawer.id} title={drawer.title} defaultOpen={!drawer.collapsed} isFirst={i === 0}>
               {#snippet children()}
                 {#if drawer.id === 'data'}
                   <DataDrawerContent />
@@ -326,14 +311,6 @@
     overflow-x: hidden;
   }
 
-  .explorer-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 4px 12px 4px;
-    user-select: none;
-  }
-
   .empty-state {
     padding: 2rem 1rem;
     text-align: center;
@@ -345,7 +322,7 @@
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    padding: 0 4px;
+    padding: 0;
   }
 
   .explorer-static-root {
@@ -358,6 +335,8 @@
     min-height: 0;
     flex-direction: column;
     gap: 0;
+    overflow: hidden;
+    justify-content: flex-end;
   }
 
   .drawer-slot {
@@ -365,17 +344,11 @@
     min-height: 0;
     flex: 1 1 0%;
     overflow: hidden;
-    transition: flex 150ms ease;
   }
 
-  .drawer-slot.drawer-collapsed {
+  .drawer-slot.drawer-collapsed,
+  .drawer-slot.drawer-sized {
     flex: 0 0 auto;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .drawer-slot {
-      transition: none;
-    }
   }
 
   .drawer-slot.drop-before::before,

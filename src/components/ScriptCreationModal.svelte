@@ -42,11 +42,12 @@
   });
 
   let subfolderPath = $derived.by(() => {
+    const prefix = modStore.modFilesPrefix || `Mods/${modFolder}/`;
     switch (context) {
-      case 'Server': return `Mods/${modFolder}/ScriptExtender/Lua/Server/`;
-      case 'Client': return `Mods/${modFolder}/ScriptExtender/Lua/Client/`;
-      case 'Shared': return `Mods/${modFolder}/ScriptExtender/Lua/Shared/`;
-      default: return customPath ? `Mods/${modFolder}/${customPath}` : `Mods/${modFolder}/`;
+      case 'Server': return `${prefix}ScriptExtender/Lua/Server/`;
+      case 'Client': return `${prefix}ScriptExtender/Lua/Client/`;
+      case 'Shared': return `${prefix}ScriptExtender/Lua/Shared/`;
+      default: return customPath ? `${prefix}${customPath}` : prefix;
     }
   });
 
@@ -62,7 +63,7 @@
     if (!canCreate || !fullPath) return;
     isCreating = true;
     try {
-      const modPath = modStore.selectedModPath;
+      const modPath = modStore.projectPath || modStore.selectedModPath;
       if (!modPath) throw new Error("No mod folder selected");
 
       const variables: Record<string, string> = {

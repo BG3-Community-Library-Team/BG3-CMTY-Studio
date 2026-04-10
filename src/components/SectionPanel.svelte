@@ -64,8 +64,12 @@
     }
   });
 
-  /** All staging entries for this section (reactive) */
-  let stagingEntries = $derived(projectStore.getEntries(table));
+  /** All staging entries for this section (reactive), filtered by region if set */
+  let stagingEntries = $derived.by(() => {
+    const all = projectStore.getEntries(table);
+    if (!regionId) return all;
+    return all.filter(e => e.region_id === regionId);
+  });
 
   /** Quick lookup: is a specific entry deleted in the staging DB? */
   function isEntryEnabled(uuid: string): boolean {
@@ -170,6 +174,11 @@
 
   let filteredEntries = $derived.by(() => {
     let entries = sectionResult.entries;
+
+    // Region filter — only show entries matching the active region
+    if (regionId) {
+      entries = entries.filter(e => e.region_id === regionId);
+    }
 
     const gq = globalFilter.trim().toLowerCase();
     const lq = filter.trim().toLowerCase();

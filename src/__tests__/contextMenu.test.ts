@@ -88,6 +88,7 @@ describe("DragReorderState", () => {
   it("handleDragStart sets dragged id and section", () => {
     const state = createDragReorderState();
     const mockEvent = {
+      stopPropagation: vi.fn(),
       dataTransfer: {
         effectAllowed: "",
         setData: vi.fn(),

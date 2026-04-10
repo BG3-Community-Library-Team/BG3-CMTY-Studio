@@ -91,6 +91,7 @@
     padding: 0 8px;
     background: var(--th-bg-700, #3f3f46);
     border: none;
+    border-top: 1px solid color-mix(in srgb, var(--th-bg-700, #3f3f46) 70%, white);
     cursor: pointer;
     user-select: none;
     width: 100%;
@@ -133,6 +134,7 @@
     margin-left: auto;
     min-width: 18px;
     height: 18px;
+    padding: 0 4px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -141,6 +143,7 @@
     color: #fff;
     font-size: 0.65rem;
     font-weight: 600;
+    line-height: 18px;
     flex-shrink: 0;
   }
 

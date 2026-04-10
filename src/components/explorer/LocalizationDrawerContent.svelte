@@ -36,7 +36,7 @@
 
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
-  let modsFilePrefix = $derived(modFolder ? `Mods/${modFolder}/` : "");
+  let modsFilePrefix = $derived(modStore.modFilesPrefix);
 
   let activeNodeKey = $derived.by(() => {
     const tab = uiStore.activeTab;
@@ -54,12 +54,10 @@
   // ── Localization tree ──
 
   let localizationTree = $derived.by((): FileTreeNode[] => {
-    const folder = modStore.scanResult?.mod_meta?.folder;
-    if (!folder) return [];
-    const prefix = `Mods/${folder}/`;
+    if (!modsFilePrefix) return [];
     const locaFiles = modStore.modFiles
-      .filter(f => f.rel_path.startsWith(prefix + 'Localization/'))
-      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }));
+      .filter(f => f.rel_path.startsWith(modsFilePrefix + 'Localization/'))
+      .map(f => ({ ...f, rel_path: f.rel_path.slice(modsFilePrefix.length) }));
     if (locaFiles.length === 0) return [];
     const tree = buildFileTree(locaFiles);
     const locaDir = tree.find(n => !n.isFile && n.name === 'Localization');
@@ -101,8 +99,8 @@
   }
 
   async function handleFileMoveToFolder(draggedRelPath: string, targetRelPath: string): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
 
     const draggedName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
     const targetFolder = getNodeFolder(targetRelPath);
@@ -114,14 +112,14 @@
     const destFull = `${modsFilePrefix}${newRelPath}`;
 
     // Check if file exists at destination
-    const destAbsolute = `${modPath}/${destFull}`;
+    const destAbsolute = `${basePath}/${destFull}`;
     const exists = await fileExists(destAbsolute);
     if (exists) {
       if (!confirm(m.explorer_confirm_overwrite({ name: draggedName, folder: targetFolder }))) return;
     }
 
     try {
-      await moveModFile(modPath, srcFull, destFull);
+      await moveModFile(basePath, srcFull, destFull);
       // Update tab if the moved file was open
       const oldTabId = `script:${srcFull}`;
       if (uiStore.openTabs.some(t => t.id === oldTabId)) {
@@ -136,8 +134,8 @@
   }
 
   async function handleFileMoveToRoot(draggedRelPath: string): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
 
     const draggedName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
     const newRelPath = `Localization/${draggedName}`;
@@ -147,14 +145,14 @@
     const srcFull = `${modsFilePrefix}${draggedRelPath}`;
     const destFull = `${modsFilePrefix}${newRelPath}`;
 
-    const destAbsolute = `${modPath}/${destFull}`;
+    const destAbsolute = `${basePath}/${destFull}`;
     const exists = await fileExists(destAbsolute);
     if (exists) {
       if (!confirm(m.explorer_confirm_overwrite({ name: draggedName, folder: "Localization" }))) return;
     }
 
     try {
-      await moveModFile(modPath, srcFull, destFull);
+      await moveModFile(basePath, srcFull, destFull);
       const oldTabId = `script:${srcFull}`;
       if (uiStore.openTabs.some(t => t.id === oldTabId)) {
         uiStore.closeTab(oldTabId);
@@ -224,9 +222,9 @@
   }
 
   async function refreshModFiles(): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
-    try { modStore.modFiles = await listModFiles(modPath); }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
+    try { modStore.modFiles = await listModFiles(basePath); }
     catch (err) { console.warn("Failed to refresh mod files:", err); }
   }
 
@@ -271,8 +269,8 @@
     if (!inlineCreateName.trim() || !inlineCreateParent || !inlineCreateType) { cancelInlineCreate(); return; }
     isCommittingCreate = true;
     let name = inlineCreateName.trim();
-    const modPath = modStore.selectedModPath;
-    if (!modPath) { isCommittingCreate = false; cancelInlineCreate(); return; }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) { isCommittingCreate = false; cancelInlineCreate(); return; }
 
     // Default .xml extension for loca files
     if (inlineCreateType === 'file' && !name.includes('.')) {
@@ -280,7 +278,7 @@
     }
 
     if (pendingTemplateId && inlineCreateType === 'file') {
-      const targetDir = `Mods/${modFolder}/${inlineCreateParent}`;
+      const targetDir = `${modsFilePrefix}${inlineCreateParent}`;
       const relPath = `${targetDir}/${name}`;
       const variables: Record<string, string> = {
         FILE_NAME: name,
@@ -294,7 +292,7 @@
         variables.VERSION = '1';
       }
       try {
-        await scriptCreateFromTemplate(modPath, relPath, pendingTemplateId, variables);
+        await scriptCreateFromTemplate(basePath, relPath, pendingTemplateId, variables);
         await refreshModFiles();
         uiStore.openScriptTab(relPath);
         toastStore.success(m.explorer_template_created(), name);
@@ -302,12 +300,12 @@
         toastStore.error(m.explorer_template_creation_failed(), String(e));
       }
     } else if (inlineCreateType === 'file') {
-      const relPath = `Mods/${modFolder}/${inlineCreateParent}/${name}`;
-      try { await touchFile(modPath, relPath); await refreshModFiles(); uiStore.openScriptTab(relPath); }
+      const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
+      try { await touchFile(basePath, relPath); await refreshModFiles(); uiStore.openScriptTab(relPath); }
       catch (e) { toastStore.error(m.explorer_create_file_failed(), String(e)); }
     } else {
-      const relPath = `Mods/${modFolder}/${inlineCreateParent}/${name}`;
-      try { await createModDirectory(modPath, relPath); await refreshModFiles(); }
+      const relPath = `${modsFilePrefix}${inlineCreateParent}/${name}`;
+      try { await createModDirectory(basePath, relPath); await refreshModFiles(); }
       catch (e) { toastStore.error(m.explorer_create_folder_failed(), String(e)); }
     }
     isCommittingCreate = false;
@@ -346,14 +344,14 @@
     const node = inlineRenameNode;
     const newName = inlineRenameName.trim();
     if (newName === node.name) { isCommittingRename = false; cancelInlineRename(); return; }
-    const modPath = modStore.selectedModPath;
-    if (!modPath) { isCommittingRename = false; cancelInlineRename(); return; }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) { isCommittingRename = false; cancelInlineRename(); return; }
     const oldRelPath = `${modsFilePrefix}${node.relPath}`;
     const parentPath = node.relPath.substring(0, node.relPath.lastIndexOf('/'));
     const newRelPath = `${modsFilePrefix}${parentPath}/${newName}`;
     try {
-      if (isScriptFile(node.extension)) await scriptRename(modPath, oldRelPath, newRelPath);
-      else await moveModFile(modPath, oldRelPath, newRelPath);
+      if (isScriptFile(node.extension)) await scriptRename(basePath, oldRelPath, newRelPath);
+      else await moveModFile(basePath, oldRelPath, newRelPath);
       const oldTabId = `script:${oldRelPath}`;
       if (uiStore.openTabs.some(t => t.id === oldTabId)) { uiStore.closeTab(oldTabId); uiStore.openScriptTab(newRelPath); }
       await refreshModFiles();
@@ -556,7 +554,7 @@
       {m.explorer_new_contentlist_xml()}
     </button>
     <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && modFolder) { try { await revealPath(`${modPath}/Mods/${modFolder}/Localization`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaCtxVisible = false; }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const basePath = modStore.projectPath || modStore.selectedModPath; if (basePath && modsFilePrefix) { try { await revealPath(`${basePath}/${modsFilePrefix}Localization`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaCtxVisible = false; }} role="menuitem">
       <FolderOpen size={12} class="shrink-0" />
       {m.file_explorer_open_in_file_manager()}
     </button>
@@ -595,8 +593,8 @@
         if (!locaFileCtxNode) return;
         const node = locaFileCtxNode;
         const fullPath = `${modsFilePrefix}${node.relPath}`;
-        const modPath = modStore.selectedModPath;
-        if (!modPath) return;
+        const basePath = modStore.projectPath || modStore.selectedModPath;
+        if (!basePath) return;
 
         // Capture focus target before deletion
         const idx = orderedLocalizationTree.findIndex(n => n.relPath === node.relPath);
@@ -609,7 +607,7 @@
         }
 
         try {
-          await scriptDelete(modPath, fullPath);
+          await scriptDelete(basePath, fullPath);
           const tabId = `script:${fullPath}`;
           if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
           await refreshModFiles();
@@ -625,7 +623,7 @@
       {m.file_explorer_delete()}
     </button>
     <div class="ctx-separator"></div>
-    <button class="ctx-item" onclick={async () => { const modPath = modStore.selectedModPath; if (modPath && locaFileCtxNode) { try { await revealPath(`${modPath}/${modsFilePrefix}${locaFileCtxNode.relPath}`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaFileCtxVisible = false; }} role="menuitem">
+    <button class="ctx-item" onclick={async () => { const basePath = modStore.projectPath || modStore.selectedModPath; if (basePath && locaFileCtxNode) { try { await revealPath(`${basePath}/${modsFilePrefix}${locaFileCtxNode.relPath}`); } catch (e) { toastStore.error(m.explorer_open_failed(), String(e)); } } locaFileCtxVisible = false; }} role="menuitem">
       <FolderOpen size={12} class="shrink-0" />
       {m.file_explorer_open_in_file_manager()}
     </button>

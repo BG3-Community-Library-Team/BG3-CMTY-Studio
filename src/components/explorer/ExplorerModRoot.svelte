@@ -24,27 +24,27 @@
   /** Whether MCM_blueprint.json already exists in the mod root (Mods/{folder}/) */
   let mcmBlueprintPath = $derived.by(() => {
     if (!modFolder) return null;
-    const prefix = `Mods/${modFolder}/`;
+    const prefix = modStore.modFilesPrefix;
     const match = modStore.modFiles.find(f => f.rel_path === `${prefix}MCM_blueprint.json`);
     return match ? `${prefix}MCM_blueprint.json` : null;
   });
 
   /** Open existing MCM_blueprint.json or create one from template */
   async function openOrCreateMcmBlueprint() {
-    const modPath = modStore.selectedModPath;
-    if (!modPath || !modFolder) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath || !modFolder) return;
     if (mcmBlueprintPath) {
       uiStore.openScriptTab(mcmBlueprintPath);
     } else {
-      const relPath = `Mods/${modFolder}/MCM_blueprint.json`;
+      const relPath = `${modStore.modFilesPrefix}MCM_blueprint.json`;
       const variables: Record<string, string> = {
         FILE_NAME: 'MCM_blueprint.json',
         MOD_NAME: modFolder,
         MOD_TABLE: modFolder.replace(/[^a-zA-Z0-9_]/g, '_'),
       };
       try {
-        await scriptCreateFromTemplate(modPath, relPath, 'mcm_blueprint', variables);
-        modStore.modFiles = await listModFiles(modPath);
+        await scriptCreateFromTemplate(basePath, relPath, 'mcm_blueprint', variables);
+        modStore.modFiles = await listModFiles(basePath);
         uiStore.openScriptTab(relPath);
         toastStore.success("MCM Blueprint created", "MCM_blueprint.json");
       } catch (e) {

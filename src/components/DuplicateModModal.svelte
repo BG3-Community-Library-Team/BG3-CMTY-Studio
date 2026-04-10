@@ -54,7 +54,7 @@
     aria-describedby="dup-mod-desc"
     use:focusTrap
   >
-    <h2 class="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
+    <h2 class="text-sm font-bold text-[var(--th-text-amber-400)] mb-3 flex items-center gap-2">
       <AlertTriangle size={16} /> {m.duplicate_mod_title()}
     </h2>
 
@@ -102,7 +102,7 @@
       >
         <div class="flex items-center gap-2">
           <span class="w-3 h-3 rounded-full border-2 shrink-0 {selected === 'new' ? 'border-sky-500 bg-sky-500' : 'border-[var(--th-border-700)]'}"></span>
-          <h3 class="text-xs font-semibold text-sky-400 uppercase tracking-wider">{m.duplicate_mod_new()}</h3>
+          <h3 class="text-xs font-semibold text-[var(--th-text-sky-400)] uppercase tracking-wider">{m.duplicate_mod_new()}</h3>
         </div>
         <div class="text-xs text-[var(--th-text-200)] font-medium truncate">{newMeta?.name || shortPath(newPath)}</div>
         {#if newMeta?.version}

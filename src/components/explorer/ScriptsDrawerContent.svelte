@@ -26,7 +26,7 @@
 
   let scanResult = $derived(modStore.scanResult);
   let modFolder = $derived(scanResult?.mod_meta?.folder ?? "");
-  let modsFilePrefix = $derived(modFolder ? `Mods/${modFolder}/` : "");
+  let modsFilePrefix = $derived(modStore.modFilesPrefix);
 
   let activeNodeKey = $derived.by(() => {
     const tab = uiStore.activeTab;
@@ -59,14 +59,14 @@
   }
 
   function onSectionMove(sectionKey: string, draggedRelPath: string, targetRelPath: string) {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
     const fromPath = `${modsFilePrefix}${draggedRelPath}`;
     const targetDir = targetRelPath.substring(0, targetRelPath.lastIndexOf('/'));
     const fileName = draggedRelPath.substring(draggedRelPath.lastIndexOf('/') + 1);
     const toPath = `${modsFilePrefix}${targetDir}/${fileName}`;
     if (fromPath === toPath) return;
-    moveModFile(modPath, fromPath, toPath).then(async () => {
+    moveModFile(basePath, fromPath, toPath).then(async () => {
       await refreshModFiles();
       toastStore.success(m.explorer_file_moved(), fileName);
     }).catch((e) => {
@@ -90,12 +90,10 @@
   // ── File trees ──
 
   let modFileTree = $derived.by(() => {
-    const folder = modStore.scanResult?.mod_meta?.folder;
-    if (!folder) return buildFileTree(modStore.modFiles);
-    const prefix = `Mods/${folder}/`;
+    if (!modsFilePrefix) return buildFileTree(modStore.modFiles);
     const filtered = modStore.modFiles
-      .filter(f => f.rel_path.startsWith(prefix))
-      .map(f => ({ ...f, rel_path: f.rel_path.slice(prefix.length) }))
+      .filter(f => f.rel_path.startsWith(modsFilePrefix))
+      .map(f => ({ ...f, rel_path: f.rel_path.slice(modsFilePrefix.length) }))
       .filter(f => !f.rel_path.startsWith('Localization/') && f.rel_path !== 'Localization');
     return buildFileTree(filtered);
   });
@@ -221,9 +219,9 @@
   // ── Refresh ──
 
   async function refreshModFiles(): Promise<void> {
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return;
-    try { modStore.modFiles = await listModFiles(modPath); }
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
+    try { modStore.modFiles = await listModFiles(basePath); }
     catch (err) { console.warn("Failed to refresh mod files:", err); }
   }
 
@@ -301,8 +299,8 @@
   async function deleteScriptFile(node: FileTreeNode, sectionKey?: string): Promise<boolean> {
     if (!node.isFile || (!isScriptFile(node.extension) && node.extension !== 'json')) return false;
     const fullPath = `${modsFilePrefix}${node.relPath}`;
-    const modPath = modStore.selectedModPath;
-    if (!modPath) return false;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return false;
 
     let focusTarget: HTMLElement | null = null;
     if (sectionKey) {
@@ -318,7 +316,7 @@
     }
 
     try {
-      await scriptDelete(modPath, fullPath);
+      await scriptDelete(basePath, fullPath);
       const tabId = `script:${fullPath}`;
       if (uiStore.openTabs.some(t => t.id === tabId)) uiStore.closeTab(tabId);
       await refreshModFiles();

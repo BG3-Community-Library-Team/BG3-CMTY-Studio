@@ -39,14 +39,14 @@
   // Load file content when filePath changes
   $effect(() => {
     const path = filePath;
-    const modPath = modStore.selectedModPath;
-    if (!path || !modPath) return;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!path || !basePath) return;
 
     isLoading = true;
     error = null;
     content = null;
 
-    readModFile(modPath, path).then(text => {
+    readModFile(basePath, path).then(text => {
       content = text;
     }).catch(err => {
       error = String(err?.message ?? err);

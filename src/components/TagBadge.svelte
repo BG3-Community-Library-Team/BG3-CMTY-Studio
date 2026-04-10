@@ -8,7 +8,7 @@
 
   export type TagType = "NEW" | "EDIT" | "DUP" | "IMP" | "WARN" | "ERR" | "MOD" | "OVRD" | "BASE";
 
-  let { tag }: { tag: TagType } = $props();
+  let { tag, tooltipOverride }: { tag: TagType; tooltipOverride?: string } = $props();
 
   const TAG_STYLES: Record<TagType, string> = {
     NEW:  "badge-new",
@@ -45,6 +45,8 @@
     OVRD: m.tag_tooltip_ovrd(),
     BASE: m.tag_tooltip_base(),
   };
+
+  let tooltipText = $derived(tooltipOverride ?? TAG_TOOLTIPS[tag]);
 
   let showTooltip = $state(false);
   let badgeEl: HTMLSpanElement | undefined = $state(undefined);
@@ -91,7 +93,7 @@
            bg-[var(--th-bg-950)] text-[var(--th-tooltip-text,var(--th-text-100))] border border-[var(--th-border-600)]"
     style="left: {tipX}px; {position === 'above' ? `bottom: calc(100vh - ${tipY}px)` : `top: ${tipY}px`}; transform: translateX(-50%);"
   >
-    {TAG_TOOLTIPS[tag]}
+    {tooltipText}
   </span>
 {/if}
 

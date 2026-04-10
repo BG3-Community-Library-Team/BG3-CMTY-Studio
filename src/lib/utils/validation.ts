@@ -20,6 +20,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** Checks whether the entry's identity field is typed as a GUID (vs FixedString etc). */
 function identityFieldIsGuid(entry: SelectedEntry): boolean {
+  // Stats entries use string IDs (e.g. "Fireball"), not GUIDs
+  if (entry.table_name?.startsWith("stats__")) return false;
   const types = entry.raw_attribute_types;
   if (!types) return true; // conservative default: assume GUID if no type info
   const idType = types["UUID"] ?? types["MapKey"];

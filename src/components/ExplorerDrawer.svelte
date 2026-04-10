@@ -9,6 +9,7 @@
     defaultOpen = true,
     defaultHeight = null,
     minHeight = 80,
+    isFirst = false,
     children,
     headerActions,
   }: {
@@ -17,6 +18,7 @@
     defaultOpen?: boolean;
     defaultHeight?: number | null;
     minHeight?: number;
+    isFirst?: boolean;
     children: Snippet;
     headerActions?: Snippet;
   } = $props();
@@ -34,33 +36,37 @@
   let collapsed = $derived(uiStore.explorerDrawers[id]?.collapsed ?? !defaultOpen);
   let storedHeight = $derived(uiStore.explorerDrawers[id]?.height ?? defaultHeight);
 
-  let isDragging = $state(false);
-  let startY = $state(0);
-  let startHeight = $state(0);
-
   function toggleCollapse(): void {
     uiStore.toggleDrawer(id);
   }
 
-  function handleResizePointerDown(e: PointerEvent): void {
+  // ── Resize handle ──
+  let resizeDragging = $state(false);
+  let resizeStartY = $state(0);
+  let resizeStartHeight = $state(0);
+
+  function handleResizeDown(e: PointerEvent): void {
     if (e.button !== 0 || collapsed) return;
-    isDragging = true;
-    startY = e.clientY;
-    startHeight = storedHeight ?? minHeight;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
+    resizeDragging = true;
+    resizeStartY = e.clientY;
+    // Measure the actual rendered height of the drawer element
+    const el = (e.target as HTMLElement).closest('.explorer-drawer') as HTMLElement | null;
+    resizeStartHeight = el ? el.offsetHeight : (storedHeight ?? 120);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
 
-  function handleResizePointerMove(e: PointerEvent): void {
-    if (!isDragging) return;
-    const delta = e.clientY - startY;
-    const newHeight = Math.max(minHeight, startHeight + delta);
+  function handleResizeMove(e: PointerEvent): void {
+    if (!resizeDragging) return;
+    // Drag up (negative delta) → height increases. Drag down (positive delta) → height decreases.
+    const delta = e.clientY - resizeStartY;
+    const newHeight = Math.max(minHeight, resizeStartHeight - delta);
     uiStore.setDrawerHeight(id, newHeight);
   }
 
-  function handleResizePointerUp(e: PointerEvent): void {
-    if (!isDragging) return;
-    isDragging = false;
+  function handleResizeUp(e: PointerEvent): void {
+    if (!resizeDragging) return;
+    resizeDragging = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }
 </script>
@@ -68,26 +74,25 @@
 <div
   class="explorer-drawer"
   class:collapsed
+  class:resizing={resizeDragging}
   style:height={collapsed ? "24px" : storedHeight ? `${storedHeight}px` : undefined}
   style:flex={collapsed || storedHeight ? "none" : "1 1 0%"}
   style:min-height={collapsed ? "24px" : `${minHeight}px`}
 >
-  <Drawer {title} {collapsed} ontoggle={toggleCollapse} {headerActions}>
-    {@render children()}
-  </Drawer>
-
-  <!-- Resize handle at bottom -->
-  {#if !collapsed}
+  {#if !isFirst && !collapsed}
     <div
       class="drawer-resize-handle"
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize {title} drawer"
-      onpointerdown={handleResizePointerDown}
-      onpointermove={handleResizePointerMove}
-      onpointerup={handleResizePointerUp}
+      aria-label="Resize drawer"
+      onpointerdown={handleResizeDown}
+      onpointermove={handleResizeMove}
+      onpointerup={handleResizeUp}
     ></div>
   {/if}
+  <Drawer {title} {collapsed} ontoggle={toggleCollapse} {headerActions}>
+    {@render children()}
+  </Drawer>
 </div>
 
 <style>
@@ -106,6 +111,28 @@
     flex: none !important;
   }
 
+  /* ── Resize handle at top (absolutely positioned — no layout space) ── */
+  .drawer-resize-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    cursor: ns-resize;
+    background: transparent;
+    transition: background 100ms;
+    z-index: 10;
+  }
+
+  .explorer-drawer.resizing {
+    transition: none;
+  }
+
+  .drawer-resize-handle:hover,
+  .drawer-resize-handle:active {
+    background: var(--th-accent-sky, #38bdf8);
+  }
+
   /* Explorer-specific: body background via Drawer's body */
   .explorer-drawer :global(.drawer-body) {
     background: var(--th-sidebar-bg, var(--th-bg-900, #18181b));
@@ -116,23 +143,6 @@
     position: sticky;
     top: 0;
     z-index: 1;
-  }
-
-  .drawer-resize-handle {
-    height: 3px;
-    cursor: ns-resize;
-    background: transparent;
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 2;
-    transition: background 100ms;
-  }
-
-  .drawer-resize-handle:hover,
-  .drawer-resize-handle:active {
-    background: var(--th-accent-sky, #38bdf8);
   }
 
   /* Reduced motion: remove height transition */

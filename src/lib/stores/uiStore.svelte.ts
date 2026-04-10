@@ -51,6 +51,8 @@ export interface EditorTab {
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
   entryFilter?: { field: string; value: string };
+  /** Region ID for filtering entries in section/filteredSection tabs */
+  regionId?: string;
   /** For file-preview tabs: the relative path within the mod directory */
   filePath?: string;
   /** When true, this tab is a temporary preview (italic label, replaced by next preview) */

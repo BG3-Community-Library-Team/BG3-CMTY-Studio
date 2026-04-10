@@ -36,7 +36,7 @@ export async function commitScriptCreate(params: {
   refreshModFiles: () => Promise<void>;
 }): Promise<void> {
   let finalName = params.name.trim();
-  const modPath = modStore.selectedModPath;
+  const modPath = modStore.projectPath || modStore.selectedModPath;
   if (!modPath) return;
 
   if (params.type === 'file' && !finalName.includes('.') && params.parent) {
@@ -92,7 +92,7 @@ export async function commitScriptRename(params: {
   modsFilePrefix: string;
   refreshModFiles: () => Promise<void>;
 }): Promise<void> {
-  const modPath = modStore.selectedModPath;
+  const modPath = modStore.projectPath || modStore.selectedModPath;
   if (!modPath) return;
   const oldRelPath = `${params.modsFilePrefix}${params.node.relPath}`;
   const parentPath = params.node.relPath.substring(0, params.node.relPath.lastIndexOf('/'));
@@ -117,6 +117,12 @@ export async function scaffoldScriptCategory(params: {
 }): Promise<void> {
   const modPath = modStore.selectedModPath;
   if (!modPath || !params.modFolder) return;
+  // Rust scaffold commands construct Mods/{modFolder}/... relative to modPath (selectedModPath).
+  // Tab paths must be relative to the listing root (projectPath || selectedModPath).
+  const filesPrefix = modStore.modFilesPrefix;
+  const modsPrefix = `Mods/${params.modFolder}/`;
+  const toListingPath = (p: string): string =>
+    filesPrefix !== modsPrefix && p.startsWith(modsPrefix) ? filesPrefix + p.slice(modsPrefix.length) : p;
   try {
     let created: string[];
     if (params.catKey === 'lua-se') {
@@ -143,7 +149,7 @@ export async function scaffoldScriptCategory(params: {
     if (created.length > 0) {
       await params.refreshModFiles();
       toastStore.success(m.explorer_scaffold_created(), m.explorer_scaffold_created_desc({ count: String(created.length) }));
-      uiStore.openScriptTab(created[0]);
+      uiStore.openScriptTab(toListingPath(created[0]));
     }
   } catch (e) { toastStore.error(m.explorer_scaffold_failed(), String(e)); }
 }
@@ -157,7 +163,7 @@ export async function pasteScriptNode(params: {
   modsFilePrefix: string;
   refreshModFiles: () => Promise<void>;
 }): Promise<boolean> {
-  const modPath = modStore.selectedModPath;
+  const modPath = modStore.projectPath || modStore.selectedModPath;
   if (!modPath) return false;
   const srcRelPath = `${params.modsFilePrefix}${params.clipboardNode.relPath}`;
   const destDir = params.targetNode.isFile

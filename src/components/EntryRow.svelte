@@ -166,7 +166,9 @@
       display_name: entry.display_name,
       changes: entry.changes,
       raw_attributes: entry.raw_attributes,
+      raw_attribute_types: entry.raw_attribute_types,
       manual: false,
+      table_name: table,
     };
     const result = validateEntry(asSelected);
     const errors = result.issues.filter(i => i.level === "error");
@@ -302,10 +304,10 @@
         <TagBadge tag="MOD" />
       {/if}
       {#if validation.hasError && dataState.enabled}
-        <span use:tooltip={validation.errorTooltip}><TagBadge tag="ERR" /></span>
+        <TagBadge tag="ERR" tooltipOverride={validation.errorTooltip} />
       {/if}
       {#if validation.hasWarning && dataState.enabled}
-        <span use:tooltip={validation.warningTooltip}><TagBadge tag="WARN" /></span>
+        <TagBadge tag="WARN" tooltipOverride={validation.warningTooltip} />
       {/if}
       {#if hasChildren}
         <button
@@ -331,7 +333,7 @@
         {#if isHidden}
           <button
             type="button"
-            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-amber-400 hover:text-amber-300"
+            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-amber-400)] hover:text-[var(--th-text-amber-300,#fcd34d)]"
             use:tooltip={m.entry_row_hidden_tooltip()}
             aria-label={m.entry_row_unhide_aria()}
             onclick={(e) => {
@@ -344,7 +346,7 @@
         {:else}
           <button
             type="button"
-            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-500)] hover:text-amber-400"
+            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-500)] hover:text-[var(--th-text-amber-400)]"
             use:tooltip={m.entry_row_visible_tooltip()}
             aria-label={m.entry_row_hide_aria()}
             onclick={(e) => {
@@ -360,7 +362,7 @@
       <!-- Diff toggle -->
       {#if entry.changes.length > 0 && !dataState.isEntirelyNew}
         <button
-          class="text-xs text-sky-400 hover:text-sky-300 transition-colors shrink-0"
+          class="text-xs text-[var(--th-text-sky-400)] hover:text-[var(--th-text-sky-300)] transition-colors shrink-0"
           onclick={() => showDiff = !showDiff}
         >
           {showDiff ? m.entry_row_hide_diff() : m.entry_row_show_diff()}
@@ -419,10 +421,10 @@
       {/if}
 
       {#if validation.hasError && dataState.enabled}
-        <span use:tooltip={validation.errorTooltip}><TagBadge tag="ERR" /></span>
+        <TagBadge tag="ERR" tooltipOverride={validation.errorTooltip} />
       {/if}
       {#if validation.hasWarning && dataState.enabled}
-        <span use:tooltip={validation.warningTooltip}><TagBadge tag="WARN" /></span>
+        <TagBadge tag="WARN" tooltipOverride={validation.warningTooltip} />
       {/if}
 
       {#if hasChildren}
@@ -453,7 +455,7 @@
         {#if isHidden}
           <button
             type="button"
-            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-amber-400 hover:text-amber-300"
+            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-amber-400)] hover:text-[var(--th-text-amber-300,#fcd34d)]"
             use:tooltip={m.entry_row_hidden_tooltip()}
             aria-label={m.entry_row_unhide_aria()}
             onclick={(e) => {
@@ -466,7 +468,7 @@
         {:else}
           <button
             type="button"
-            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-500)] hover:text-amber-400"
+            class="shrink-0 p-1.5 rounded hover:bg-zinc-700/40 transition-colors cursor-pointer text-[var(--th-text-500)] hover:text-[var(--th-text-amber-400)]"
             use:tooltip={m.entry_row_visible_tooltip()}
             aria-label={m.entry_row_hide_aria()}
             onclick={(e) => {

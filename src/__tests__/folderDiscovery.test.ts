@@ -17,9 +17,9 @@ function makeSchema(node_id: string, attrCount = 1): NodeSchema {
     sample_count: 1,
     attributes: Array.from({ length: attrCount }, (_, i) => ({
       name: `attr${i}`,
-      type: "FixedString",
-      sample_values: [],
-      coverage: 1.0,
+      attr_type: "FixedString",
+      frequency: 1,
+      examples: [],
     })),
     children: [],
   } as NodeSchema;

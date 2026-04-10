@@ -35,6 +35,7 @@ export function handleDragStart(
   sectionId: string,
   state: DragReorderState,
 ): void {
+  e.stopPropagation();
   state.draggedId = nodeId;
   state.draggedFromSection = sectionId;
 

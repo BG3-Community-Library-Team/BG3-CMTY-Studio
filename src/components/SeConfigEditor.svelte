@@ -12,8 +12,6 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Save from "@lucide/svelte/icons/save";
-  import Code from "@lucide/svelte/icons/code";
-  import FileText from "@lucide/svelte/icons/file-text";
   import { m } from "../paraglide/messages.js";
 
   interface Props {
@@ -208,21 +206,26 @@
             {parseError}
           </span>
         {/if}
-        <button
-          class="mode-toggle"
-          onclick={toggleMode}
-          aria-label={rawMode ? m.se_config_form_mode() : m.se_config_raw_mode()}
-          title={rawMode ? m.se_config_form_mode() : m.se_config_raw_mode()}
-        >
-          {#if rawMode}
-            <FileText size={12} />
-            <span>{m.se_config_form_mode()}</span>
-          {:else}
-            <Code size={12} />
-            <span>{m.se_config_raw_mode()}</span>
-          {/if}
-        </button>
-        {#if !rawMode}
+        <div class="mode-pill" role="tablist" aria-label="View mode">
+          <button
+            class="mode-pill-option"
+            class:active={!rawMode}
+            onclick={() => { if (rawMode) toggleMode(); }}
+            role="tab"
+            aria-selected={!rawMode}
+          >
+            {m.se_config_form_mode()}
+          </button>
+          <button
+            class="mode-pill-option"
+            class:active={rawMode}
+            onclick={() => { if (!rawMode) toggleMode(); }}
+            role="tab"
+            aria-selected={rawMode}
+          >
+            Raw JSON
+          </button>
+        </div>
           <button
             class="save-btn"
             onclick={saveForm}
@@ -231,14 +234,13 @@
             <Save size={12} />
             {m.common_save()}
           </button>
-        {/if}
       </div>
     </div>
 
     {#if rawMode}
       <!-- Raw JSON editing via ScriptEditorPanel -->
       <div class="flex-1 min-h-0">
-        <ScriptEditorPanel {filePath} language="json" hideHeader />
+        <ScriptEditorPanel {filePath} language="json" />
       </div>
     {:else}
       <!-- Structured form -->
@@ -341,23 +343,32 @@
     flex-shrink: 0;
   }
 
-  .mode-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    color: var(--th-text-400);
+  .mode-pill {
+    display: inline-flex;
+    border-radius: 9999px;
+    border: 1px solid var(--th-border-700);
     background: var(--th-bg-800);
-    border: 1px solid var(--th-border-subtle, var(--th-border-700));
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
+    overflow: hidden;
   }
 
-  .mode-toggle:hover {
+  .mode-pill-option {
+    font-size: 10px;
+    padding: 2px 10px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+
+  .mode-pill-option:hover {
     color: var(--th-text-200);
-    background: var(--th-bg-700);
+  }
+
+  .mode-pill-option.active {
+    background: var(--th-accent, #4a9eff);
+    color: var(--th-text-on-accent, #fff);
   }
 
   .save-btn {

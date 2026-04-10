@@ -152,6 +152,22 @@ class ModStore {
     return this.scanResult?.mod_meta.folder ?? "";
   }
 
+  /**
+   * The prefix for mod files relative to the listing root (projectPath or selectedModPath).
+   * When projectPath is set, selectedModPath is a subdirectory of projectPath,
+   * so listed file paths include the relative segment, e.g. "MyMod/Mods/MyModName/".
+   * When only selectedModPath is set, listing starts there so prefix is "Mods/MyModName/".
+   */
+  get modFilesPrefix(): string {
+    const folder = this.scanResult?.mod_meta?.folder;
+    if (!folder) return "";
+    if (this.projectPath && this.selectedModPath && this.selectedModPath.startsWith(this.projectPath)) {
+      const rel = this.selectedModPath.slice(this.projectPath.length).replace(/^[/\\]+/, "");
+      return rel ? `${rel}/Mods/${folder}/` : `Mods/${folder}/`;
+    }
+    return `Mods/${folder}/`;
+  }
+
   get hasExistingConfig(): boolean {
     return this.scanResult?.existing_config_path != null;
   }
