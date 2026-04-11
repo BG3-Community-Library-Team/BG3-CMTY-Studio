@@ -43,7 +43,7 @@
     "yaml": "^2.8.2"
   },
   "dependencies": {
-    "@inlang/paraglide-js": "^2.15.1",
+    "@inlang/paraglide-js": "^2.15.3",
     "@lucide/svelte": "^1.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-shell": "^2.3.5"
