@@ -19,6 +19,7 @@
   import ReadmeEditor from "./ReadmeEditor.svelte";
   import GitDiffView from "./git/GitDiffView.svelte";
   import GitCommitDetailView from "./git/GitCommitDetailView.svelte";
+  import ForgeIssueView from "./git/ForgeIssueView.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
@@ -790,6 +791,10 @@
             });
           }}
         />
+      {/if}
+    {:else if activeTab.type === "forge-issue"}
+      {#if activeTab.filePath}
+        <ForgeIssueView issueNumber={Number(activeTab.filePath)} />
       {/if}
     {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
       <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />

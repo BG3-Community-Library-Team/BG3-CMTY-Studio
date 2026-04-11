@@ -5,8 +5,9 @@
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
-  import RefreshCcw from "@lucide/svelte/icons/refresh-ccw";
+  import CloudDownload from "@lucide/svelte/icons/cloud-download";
   import GitBranchPicker from "./GitBranchPicker.svelte";
+  import GitForgePicker from "./GitForgePicker.svelte";
 
   interface Props {
     modPath: string;
@@ -62,6 +63,7 @@
   <h3 class="git-toolbar-title">{m.git_panel_title()}</h3>
   <div class="git-toolbar-actions">
     <GitBranchPicker {modPath} />
+    <GitForgePicker />
 
     {#if hasRemotes}
       <!-- Ahead/behind indicator -->
@@ -96,7 +98,7 @@
         onclick={handleFetch}
         disabled={gitStore.isSyncing}
       >
-        <RefreshCcw size={14} />
+        <CloudDownload size={14} />
       </button>
     {/if}
 

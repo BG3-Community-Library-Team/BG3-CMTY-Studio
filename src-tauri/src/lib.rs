@@ -2228,6 +2228,8 @@ pub fn run() {
             commands::forge_api::cmd_forge_create_pr,
             commands::forge_api::cmd_forge_list_issues,
             commands::forge_api::cmd_forge_create_issue,
+            commands::forge_api::cmd_forge_get_issue,
+            commands::forge_api::cmd_forge_assign_issue,
             commands::project_settings::cmd_ensure_cmtystudio_dir,
             commands::project_settings::cmd_read_project_file,
             commands::project_settings::cmd_write_project_file,

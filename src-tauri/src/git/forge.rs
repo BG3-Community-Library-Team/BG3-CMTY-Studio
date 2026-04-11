@@ -1,6 +1,6 @@
 //! Forge detection and API abstraction (GitHub, GitLab, Gitea/Codeberg).
 
-use super::types::{ForgeInfo, ForgeIssue, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{ForgeInfo, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
 // ForgeAdapter trait (native async fn — Rust 1.75+)
@@ -55,6 +55,21 @@ pub trait ForgeAdapter: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<ForgeIssue, String>;
+    async fn get_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<ForgeIssueDetail, String>;
+    async fn assign_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignee: &str,
+    ) -> Result<(), String>;
 }
 
 // ---------------------------------------------------------------------------

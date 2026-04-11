@@ -30,6 +30,9 @@
   let tokenInputs = $state<Record<string, string>>({});
   let showAddHost = $state(false);
   let newHost = $state("");
+  let selectedHost = $state(KNOWN_FORGES[0].host);
+
+  let selectedAcct = $derived(accounts.find(a => a.host === selectedHost) ?? null);
 
   // Check auth on mount
   $effect(() => {
@@ -96,16 +99,30 @@
 <div class="forge-accounts">
   <h4 class="forge-section-title">Remote Accounts</h4>
 
-  {#each accounts as acct (acct.host)}
+  <div class="forge-selector-row">
+    <select
+      class="forge-select"
+      bind:value={selectedHost}
+    >
+      {#each accounts as acct (acct.host)}
+        <option value={acct.host}>
+          {acct.host}{acct.user ? ` — ${acct.user.login}` : ""}
+        </option>
+      {/each}
+    </select>
+  </div>
+
+  {#if selectedAcct}
     <div class="forge-account-row">
       <div class="forge-account-info">
-        <span class="forge-host">{acct.host}</span>
-        {#if acct.loading}
+        <span class="forge-host">{selectedAcct.host}</span>
+        <span class="forge-type-badge">{selectedAcct.forgeType}</span>
+        {#if selectedAcct.loading}
           <span class="forge-status loading">Checking…</span>
-        {:else if acct.user}
+        {:else if selectedAcct.user}
           <span class="forge-status connected">
             <Check size={12} />
-            {acct.user.login}
+            {selectedAcct.user.login}
           </span>
         {:else}
           <span class="forge-status disconnected">Not connected</span>
@@ -113,8 +130,8 @@
       </div>
 
       <div class="forge-account-actions">
-        {#if acct.user}
-          <button class="forge-btn danger" onclick={() => disconnect(acct)}>
+        {#if selectedAcct.user}
+          <button class="forge-btn danger" onclick={() => disconnect(selectedAcct!)}>
             <X size={14} /> Disconnect
           </button>
         {:else}
@@ -123,12 +140,12 @@
               type="password"
               class="forge-token-input"
               placeholder="Paste token…"
-              bind:value={tokenInputs[acct.host]}
-              onkeydown={(e) => { if (e.key === "Enter") connect(acct); }}
+              bind:value={tokenInputs[selectedAcct.host]}
+              onkeydown={(e) => { if (e.key === "Enter") connect(selectedAcct!); }}
             />
             <a
               class="forge-create-link"
-              href={acct.tokenCreationUrl}
+              href={selectedAcct.tokenCreationUrl}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -136,8 +153,8 @@
             </a>
             <button
               class="forge-btn primary"
-              onclick={() => connect(acct)}
-              disabled={!tokenInputs[acct.host]?.trim()}
+              onclick={() => connect(selectedAcct!)}
+              disabled={!tokenInputs[selectedAcct.host]?.trim()}
             >
               Connect
             </button>
@@ -145,7 +162,7 @@
         {/if}
       </div>
     </div>
-  {/each}
+  {/if}
 
   {#if showAddHost}
     <div class="forge-add-row">
@@ -180,6 +197,36 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     margin-bottom: 0.25rem;
+  }
+
+  .forge-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .forge-select {
+    flex: 1;
+    background: var(--th-bg-800);
+    border: 1px solid var(--th-border-600, var(--th-bg-600));
+    color: var(--th-text-200);
+    border-radius: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .forge-select:focus {
+    border-color: var(--th-accent-500, #0ea5e9);
+  }
+
+  .forge-type-badge {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--th-bg-600);
+    color: var(--th-text-300);
   }
 
   .forge-account-row {
@@ -264,15 +311,17 @@
     padding: 0.3rem 0.6rem;
     font-size: 0.7rem;
     border-radius: 0.25rem;
-    border: none;
+    border: 1px solid var(--th-border-700, var(--th-bg-600));
     cursor: pointer;
     background: var(--th-bg-700);
     color: var(--th-text-300);
-    transition: background-color 0.15s;
+    transition: background-color 0.15s, border-color 0.15s;
   }
 
   .forge-btn:hover {
     background: var(--th-bg-600);
+    border-color: var(--th-border-600, var(--th-bg-500));
+    color: var(--th-text-200);
   }
 
   .forge-btn:disabled {
@@ -281,17 +330,24 @@
   }
 
   .forge-btn.primary {
-    background: var(--th-accent-600, #0284c7);
-    color: var(--th-text-100, #fff);
+    background: var(--th-accent-600, var(--th-bg-600));
+    color: var(--th-text-100);
+    border-color: var(--th-accent-500, var(--th-border-600));
   }
 
   .forge-btn.primary:hover {
-    background: var(--th-accent-500, #0ea5e9);
+    background: var(--th-accent-500, var(--th-bg-500));
+    border-color: var(--th-accent-400, var(--th-border-500));
+  }
+
+  .forge-btn.danger {
+    border-color: var(--th-border-700, var(--th-bg-600));
   }
 
   .forge-btn.danger:hover {
-    background: var(--th-error-600, #dc2626);
-    color: var(--th-text-100, #fff);
+    background: var(--th-error-600, var(--th-bg-500));
+    border-color: var(--th-error-500, var(--th-border-500));
+    color: var(--th-text-100);
   }
 
   .forge-btn.add-host {

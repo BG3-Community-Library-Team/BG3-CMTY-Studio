@@ -4,7 +4,7 @@
 //! (NOT `Bearer`). Pagination uses `limit` (not `per_page`).
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
@@ -40,6 +40,7 @@ struct GtPR {
     html_url: String,
     head: GtBranchRef,
     base: GtBranchRef,
+    mergeable: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +63,28 @@ struct GtIssue {
     created_at: String,
     html_url: String,
     labels: Option<Vec<GtLabel>>,
+    assignee: Option<GtIssueUser>,
+}
+
+#[derive(Deserialize)]
+struct GtIssueDetail {
+    number: u32,
+    title: String,
+    state: String,
+    user: GtIssueUser,
+    created_at: String,
+    updated_at: String,
+    closed_at: Option<String>,
+    html_url: String,
+    body: Option<String>,
+    labels: Option<Vec<GtLabel>>,
+    assignees: Option<Vec<GtIssueUser>>,
+    milestone: Option<GtMilestone>,
+}
+
+#[derive(Deserialize)]
+struct GtMilestone {
+    title: String,
 }
 
 #[derive(Deserialize)]
@@ -309,6 +332,7 @@ impl ForgeAdapter for GiteaAdapter {
                 html_url: pr.html_url,
                 head_ref: pr.head.ref_name,
                 base_ref: pr.base.ref_name,
+                mergeable: pr.mergeable,
             })
             .collect())
     }
@@ -358,6 +382,7 @@ impl ForgeAdapter for GiteaAdapter {
             html_url: pr.html_url,
             head_ref: pr.head.ref_name,
             base_ref: pr.base.ref_name,
+            mergeable: pr.mergeable,
         })
     }
 
@@ -396,7 +421,7 @@ impl ForgeAdapter for GiteaAdapter {
                 number: i.number,
                 title: i.title,
                 state: i.state,
-                author: i.user.login,
+                author: i.user.login.clone(),
                 created_at: i.created_at,
                 html_url: i.html_url,
                 labels: i
@@ -405,6 +430,7 @@ impl ForgeAdapter for GiteaAdapter {
                     .into_iter()
                     .map(|l| l.name)
                     .collect(),
+                assignee: i.assignee.map(|a| a.login),
             })
             .collect())
     }
@@ -454,6 +480,89 @@ impl ForgeAdapter for GiteaAdapter {
                 .into_iter()
                 .map(|l| l.name)
                 .collect(),
+            assignee: issue.assignee.map(|a| a.login),
         })
+    }
+
+    async fn get_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<ForgeIssueDetail, String> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}",
+            self.api_base, owner, repo, number
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", auth_header(token))
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(extract_error(resp).await);
+        }
+
+        let detail: GtIssueDetail = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse issue detail response: {e}"))?;
+
+        Ok(ForgeIssueDetail {
+            number: detail.number,
+            title: detail.title,
+            state: detail.state,
+            author: detail.user.login,
+            created_at: detail.created_at,
+            updated_at: detail.updated_at,
+            html_url: detail.html_url,
+            body: detail.body.unwrap_or_default(),
+            labels: detail
+                .labels
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.name)
+                .collect(),
+            assignees: detail
+                .assignees
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| a.login)
+                .collect(),
+            milestone: detail.milestone.map(|m| m.title),
+            closed_at: detail.closed_at,
+        })
+    }
+
+    async fn assign_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignee: &str,
+    ) -> Result<(), String> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}/assignees",
+            self.api_base, owner, repo, number
+        );
+        let payload = serde_json::json!({ "assignees": [assignee] });
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", auth_header(token))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(extract_error(resp).await);
+        }
+        Ok(())
     }
 }

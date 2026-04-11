@@ -189,3 +189,38 @@ pub async fn cmd_forge_create_issue(
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
     dispatch!(adapter, create_issue(&token, &owner, &repo, &title, &body))
 }
+
+#[tauri::command]
+pub async fn cmd_forge_get_issue(
+    host: String,
+    forge_type: ForgeType,
+    api_base: String,
+    owner: String,
+    repo: String,
+    number: u32,
+) -> Result<ForgeIssueDetail, String> {
+    let token = get_secure_setting(&token_key(&host))?;
+    if token.is_empty() {
+        return Err("Not authenticated".to_string());
+    }
+    let adapter = get_adapter(&forge_type, &host, &api_base)?;
+    dispatch!(adapter, get_issue(&token, &owner, &repo, number))
+}
+
+#[tauri::command]
+pub async fn cmd_forge_assign_issue(
+    host: String,
+    forge_type: ForgeType,
+    api_base: String,
+    owner: String,
+    repo: String,
+    number: u32,
+    assignee: String,
+) -> Result<(), String> {
+    let token = get_secure_setting(&token_key(&host))?;
+    if token.is_empty() {
+        return Err("Not authenticated".to_string());
+    }
+    let adapter = get_adapter(&forge_type, &host, &api_base)?;
+    dispatch!(adapter, assign_issue(&token, &owner, &repo, number, &assignee))
+}

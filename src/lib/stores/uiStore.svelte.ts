@@ -46,7 +46,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme" | "git-diff" | "git-commit";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme" | "git-diff" | "git-commit" | "forge-issue";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */
@@ -440,6 +440,82 @@ class UiStore {
     try {
       localStorage.setItem(EXPLORER_DRAWERS_STORAGE_KEY, JSON.stringify(this.explorerDrawers));
     } catch { /* quota exceeded — silently ignore */ }
+  }
+
+  // ── Drawer Hide / Pin ────────────────────────────────────────
+
+  /** Hidden drawer IDs — persisted per-session in localStorage */
+  hiddenDrawers: Set<string> = $state(UiStore.#loadHiddenDrawers());
+  /** Pinned drawer IDs — pinned drawers always appear at top and can't be hidden */
+  pinnedDrawers: Set<string> = $state(UiStore.#loadPinnedDrawers());
+
+  static #loadHiddenDrawers(): Set<string> {
+    try {
+      const raw = localStorage.getItem("bg3-cmty-hidden-drawers");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch { /* fallback */ }
+    return new Set();
+  }
+
+  static #loadPinnedDrawers(): Set<string> {
+    try {
+      const raw = localStorage.getItem("bg3-cmty-pinned-drawers");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch { /* fallback */ }
+    return new Set();
+  }
+
+  isDrawerHidden(drawerId: string): boolean {
+    return this.hiddenDrawers.has(drawerId);
+  }
+
+  isDrawerPinned(drawerId: string): boolean {
+    return this.pinnedDrawers.has(drawerId);
+  }
+
+  /** Hide a drawer. Pinned drawers can't be hidden. Must keep at least 1 visible. */
+  hideDrawer(drawerId: string, allDrawerIds: string[]): void {
+    if (this.pinnedDrawers.has(drawerId)) return;
+    const visibleCount = allDrawerIds.filter(id => !this.hiddenDrawers.has(id)).length;
+    if (visibleCount <= 1) return; // must keep at least 1 visible
+    this.hiddenDrawers = new Set([...this.hiddenDrawers, drawerId]);
+    this.#persistHiddenDrawers();
+  }
+
+  showDrawer(drawerId: string): void {
+    const next = new Set(this.hiddenDrawers);
+    next.delete(drawerId);
+    this.hiddenDrawers = next;
+    this.#persistHiddenDrawers();
+  }
+
+  pinDrawer(drawerId: string): void {
+    // Pinning also un-hides
+    this.pinnedDrawers = new Set([...this.pinnedDrawers, drawerId]);
+    const next = new Set(this.hiddenDrawers);
+    next.delete(drawerId);
+    this.hiddenDrawers = next;
+    this.#persistPinnedDrawers();
+    this.#persistHiddenDrawers();
+  }
+
+  unpinDrawer(drawerId: string): void {
+    const next = new Set(this.pinnedDrawers);
+    next.delete(drawerId);
+    this.pinnedDrawers = next;
+    this.#persistPinnedDrawers();
+  }
+
+  #persistHiddenDrawers(): void {
+    try {
+      localStorage.setItem("bg3-cmty-hidden-drawers", JSON.stringify([...this.hiddenDrawers]));
+    } catch { /* quota exceeded */ }
+  }
+
+  #persistPinnedDrawers(): void {
+    try {
+      localStorage.setItem("bg3-cmty-pinned-drawers", JSON.stringify([...this.pinnedDrawers]));
+    } catch { /* quota exceeded */ }
   }
 
   // ── Explorer Node Ordering & Pin-to-Top ──────────────────────

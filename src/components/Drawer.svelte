@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Pin from "@lucide/svelte/icons/pin";
+  import XIcon from "@lucide/svelte/icons/x";
 
   let {
     title,
@@ -9,6 +11,9 @@
     ontoggle,
     headerActions,
     children,
+    pinned,
+    onhide,
+    oncontextmenu,
   }: {
     title: string;
     count?: number;
@@ -16,6 +21,9 @@
     ontoggle?: () => void;
     headerActions?: Snippet;
     children: Snippet;
+    pinned?: boolean;
+    onhide?: () => void;
+    oncontextmenu?: (e: MouseEvent) => void;
   } = $props();
 
   let headerHovered = $state(false);
@@ -34,37 +42,57 @@
       toggle();
     }
   }
+
+  let showActions = $derived(headerHovered && (headerActions || onhide));
 </script>
 
 <div class="drawer" class:collapsed>
-  <button
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
     class="drawer-header"
+    role="button"
+    tabindex="0"
     onclick={toggle}
     onkeydown={handleKeydown}
     onmouseenter={() => (headerHovered = true)}
     onmouseleave={() => (headerHovered = false)}
+    oncontextmenu={oncontextmenu}
     aria-expanded={!collapsed}
   >
     <span class="drawer-chevron" class:expanded={!collapsed}>
       <ChevronRight size={14} />
     </span>
+    {#if pinned}
+      <span class="drawer-pin-icon" title="Pinned">
+        <Pin size={11} />
+      </span>
+    {/if}
     <span class="drawer-title">{title.toUpperCase()}</span>
 
-    {#if count != null && count > 0}
-      <span class="drawer-count">{count}</span>
-    {/if}
-
-    {#if headerActions && headerHovered}
+    {#if showActions}
       <span
         class="drawer-actions"
         role="presentation"
         onclick={(e: MouseEvent) => e.stopPropagation()}
         onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
       >
-        {@render headerActions()}
+        {#if headerActions}
+          {@render headerActions()}
+        {/if}
+        {#if onhide && !pinned}
+          <button
+            class="drawer-hide-btn"
+            title="Hide drawer"
+            onclick={(e: MouseEvent) => { e.stopPropagation(); onhide(); }}
+          >
+            <XIcon size={12} />
+          </button>
+        {/if}
       </span>
+    {:else if count != null && count > 0}
+      <span class="drawer-count">{count}</span>
     {/if}
-  </button>
+  </div>
 
   {#if !collapsed}
     <div class="drawer-body">
@@ -130,6 +158,14 @@
     text-overflow: ellipsis;
   }
 
+  .drawer-pin-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--th-text-500, #8b8b94);
+    transform: rotate(45deg);
+  }
+
   .drawer-count {
     margin-left: auto;
     min-width: 18px;
@@ -152,6 +188,25 @@
     display: flex;
     align-items: center;
     gap: 2px;
+  }
+
+  .drawer-hide-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--th-text-500, #8b8b94);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .drawer-hide-btn:hover {
+    background: var(--th-bg-600, #52525b);
+    color: var(--th-text-200, #e4e4e7);
   }
 
   .drawer-body {

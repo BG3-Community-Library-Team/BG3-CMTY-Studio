@@ -3,6 +3,7 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
+  import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import GitToolbar from "./GitToolbar.svelte";
   import GitCommitBox from "./GitCommitBox.svelte";
   import GitFileList from "./GitFileList.svelte";
@@ -11,8 +12,11 @@
   import GitRemoteManager from "./GitRemoteManager.svelte";
   import GitInitPrompt from "./GitInitPrompt.svelte";
   import GitMergeConflictBanner from "./GitMergeConflictBanner.svelte";
+  import ForgePRList from "./ForgePRList.svelte";
+  import ForgeIssueList from "./ForgeIssueList.svelte";
   import ExplorerDrawer from "../ExplorerDrawer.svelte";
-  import ForgeSection from "./ForgeSection.svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import XIcon from "@lucide/svelte/icons/x";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
 
@@ -30,6 +34,84 @@
   /** Track which drawers are present so we know which is "first" (no resize handle) */
   let hasStagedFiles = $derived(gitStore.stagedFiles.length > 0);
   let hasStashes = $derived(gitStore.stashes.length > 0);
+
+  // ── Drawer ordering with pin/hide ──
+
+  /** All drawers that are currently relevant given the repo state */
+  let activeDrawerIds = $derived.by(() => {
+    const ids: string[] = [];
+    if (hasStagedFiles) ids.push("git-staged");
+    ids.push("git-changes");
+    ids.push("git-history");
+    if (hasStashes || gitStore.changedFileCount > 0) ids.push("git-stashes");
+    if (gitStore.remotes.length > 0 || gitStore.isRepo) ids.push("git-remotes");
+    if (gitStore.forgeConnected && gitStore.forgeInfo) {
+      ids.push("git-prs");
+      ids.push("git-issues");
+    }
+    return ids;
+  });
+
+  /** Visible drawers — hidden filtered out, pinned first */
+  let visibleDrawerIds = $derived.by(() => {
+    const visible = activeDrawerIds.filter(id => !uiStore.isDrawerHidden(id));
+    const pinned = visible.filter(id => uiStore.isDrawerPinned(id));
+    const unpinned = visible.filter(id => !uiStore.isDrawerPinned(id));
+    return [...pinned, ...unpinned];
+  });
+
+  // ── Drawer titles ──
+  let prLabel = $derived(
+    gitStore.forgeInfo?.forgeType === "GitLab" ? "Merge Requests" : "Pull Requests"
+  );
+
+  function drawerTitle(id: string): string {
+    switch (id) {
+      case "git-staged": return m.git_staged_changes();
+      case "git-changes": return m.git_changes();
+      case "git-history": return m.git_history_heading();
+      case "git-stashes": return m.git_stash_heading();
+      case "git-remotes": return m.git_remote_heading();
+      case "git-prs": return prLabel;
+      case "git-issues": return "Issues";
+      default: return id;
+    }
+  }
+
+  let drawerTitleMap = $derived.by(() => {
+    const map: Record<string, string> = {};
+    for (const did of activeDrawerIds) map[did] = drawerTitle(did);
+    return map;
+  });
+
+  // ── Drawer counts ──
+  function drawerCount(id: string): number | undefined {
+    switch (id) {
+      case "git-staged": return gitStore.stagedFiles.length;
+      case "git-changes": return gitStore.unstagedFiles.length + gitStore.untrackedFiles.length;
+      case "git-stashes": return gitStore.stashes.length;
+      case "git-prs": return gitStore.prs.length;
+      case "git-issues": return gitStore.issues.length;
+      default: return undefined;
+    }
+  }
+
+  // ── Stash header action ──
+  let hasChanges = $derived(gitStore.changedFileCount > 0);
+
+  async function handleCreateStash() {
+    const msg = window.prompt(m.git_stash_save_prompt());
+    if (msg === null) return;
+    try {
+      await gitStore.stash(gitPath, msg || undefined);
+      toastStore.success(m.git_stash_save_success());
+    } catch (e) {
+      toastStore.error(m.git_stash_failed(), String(e));
+    }
+  }
+
+  // ── Remote header action ──
+  let showRemoteAddForm = $state(false);
 </script>
 
 <div class="git-panel">
@@ -48,63 +130,90 @@
     {/if}
 
     <div class="git-drawer-layout">
-      <!-- Staged Changes (hidden when empty) -->
-      {#if hasStagedFiles}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-staged")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-staged") && uiStore.explorerDrawers["git-staged"]?.height != null}>
-          <ExplorerDrawer id="git-staged" title={m.git_staged_changes()} isFirst={true}>
-            {#snippet children()}
-              <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
-            {/snippet}
-          </ExplorerDrawer>
+      {#each visibleDrawerIds as drawerId, i (drawerId)}
+        <div
+          class="git-drawer-slot"
+          class:drawer-collapsed={uiStore.isDrawerCollapsed(drawerId)}
+          class:drawer-sized={!uiStore.isDrawerCollapsed(drawerId) && uiStore.explorerDrawers[drawerId]?.height != null}
+        >
+          {#if drawerId === "git-staged"}
+            <ExplorerDrawer id="git-staged" title={drawerTitle("git-staged")} count={drawerCount("git-staged")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet children()}
+                <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-changes"}
+            <ExplorerDrawer id="git-changes" title={drawerTitle("git-changes")} count={drawerCount("git-changes")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet children()}
+                {#if gitStore.unstagedFiles.length > 0 || gitStore.untrackedFiles.length > 0}
+                  <GitFileList files={[...gitStore.unstagedFiles, ...gitStore.untrackedFiles]} staged={false} modPath={gitPath} />
+                {:else}
+                  <p class="git-no-changes">{m.git_no_changes()}</p>
+                {/if}
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-history"}
+            <ExplorerDrawer id="git-history" title={drawerTitle("git-history")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet children()}
+                <GitHistoryPanel modPath={gitPath} />
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-stashes"}
+            <ExplorerDrawer id="git-stashes" title={drawerTitle("git-stashes")} count={drawerCount("git-stashes")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet headerActions()}
+                <button
+                  class="drawer-hdr-btn"
+                  title={m.git_stash_save()}
+                  onclick={(e: MouseEvent) => { e.stopPropagation(); handleCreateStash(); }}
+                  disabled={!hasChanges || gitStore.isSyncing}
+                >
+                  <Plus size={13} />
+                </button>
+              {/snippet}
+              {#snippet children()}
+                <GitStashPanel modPath={gitPath} />
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-remotes"}
+            <ExplorerDrawer id="git-remotes" title={drawerTitle("git-remotes")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet headerActions()}
+                <button
+                  class="drawer-hdr-btn"
+                  title={m.git_remote_add()}
+                  onclick={(e: MouseEvent) => { e.stopPropagation(); showRemoteAddForm = !showRemoteAddForm; }}
+                >
+                  {#if showRemoteAddForm}
+                    <XIcon size={13} />
+                  {:else}
+                    <Plus size={13} />
+                  {/if}
+                </button>
+              {/snippet}
+              {#snippet children()}
+                <GitRemoteManager modPath={gitPath} bind:showAddForm={showRemoteAddForm} />
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-prs"}
+            <ExplorerDrawer id="git-prs" title={drawerTitle("git-prs")} count={drawerCount("git-prs")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet children()}
+                <ForgePRList prs={gitStore.prs} info={gitStore.forgeInfo!} prLabel={prLabel.replace(/s$/, "")} />
+              {/snippet}
+            </ExplorerDrawer>
+
+          {:else if drawerId === "git-issues"}
+            <ExplorerDrawer id="git-issues" title={drawerTitle("git-issues")} count={drawerCount("git-issues")} isFirst={i === 0} allDrawerIds={activeDrawerIds} drawerTitles={drawerTitleMap}>
+              {#snippet children()}
+                <ForgeIssueList issues={gitStore.issues} info={gitStore.forgeInfo!} />
+              {/snippet}
+            </ExplorerDrawer>
+          {/if}
         </div>
-      {/if}
-
-      <!-- Changes (unstaged + untracked) -->
-      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-changes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-changes") && uiStore.explorerDrawers["git-changes"]?.height != null}>
-        <ExplorerDrawer id="git-changes" title={m.git_changes()} isFirst={!hasStagedFiles}>
-          {#snippet children()}
-            {#if gitStore.unstagedFiles.length > 0 || gitStore.untrackedFiles.length > 0}
-              <GitFileList files={[...gitStore.unstagedFiles, ...gitStore.untrackedFiles]} staged={false} modPath={gitPath} />
-            {:else}
-              <p class="git-no-changes">{m.git_no_changes()}</p>
-            {/if}
-          {/snippet}
-        </ExplorerDrawer>
-      </div>
-
-      <!-- History -->
-      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-history")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-history") && uiStore.explorerDrawers["git-history"]?.height != null}>
-        <ExplorerDrawer id="git-history" title={m.git_history_heading()} isFirst={false}>
-          {#snippet children()}
-            <GitHistoryPanel modPath={gitPath} />
-          {/snippet}
-        </ExplorerDrawer>
-      </div>
-
-      <!-- Stashes -->
-      {#if hasStashes || gitStore.changedFileCount > 0}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-stashes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-stashes") && uiStore.explorerDrawers["git-stashes"]?.height != null}>
-          <ExplorerDrawer id="git-stashes" title={m.git_stash_heading()} isFirst={false}>
-            {#snippet children()}
-              <GitStashPanel modPath={gitPath} />
-            {/snippet}
-          </ExplorerDrawer>
-        </div>
-      {/if}
-
-      <!-- Remotes -->
-      {#if gitStore.remotes.length > 0 || gitStore.isRepo}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-remotes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-remotes") && uiStore.explorerDrawers["git-remotes"]?.height != null}>
-          <ExplorerDrawer id="git-remotes" title={m.git_remote_heading()} isFirst={false}>
-            {#snippet children()}
-              <GitRemoteManager modPath={gitPath} />
-            {/snippet}
-          </ExplorerDrawer>
-        </div>
-      {/if}
-
-      <!-- Forge Integration -->
-      <ForgeSection />
+      {/each}
     </div>
   {/if}
 </div>
@@ -156,5 +265,29 @@
     font-size: 0.8rem;
     color: var(--th-text-500);
     font-style: italic;
+  }
+
+  .drawer-hdr-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .drawer-hdr-btn:hover:not(:disabled) {
+    background: var(--th-bg-600, #52525b);
+    color: var(--th-text-200);
+  }
+
+  .drawer-hdr-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 </style>

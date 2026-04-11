@@ -165,6 +165,7 @@ pub struct ForgePR {
     pub html_url: String,
     pub head_ref: String,
     pub base_ref: String,
+    pub mergeable: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -177,4 +178,22 @@ pub struct ForgeIssue {
     pub created_at: String,
     pub html_url: String,
     pub labels: Vec<String>,
+    pub assignee: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgeIssueDetail {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub html_url: String,
+    pub body: String,
+    pub labels: Vec<String>,
+    pub assignees: Vec<String>,
+    pub milestone: Option<String>,
+    pub closed_at: Option<String>,
 }

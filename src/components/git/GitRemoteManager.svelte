@@ -3,17 +3,14 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { gitAddRemote, gitRemoveRemote } from "../../lib/tauri/git.js";
-  import Globe from "@lucide/svelte/icons/globe";
-  import Plus from "@lucide/svelte/icons/plus";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import X from "@lucide/svelte/icons/x";
 
   interface Props {
     modPath: string;
+    showAddForm?: boolean;
   }
-  let { modPath }: Props = $props();
+  let { modPath, showAddForm = $bindable(false) }: Props = $props();
 
-  let showAddForm = $state(false);
   let newName = $state("");
   let newUrl = $state("");
   let isAdding = $state(false);
@@ -57,24 +54,6 @@
 </script>
 
 <div class="remote-manager">
-  <div class="remote-header">
-    <div class="remote-header-left">
-      <Globe size={13} />
-      <span>{m.git_remote_heading()}</span>
-    </div>
-    <button
-      class="remote-add-toggle"
-      title={m.git_remote_add()}
-      onclick={() => { showAddForm = !showAddForm; }}
-    >
-      {#if showAddForm}
-        <X size={13} />
-      {:else}
-        <Plus size={13} />
-      {/if}
-    </button>
-  </div>
-
   {#if showAddForm}
     <div class="remote-add-form">
       <input
@@ -128,40 +107,6 @@
 <style>
   .remote-manager {
     padding: 0;
-  }
-
-  .remote-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 8px;
-  }
-
-  .remote-header-left {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--th-text-300);
-  }
-
-  .remote-add-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--th-text-400);
-    cursor: pointer;
-  }
-
-  .remote-add-toggle:hover {
-    background: var(--th-sidebar-highlight, var(--th-bg-800));
-    color: var(--th-text-200);
   }
 
   .remote-add-form {

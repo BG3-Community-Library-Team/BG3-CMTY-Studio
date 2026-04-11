@@ -1,11 +1,13 @@
 <script lang="ts">
   import { m } from "../../paraglide/messages.js";
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
+  import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import type { GitFileStatus } from "../../lib/tauri/git.js";
   import Plus from "@lucide/svelte/icons/plus";
   import Minus from "@lucide/svelte/icons/minus";
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import ExternalLink from "@lucide/svelte/icons/external-link";
+  import FileIcon from "@lucide/svelte/icons/file";
   import { forgeFileUrl } from "../../lib/utils/forgeUrls.js";
 
   interface Props {
@@ -52,6 +54,11 @@
     return parts.slice(0, -1).join("/") + "/";
   }
 
+  /** Whether this file exists on the forge (not new/untracked) */
+  let existsOnForge = $derived(
+    file.status !== "untracked" && file.status !== "added"
+  );
+
   async function openOnForge() {
     const info = gitStore.forgeInfo;
     if (!info) return;
@@ -62,14 +69,38 @@
       await open(url);
     }
   }
+
+  function openDiffTab() {
+    uiStore.openTab({
+      id: `git-diff:${file.path}:${staged ? "staged" : "unstaged"}`,
+      label: `${fileName()} (${staged ? "Staged" : "Changes"})`,
+      type: "git-diff",
+      filePath: file.path,
+      staged,
+      icon: "📝",
+      preview: true,
+    });
+    gitStore.loadFileDiff(modPath, file.path, staged);
+  }
+
+  function openFileInExplorer() {
+    uiStore.openTab({
+      id: `file:${file.path}`,
+      label: fileName(),
+      type: "script-editor",
+      filePath: file.path,
+      icon: "📄",
+      preview: true,
+    });
+  }
 </script>
 
 <div
   class="git-file-item"
   role="button"
   tabindex="0"
-  onclick={() => gitStore.loadFileDiff(modPath, file.path, staged)}
-  onkeydown={(e) => { if (e.key === "Enter") gitStore.loadFileDiff(modPath, file.path, staged); }}
+  onclick={openDiffTab}
+  onkeydown={(e) => { if (e.key === "Enter") openDiffTab(); }}
 >
   <span class="git-file-status" style="color: {getStatusColor()}">{getStatusLabel()}</span>
   <span class="git-file-name" title={file.path}>{fileName()}</span>
@@ -77,6 +108,15 @@
     <span class="git-file-dir-hint">{dirPart()}</span>
   {/if}
   <div class="git-file-actions">
+    {#if file.status !== "deleted"}
+      <button
+        class="git-action-btn"
+        title="Open file"
+        onclick={(e) => { e.stopPropagation(); openFileInExplorer(); }}
+      >
+        <FileIcon size={14} />
+      </button>
+    {/if}
     {#if staged}
       <button
         class="git-action-btn"
@@ -103,7 +143,7 @@
         </button>
       {/if}
     {/if}
-    {#if gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"}
+    {#if existsOnForge && gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"}
       <button
         class="git-action-btn"
         title="Open on {gitStore.forgeInfo.host}"
@@ -161,6 +201,8 @@
   .git-file-actions {
     display: flex;
     gap: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
     opacity: 0;
     transition: opacity 0.1s ease;
   }

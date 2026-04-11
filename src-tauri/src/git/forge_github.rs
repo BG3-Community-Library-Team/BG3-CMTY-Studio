@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
 // Adapter
@@ -255,6 +255,62 @@ impl ForgeAdapter for GitHubAdapter {
         let issue: GhIssue = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
         Ok(issue.into())
     }
+
+    async fn get_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<ForgeIssueDetail, String> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}",
+            self.api_base, owner, repo, number
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(map_error_response(resp).await);
+        }
+
+        let detail: GhIssueDetail =
+            resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        Ok(detail.into())
+    }
+
+    async fn assign_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignee: &str,
+    ) -> Result<(), String> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}/assignees",
+            self.api_base, owner, repo, number
+        );
+        let payload = serde_json::json!({ "assignees": [assignee] });
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(map_error_response(resp).await);
+        }
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +402,7 @@ impl From<GhPR> for ForgePR {
             html_url: p.html_url,
             head_ref: p.head.ref_name,
             base_ref: p.base.ref_name,
+            mergeable: None, // Not available in GitHub list endpoint
         }
     }
 }
@@ -371,6 +428,7 @@ struct GhIssue {
     html_url: String,
     labels: Vec<GhLabel>,
     pull_request: Option<serde_json::Value>,
+    assignee: Option<GhMinimalUser>,
 }
 
 impl From<GhIssue> for ForgeIssue {
@@ -383,6 +441,47 @@ impl From<GhIssue> for ForgeIssue {
             created_at: i.created_at,
             html_url: i.html_url,
             labels: i.labels.into_iter().map(|l| l.name).collect(),
+            assignee: i.assignee.map(|a| a.login),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct GhIssueDetail {
+    number: u32,
+    title: String,
+    state: String,
+    user: GhMinimalUser,
+    created_at: String,
+    updated_at: String,
+    closed_at: Option<String>,
+    html_url: String,
+    body: Option<String>,
+    labels: Vec<GhLabel>,
+    assignees: Vec<GhMinimalUser>,
+    milestone: Option<GhMilestone>,
+}
+
+#[derive(Deserialize)]
+struct GhMilestone {
+    title: String,
+}
+
+impl From<GhIssueDetail> for ForgeIssueDetail {
+    fn from(i: GhIssueDetail) -> Self {
+        Self {
+            number: i.number,
+            title: i.title,
+            state: i.state,
+            author: i.user.login,
+            created_at: i.created_at,
+            updated_at: i.updated_at,
+            html_url: i.html_url,
+            body: i.body.unwrap_or_default(),
+            labels: i.labels.into_iter().map(|l| l.name).collect(),
+            assignees: i.assignees.into_iter().map(|a| a.login).collect(),
+            milestone: i.milestone.map(|m| m.title),
+            closed_at: i.closed_at,
         }
     }
 }

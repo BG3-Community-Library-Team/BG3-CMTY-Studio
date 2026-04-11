@@ -102,18 +102,21 @@
   }
 
   .forge-connect-btn {
-    padding: 4px 10px;
+    padding: 5px 14px;
     font-size: 0.78rem;
-    border: none;
-    border-radius: 3px;
-    background: var(--th-accent-400);
-    color: var(--th-bg-950);
+    font-weight: 600;
+    border: 1px solid var(--th-accent-500);
+    border-radius: 4px;
+    background: var(--th-accent-600, #0284c7);
+    color: var(--th-text-100, #fff);
     cursor: pointer;
     white-space: nowrap;
+    letter-spacing: 0.02em;
   }
 
   .forge-connect-btn:hover:not(:disabled) {
-    background: var(--th-accent-300);
+    background: var(--th-accent-500, #0ea5e9);
+    border-color: var(--th-accent-400);
   }
 
   .forge-connect-btn:disabled {

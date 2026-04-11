@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
 // Deserialization structs (private)
@@ -43,6 +43,7 @@ struct GlMR {
     web_url: String,
     source_branch: String,
     target_branch: String,
+    has_conflicts: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +55,33 @@ struct GlIssue {
     created_at: String,
     web_url: String,
     labels: Vec<String>,
+    assignee: Option<GlAuthor>,
+}
+
+#[derive(Deserialize)]
+struct GlIssueDetail {
+    iid: u32,
+    title: String,
+    state: String,
+    author: GlAuthor,
+    created_at: String,
+    updated_at: String,
+    closed_at: Option<String>,
+    web_url: String,
+    description: Option<String>,
+    labels: Vec<String>,
+    assignees: Option<Vec<GlAuthor>>,
+    milestone: Option<GlMilestone>,
+}
+
+#[derive(Deserialize)]
+struct GlMilestone {
+    title: String,
+}
+
+#[derive(Deserialize)]
+struct GlUserFull {
+    id: u64,
 }
 
 #[derive(Deserialize)]
@@ -289,6 +317,7 @@ impl ForgeAdapter for GitLabAdapter {
                 html_url: mr.web_url,
                 head_ref: mr.source_branch,
                 base_ref: mr.target_branch,
+                mergeable: mr.has_conflicts.map(|c| !c),
             })
             .collect())
     }
@@ -343,6 +372,7 @@ impl ForgeAdapter for GitLabAdapter {
             html_url: mr.web_url,
             head_ref: mr.source_branch,
             base_ref: mr.target_branch,
+            mergeable: mr.has_conflicts.map(|c| !c),
         })
     }
 
@@ -386,6 +416,7 @@ impl ForgeAdapter for GitLabAdapter {
                 created_at: i.created_at,
                 html_url: i.web_url,
                 labels: i.labels,
+                assignee: i.assignee.map(|a| a.username),
             })
             .collect())
     }
@@ -435,6 +466,113 @@ impl ForgeAdapter for GitLabAdapter {
             created_at: issue.created_at,
             html_url: issue.web_url,
             labels: issue.labels,
+            assignee: issue.assignee.map(|a| a.username),
         })
+    }
+
+    async fn get_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+    ) -> Result<ForgeIssueDetail, String> {
+        let encoded = encode_project_path(owner, repo);
+        let url = format!(
+            "{}/projects/{}/issues/{}",
+            self.api_base, encoded, number
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(extract_error(resp).await);
+        }
+
+        let detail: GlIssueDetail = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse issue detail response: {e}"))?;
+
+        Ok(ForgeIssueDetail {
+            number: detail.iid,
+            title: detail.title,
+            state: normalize_state(&detail.state),
+            author: detail.author.username,
+            created_at: detail.created_at,
+            updated_at: detail.updated_at,
+            html_url: detail.web_url,
+            body: detail.description.unwrap_or_default(),
+            labels: detail.labels,
+            assignees: detail
+                .assignees
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| a.username)
+                .collect(),
+            milestone: detail.milestone.map(|m| m.title),
+            closed_at: detail.closed_at,
+        })
+    }
+
+    async fn assign_issue(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        number: u32,
+        assignee: &str,
+    ) -> Result<(), String> {
+        // GitLab needs the user's numeric ID for assignment.
+        // Look up by username.
+        let user_url = format!("{}/users?username={}", self.api_base, assignee);
+        let user_resp = self
+            .client
+            .get(&user_url)
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !user_resp.status().is_success() {
+            return Err(extract_error(user_resp).await);
+        }
+
+        let users: Vec<GlUserFull> = user_resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse user response: {e}"))?;
+
+        let user_id = users
+            .first()
+            .ok_or_else(|| format!("User '{}' not found on GitLab", assignee))?
+            .id;
+
+        let encoded = encode_project_path(owner, repo);
+        let url = format!(
+            "{}/projects/{}/issues/{}",
+            self.api_base, encoded, number
+        );
+        let payload = serde_json::json!({ "assignee_ids": [user_id] });
+
+        let resp = self
+            .client
+            .put(&url)
+            .header("PRIVATE-TOKEN", token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(extract_error(resp).await);
+        }
+        Ok(())
     }
 }

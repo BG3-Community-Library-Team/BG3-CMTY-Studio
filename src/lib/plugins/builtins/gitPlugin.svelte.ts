@@ -18,6 +18,7 @@ import { uiStore } from "../../stores/uiStore.svelte.js";
 import { toastStore } from "../../stores/toastStore.svelte.js";
 import { m } from "../../../paraglide/messages.js";
 import GitPanel from "../../../components/git/GitPanel.svelte";
+import ForgeSection from "../../../components/git/ForgeSection.svelte";
 import GitSettingsSection from "../../../components/settings/GitSettingsSection.svelte";
 
 function getGitPath(): string {
@@ -92,6 +93,7 @@ export const gitPlugin: PluginModule = {
       views: {
         "cmty-git": [
           { id: "git.panel", name: "Git", when: "modLoaded" },
+          { id: "git.forge", name: "Forge", when: "gitRepoActive && gitForgeDetected" },
         ],
       },
       statusBarItems: [
@@ -397,9 +399,9 @@ export const gitPlugin: PluginModule = {
         category: "action",
         icon: "↗",
         when: "gitRepoActive && gitForgeDetected",
-        enabled: () => gitStore.isRepo && !!(gitStore as any).forgeInfo,
+        enabled: () => gitStore.isRepo && !!gitStore.forgeInfo,
         execute: async () => {
-          const info = (gitStore as any).forgeInfo;
+          const info = gitStore.forgeInfo;
           if (!info?.owner || !info?.repo) return;
           const url = `https://${info.host}/${info.owner}/${info.repo}`;
           const { open } = await import("@tauri-apps/plugin-shell");
@@ -411,6 +413,7 @@ export const gitPlugin: PluginModule = {
 
     // 2. Set view component for sidebar
     viewRegistry.setViewComponent("git.panel", GitPanel);
+    viewRegistry.setViewComponent("git.forge", ForgeSection);
 
     // 3. Find the status bar item registered by the host and configure it
     const branchItem = statusBarRegistry.items.find(i => i.id === "git.branch");

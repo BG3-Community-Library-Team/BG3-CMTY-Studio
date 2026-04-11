@@ -129,6 +129,7 @@ export interface ForgePR {
   htmlUrl: string;
   headRef: string;
   baseRef: string;
+  mergeable: boolean | null;
 }
 
 export interface ForgeIssue {
@@ -139,6 +140,22 @@ export interface ForgeIssue {
   createdAt: string;
   htmlUrl: string;
   labels: string[];
+  assignee: string | null;
+}
+
+export interface ForgeIssueDetail {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  htmlUrl: string;
+  body: string;
+  labels: string[];
+  assignees: string[];
+  milestone: string | null;
+  closedAt: string | null;
 }
 
 // ── Repository Commands ─────────────────────────────────────────
@@ -311,4 +328,12 @@ export async function forgeListIssues(host: string, forgeType: ForgeType, apiBas
 
 export async function forgeCreateIssue(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, title: string, body: string): Promise<ForgeIssue> {
   return invoke("cmd_forge_create_issue", { host, forgeType, apiBase, owner, repo, title, body });
+}
+
+export async function forgeGetIssue(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, number: number): Promise<ForgeIssueDetail> {
+  return invoke("cmd_forge_get_issue", { host, forgeType, apiBase, owner, repo, number });
+}
+
+export async function forgeAssignIssue(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, number: number, assignee: string): Promise<void> {
+  return invoke("cmd_forge_assign_issue", { host, forgeType, apiBase, owner, repo, number, assignee });
 }

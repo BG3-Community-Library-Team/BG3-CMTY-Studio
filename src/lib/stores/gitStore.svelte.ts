@@ -504,6 +504,11 @@ class GitStore {
       const user = await forgeAuthStatus(info.host, info.forgeType, info.apiBase);
       this.forgeUser = user ?? null;
       this.forgeConnected = !!user;
+
+      // If already authenticated, populate PRs/issues
+      if (this.forgeConnected) {
+        this.refreshForge();
+      }
     } catch (err) {
       console.error("Forge detection failed:", err);
       this.forgeInfo = null;

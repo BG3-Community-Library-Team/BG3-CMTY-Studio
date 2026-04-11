@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { GitCommitInfo } from "../../lib/tauri/git.js";
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
-  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Globe from "@lucide/svelte/icons/globe";
   import { forgeCommitUrl } from "../../lib/utils/forgeUrls.js";
 
   interface Props {
@@ -53,7 +53,7 @@
       onclick={(e) => { e.stopPropagation(); openCommitOnForge(); }}
       onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openCommitOnForge(); } }}
     >
-      <ExternalLink size={12} />
+      <Globe size={12} />
     </span>
   {/if}
 </button>
