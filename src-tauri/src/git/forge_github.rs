@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
 // Adapter
@@ -32,6 +32,12 @@ impl GitHubAdapter {
             client,
             api_base: api_base.to_string(),
         }
+    }
+}
+
+impl Default for GitHubAdapter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -166,17 +172,14 @@ impl ForgeAdapter for GitHubAdapter {
         token: &str,
         owner: &str,
         repo: &str,
-        title: &str,
-        body: &str,
-        head: &str,
-        base: &str,
+        params: &CreatePrParams,
     ) -> Result<ForgePR, String> {
         let url = format!("{}/repos/{}/{}/pulls", self.api_base, owner, repo);
         let payload = serde_json::json!({
-            "title": title,
-            "body": body,
-            "head": head,
-            "base": base,
+            "title": params.title,
+            "body": params.body,
+            "head": params.head,
+            "base": params.base,
         });
 
         let resp = self

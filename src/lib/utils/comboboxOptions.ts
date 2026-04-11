@@ -275,6 +275,16 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
     });
     return sortComboboxOptions(opts);
   },
+  "textureFiles": (suffix, ctx) => {
+    // suffix = relative path within mod's Public/<ModFolder>/ dir
+    // e.g. "Assets/Textures/Icons" lists .dds files from that subfolder
+    // TODO: Wire to actual data source — requires a Tauri command that
+    //       enumerates DDS/image files (cmd_list_mod_files only covers text files)
+    //       and plumbing the results into FieldComboboxContext.
+    void suffix;
+    void ctx;
+    return [];
+  },
   "loca": (_suffix, ctx) => {
     const opts: ComboboxOption[] = [];
     const seen = new Set<string>();
@@ -318,6 +328,7 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
  *   - "folder:X" → vanilla folder entries
  *   - "progressionTable:" → progression table UUIDs
  *   - "voiceTable:" → voice table UUIDs
+ *   - "textureFiles:Path" → .dds files from mod subfolder (e.g. "textureFiles:Assets/Textures/Icons")
  *   - "loca:" → user-authored localization contentuid entries
  */
 export function getFieldComboboxOptions(fieldKey: string, ctx: FieldComboboxContext): ComboboxOption[] {

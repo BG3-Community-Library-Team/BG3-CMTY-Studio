@@ -4,7 +4,7 @@
 //! (NOT `Bearer`). Pagination uses `limit` (not `per_page`).
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
@@ -130,7 +130,7 @@ impl GiteaAdapter {
 
 /// Gitea auth header: `token <PAT>` (NOT `Bearer`).
 fn auth_header(token: &str) -> String {
-    format!("token {}", token)
+    format!("token {token}")
 }
 
 /// Extract a human-readable error from a Gitea API response.
@@ -342,17 +342,14 @@ impl ForgeAdapter for GiteaAdapter {
         token: &str,
         owner: &str,
         repo: &str,
-        title: &str,
-        body: &str,
-        head: &str,
-        base: &str,
+        params: &CreatePrParams,
     ) -> Result<ForgePR, String> {
         let url = format!("{}/repos/{}/{}/pulls", self.api_base, owner, repo);
         let req_body = serde_json::json!({
-            "title": title,
-            "body": body,
-            "head": head,
-            "base": base,
+            "title": params.title,
+            "body": params.body,
+            "head": params.head,
+            "base": params.base,
         });
 
         let resp = self

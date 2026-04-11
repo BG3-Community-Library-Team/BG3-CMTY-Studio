@@ -171,6 +171,15 @@ pub struct ForgePR {
     pub mergeable: Option<bool>,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePrParams {
+    pub title: String,
+    pub body: String,
+    pub head: String,
+    pub base: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ForgeIssue {

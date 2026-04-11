@@ -551,16 +551,16 @@
         {/if}
       </div>
 
+    {:else if activeTab.type === "texture-atlas"}
+      <!-- Texture Atlas: specialized combined form -->
+      {@const atlasInfoResult = getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo", entries: [] }}
+      {@const atlasUvResult = getSectionResult("IconUVList") ?? { section: "IconUVList", entries: [] }}
+      <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} globalFilter={modStore.globalFilter} />
+
     {:else if activeTab.type === "group"}
       <!-- Group tab: multiple sections, with per-child entry filters -->
       {@const groupChildren = getGroupChildren(activeTab.category ?? "")}
       {@const fallbackSections = activeTab.groupSections ?? []}
-      {#if activeTab.category === "_TextureAtlas"}
-        <!-- Texture Atlas: specialized combined form -->
-        {@const atlasInfoResult = getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo", entries: [] }}
-        {@const atlasUvResult = getSectionResult("IconUVList") ?? { section: "IconUVList", entries: [] }}
-        <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} globalFilter={modStore.globalFilter} />
-      {:else}
       <div class="section-tab-content">
         {#if groupChildren.length > 0}
           {#each groupChildren as { node, result } (node.name)}
@@ -596,7 +596,6 @@
           {/if}
         {/if}
       </div>
-      {/if}
 
     {:else if activeTab.type === "filteredSection"}
       <!-- Filtered section: shows only entries matching a filter -->

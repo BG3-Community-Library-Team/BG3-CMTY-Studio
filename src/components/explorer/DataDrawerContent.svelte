@@ -275,7 +275,11 @@
 
   function openNode(node: FolderNode, preview = true): void {
     if (node.isGroup && node.groupSections) {
-      uiStore.openTab({ id: `group:${node.name}`, label: node.label, type: "group", category: node.name, groupSections: node.groupSections, icon: "📁", preview });
+      if (node.name === "_TextureAtlas") {
+        uiStore.openTab({ id: "texture-atlas", label: node.label, type: "texture-atlas", category: node.name, groupSections: node.groupSections, icon: "🎨", preview });
+      } else {
+        uiStore.openTab({ id: `group:${node.name}`, label: node.label, type: "group", category: node.name, groupSections: node.groupSections, icon: "📁", preview });
+      }
     } else if (node.Section && node.entryFilter) {
       uiStore.openTab({ id: `filtered:${node.name}`, label: node.label, type: "filteredSection", category: node.Section, entryFilter: node.entryFilter, regionId: node.regionId, icon: "📄", preview });
     } else if (node.Section) {

@@ -2063,6 +2063,18 @@ async fn cmd_set_secure_setting(key: String, value: String) -> Result<(), AppErr
     blocking(move || commands::secure_storage::set_secure_setting(&key, &value)).await
 }
 
+// ── DDS texture conversion commands ──────────────────────────────────
+
+#[tauri::command]
+async fn cmd_convert_dds_to_png(path: String, project_dir: String) -> Result<String, AppError> {
+    blocking(move || commands::texture::convert_dds_to_png(&path, &project_dir)).await
+}
+
+#[tauri::command]
+async fn cmd_get_dds_dimensions(path: String, project_dir: String) -> Result<(u32, u32), AppError> {
+    blocking(move || commands::texture::get_dds_dimensions(&path, &project_dir)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
@@ -2233,6 +2245,9 @@ pub fn run() {
             commands::project_settings::cmd_ensure_cmtystudio_dir,
             commands::project_settings::cmd_read_project_file,
             commands::project_settings::cmd_write_project_file,
+            // DDS texture conversion
+            cmd_convert_dds_to_png,
+            cmd_get_dds_dimensions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

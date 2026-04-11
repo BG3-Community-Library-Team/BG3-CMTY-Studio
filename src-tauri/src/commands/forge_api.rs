@@ -38,7 +38,7 @@ macro_rules! dispatch {
 
 /// Token keyring key: `forge_token:{host}` — e.g. `forge_token:github.com`
 fn token_key(host: &str) -> String {
-    format!("forge_token:{}", host)
+    format!("forge_token:{host}")
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ pub async fn cmd_forge_set_token(
 ) -> Result<ForgeUser, String> {
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
     let user = dispatch!(adapter, validate_token(&token))
-        .map_err(|e| format!("Token validation failed: {}", e))?;
+        .map_err(|e| format!("Token validation failed: {e}"))?;
     set_secure_setting(&token_key(&host), &token)?;
     Ok(user)
 }
@@ -142,17 +142,14 @@ pub async fn cmd_forge_create_pr(
     api_base: String,
     owner: String,
     repo: String,
-    title: String,
-    body: String,
-    head: String,
-    base: String,
+    params: CreatePrParams,
 ) -> Result<ForgePR, String> {
     let token = get_secure_setting(&token_key(&host))?;
     if token.is_empty() {
         return Err("Not authenticated".to_string());
     }
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, create_pr(&token, &owner, &repo, &title, &body, &head, &base))
+    dispatch!(adapter, create_pr(&token, &owner, &repo, &params))
 }
 
 #[tauri::command]

@@ -322,7 +322,7 @@ export async function forgeListPrs(host: string, forgeType: ForgeType, apiBase: 
 }
 
 export async function forgeCreatePr(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, title: string, body: string, head: string, base: string): Promise<ForgePR> {
-  return invoke("cmd_forge_create_pr", { host, forgeType, apiBase, owner, repo, title, body, head, base });
+  return invoke("cmd_forge_create_pr", { host, forgeType, apiBase, owner, repo, params: { title, body, head, base } });
 }
 
 export async function forgeListIssues(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, state: string): Promise<ForgeIssue[]> {

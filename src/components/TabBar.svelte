@@ -36,6 +36,8 @@
     readme: BookOpen,
     "git-diff": GitCompareArrows,
     "git-commit": GitCommitVertical,
+    "forge-issue": FileText,
+    "texture-atlas": Palette,
   };
 
   let tabs = $derived(uiStore.openTabs);

@@ -46,7 +46,7 @@ export interface EditorTab {
   /** Whether this tab has unsaved changes */
   dirty?: boolean;
   /** Tab type — determines which editor component to render */
-  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme" | "git-diff" | "git-commit" | "forge-issue";
+  type: "section" | "group" | "filteredSection" | "lsx-file" | "welcome" | "meta-lsx" | "localization" | "file-preview" | "settings" | "theme-gallery" | "script-editor" | "readme" | "git-diff" | "git-commit" | "forge-issue" | "texture-atlas";
   /** For group tabs: CF sections to render together */
   groupSections?: string[];
   /** For filteredSection tabs: filter entries by this field/value pair */

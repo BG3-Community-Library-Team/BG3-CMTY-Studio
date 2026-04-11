@@ -150,7 +150,6 @@
     display: flex;
     align-items: center;
     color: var(--th-warning-400, #f59e0b);
-    title: "Merge conflicts";
   }
 
   .forge-item-actions {

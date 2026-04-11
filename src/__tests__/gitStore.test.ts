@@ -86,6 +86,9 @@ const MOCK_REPO_INFO: GitRepoInfo = {
   clean: true,
   ahead: 0,
   behind: 0,
+  shallow: false,
+  bare: false,
+  submodules: [],
 };
 
 const MOCK_STATUS: GitFileStatus[] = [

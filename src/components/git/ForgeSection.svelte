@@ -19,7 +19,7 @@
 
       <details class="forge-details" open>
         <summary>Issues ({gitStore.issues.length})</summary>
-        <ForgeIssueList issues={gitStore.issues} />
+        <ForgeIssueList issues={gitStore.issues} info={gitStore.forgeInfo} />
       </details>
     {:else}
       <ForgeConnectPrompt info={gitStore.forgeInfo} />

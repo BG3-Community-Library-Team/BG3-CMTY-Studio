@@ -43,6 +43,7 @@
     if (!tab) return "";
     if (tab.type === "script-editor" && tab.filePath) return tab.filePath;
     if (tab.type === "lsx-file" && tab.filePath) return tab.filePath;
+    if (tab.type === "texture-atlas" && tab.filePath) return tab.filePath;
     if (tab.type === "file-preview" && tab.filePath) return tab.filePath;
     if (tab.type === "readme") return "readme";
     if (tab.type === "localization") return "localization";
@@ -101,6 +102,23 @@
         } catch {
           // Fall back to folder-based inference silently
         }
+      }
+
+      // Texture atlas detection — by section content or GUI folder path
+      const isTextureAtlas = allSections.includes("TextureAtlasInfo") || allSections.includes("IconUVList")
+        || /Public\/[^/]+\/GUI\//i.test(relPath.replace(/\\/g, "/"));
+      if (isTextureAtlas) {
+        uiStore.openTab({
+          id: "texture-atlas",
+          label: node.name,
+          type: "texture-atlas",
+          filePath: relPath,
+          category: "_TextureAtlas",
+          groupSections: ["TextureAtlasInfo", "IconUVList"],
+          icon: "🎨",
+          preview: true,
+        });
+        return;
       }
 
       uiStore.openTab({

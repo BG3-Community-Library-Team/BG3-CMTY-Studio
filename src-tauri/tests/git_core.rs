@@ -85,7 +85,7 @@ fn stage_and_unstage_file() {
     let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
     repo.reset_default(
         Some(head_commit.as_object()),
-        &[std::path::Path::new("new.txt")],
+        [std::path::Path::new("new.txt")],
     )
     .unwrap();
 

@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::forge::ForgeAdapter;
-use super::types::{ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
 // Deserialization structs (private)
@@ -95,7 +95,7 @@ struct GlError {
 // ---------------------------------------------------------------------------
 
 fn encode_project_path(owner: &str, repo: &str) -> String {
-    format!("{}/{}", owner, repo).replace('/', "%2F")
+    format!("{owner}/{repo}").replace('/', "%2F")
 }
 
 fn normalize_state(gitlab_state: &str) -> String {
@@ -136,7 +136,7 @@ pub struct GitLabAdapter {
 
 impl GitLabAdapter {
     pub fn new(host: &str) -> Self {
-        let api_base = format!("https://{}/api/v4", host);
+        let api_base = format!("https://{host}/api/v4");
         Self::with_api_base_and_host(&api_base, host)
     }
 
@@ -336,10 +336,7 @@ impl ForgeAdapter for GitLabAdapter {
         token: &str,
         owner: &str,
         repo: &str,
-        title: &str,
-        body: &str,
-        head: &str,
-        base: &str,
+        params: &CreatePrParams,
     ) -> Result<ForgePR, String> {
         let encoded = encode_project_path(owner, repo);
         let url = format!(
@@ -348,10 +345,10 @@ impl ForgeAdapter for GitLabAdapter {
         );
 
         let payload = serde_json::json!({
-            "title": title,
-            "description": body,
-            "source_branch": head,
-            "target_branch": base,
+            "title": params.title,
+            "description": params.body,
+            "source_branch": params.head,
+            "target_branch": params.base,
         });
 
         let resp = self
@@ -560,7 +557,7 @@ impl ForgeAdapter for GitLabAdapter {
 
         let user_id = users
             .first()
-            .ok_or_else(|| format!("User '{}' not found on GitLab", assignee))?
+            .ok_or_else(|| format!("User '{assignee}' not found on GitLab"))?
             .id;
 
         let encoded = encode_project_path(owner, repo);

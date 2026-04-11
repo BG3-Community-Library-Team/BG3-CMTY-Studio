@@ -16,3 +16,4 @@ pub mod rediff;
 pub mod scan;
 pub mod scripts;
 pub mod secure_storage;
+pub mod texture;
