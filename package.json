@@ -38,7 +38,7 @@
     "svelte": "^5.53.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^6.0.2",
-    "vite": "^8.0.5",
+    "vite": "^8.0.8",
     "vitest": "^4.0.18",
     "yaml": "^2.8.2"
   },
