@@ -80,6 +80,7 @@ jobs:
         shell: bash
 
   secret-scan:
+    if: {{ github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
