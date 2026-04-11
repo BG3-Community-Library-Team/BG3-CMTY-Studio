@@ -270,3 +270,45 @@ export async function gitStashApply(modPath: string, index: number): Promise<voi
 export async function gitStashDrop(modPath: string, index: number): Promise<void> {
   return invoke("cmd_git_stash_drop", { modPath, index });
 }
+
+// ── Forge Commands ──────────────────────────────────────────
+
+export async function forgeDetect(remoteUrl: string): Promise<ForgeInfo> {
+  return invoke("cmd_forge_detect", { remoteUrl });
+}
+
+export async function forgeAuthStatus(host: string, forgeType: ForgeType, apiBase: string): Promise<ForgeUser | null> {
+  return invoke("cmd_forge_auth_status", { host, forgeType, apiBase });
+}
+
+export async function forgeSetToken(host: string, forgeType: ForgeType, apiBase: string, token: string): Promise<ForgeUser> {
+  return invoke("cmd_forge_set_token", { host, forgeType, apiBase, token });
+}
+
+export async function forgeClearToken(host: string): Promise<void> {
+  return invoke("cmd_forge_clear_token", { host });
+}
+
+export async function forgeListRepos(host: string, forgeType: ForgeType, apiBase: string, page: number): Promise<ForgeRepo[]> {
+  return invoke("cmd_forge_list_repos", { host, forgeType, apiBase, page });
+}
+
+export async function forgeCreateRepo(host: string, forgeType: ForgeType, apiBase: string, name: string, description: string, isPrivate: boolean): Promise<ForgeRepo> {
+  return invoke("cmd_forge_create_repo", { host, forgeType, apiBase, name, description, "private": isPrivate });
+}
+
+export async function forgeListPrs(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, state: string): Promise<ForgePR[]> {
+  return invoke("cmd_forge_list_prs", { host, forgeType, apiBase, owner, repo, state });
+}
+
+export async function forgeCreatePr(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, title: string, body: string, head: string, base: string): Promise<ForgePR> {
+  return invoke("cmd_forge_create_pr", { host, forgeType, apiBase, owner, repo, title, body, head, base });
+}
+
+export async function forgeListIssues(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, state: string): Promise<ForgeIssue[]> {
+  return invoke("cmd_forge_list_issues", { host, forgeType, apiBase, owner, repo, state });
+}
+
+export async function forgeCreateIssue(host: string, forgeType: ForgeType, apiBase: string, owner: string, repo: string, title: string, body: string): Promise<ForgeIssue> {
+  return invoke("cmd_forge_create_issue", { host, forgeType, apiBase, owner, repo, title, body });
+}

@@ -24,6 +24,10 @@ import {
   gitStashApply,
   gitStashDrop,
   gitRemotes,
+  forgeDetect,
+  forgeAuthStatus,
+  forgeListPrs,
+  forgeListIssues,
   type GitRepoInfo,
   type GitFileStatus,
   type GitFileDiff,
@@ -34,6 +38,10 @@ import {
   type GitStashEntry,
   type GitPullResult,
   type GitRemoteInfo,
+  type ForgeInfo,
+  type ForgeUser,
+  type ForgePR,
+  type ForgeIssue,
 } from "../tauri/git.js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -86,6 +94,13 @@ class GitStore {
   // ── Remotes ───────────────────────────────────────────────
   remotes = $state<GitRemoteInfo[]>([]);
 
+  // ── Forge ─────────────────────────────────────────────────
+  forgeInfo = $state<ForgeInfo | null>(null);
+  forgeUser = $state<ForgeUser | null>(null);
+  forgeConnected = $state(false);
+  prs = $state<ForgePR[]>([]);
+  issues = $state<ForgeIssue[]>([]);
+
   // ── Event listeners ───────────────────────────────────────
   private _eventListeners: UnlistenFn[] = [];
 
@@ -135,9 +150,10 @@ class GitStore {
       // Also refresh branch list
       this.refreshBranches(modPath);
 
-      // Also refresh stash list and remotes
+      // Also refresh stash list, remotes, and forge
       this.loadStashes(modPath);
       this.loadRemotes(modPath);
+      this.detectForge(modPath);
     } catch (err) {
       console.error("Git refresh failed:", err);
       this.isRepo = false;
@@ -462,6 +478,54 @@ class GitStore {
       this._pollTimer = null;
     }
     this._cleanupEventListeners();
+  }
+
+  // ── Forge operations ───────────────────────────────────────
+
+  /** Detect forge from first remote and check auth status */
+  async detectForge(modPath: string): Promise<void> {
+    try {
+      const remotes = await gitRemotes(modPath);
+      if (remotes.length === 0) {
+        this.forgeInfo = null;
+        this.forgeUser = null;
+        this.forgeConnected = false;
+        return;
+      }
+      const info = await forgeDetect(remotes[0].url);
+      this.forgeInfo = info;
+
+      if (info.forgeType === "Unknown") {
+        this.forgeConnected = false;
+        this.forgeUser = null;
+        return;
+      }
+
+      const user = await forgeAuthStatus(info.host, info.forgeType, info.apiBase);
+      this.forgeUser = user ?? null;
+      this.forgeConnected = !!user;
+    } catch (err) {
+      console.error("Forge detection failed:", err);
+      this.forgeInfo = null;
+      this.forgeUser = null;
+      this.forgeConnected = false;
+    }
+  }
+
+  /** Refresh PR and issue lists from forge */
+  async refreshForge(): Promise<void> {
+    const info = this.forgeInfo;
+    if (!info || !this.forgeConnected || !info.owner || !info.repo) return;
+    try {
+      const [prs, issues] = await Promise.all([
+        forgeListPrs(info.host, info.forgeType, info.apiBase, info.owner, info.repo, "open"),
+        forgeListIssues(info.host, info.forgeType, info.apiBase, info.owner, info.repo, "open"),
+      ]);
+      this.prs = prs;
+      this.issues = issues;
+    } catch (err) {
+      console.error("Forge refresh failed:", err);
+    }
   }
 
   // ── Private helpers ───────────────────────────────────────

@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { GitCommitInfo } from "../../lib/tauri/git.js";
+  import { gitStore } from "../../lib/stores/gitStore.svelte.js";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import { forgeCommitUrl } from "../../lib/utils/forgeUrls.js";
 
   interface Props {
     commit: GitCommitInfo;
@@ -20,6 +23,16 @@
   }
 
   let firstLine = $derived(commit.message.split("\n")[0]);
+
+  async function openCommitOnForge() {
+    const info = gitStore.forgeInfo;
+    if (!info) return;
+    const url = forgeCommitUrl(info, commit.oid);
+    if (url) {
+      const { open } = await import("@tauri-apps/plugin-shell");
+      await open(url);
+    }
+  }
 </script>
 
 <button
@@ -31,6 +44,18 @@
   <span class="commit-message">{firstLine}</span>
   <span class="commit-meta">— {commit.authorName}</span>
   <span class="commit-time">{relativeTime(commit.timestamp)}</span>
+  {#if gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"}
+    <span
+      class="forge-link-btn"
+      role="button"
+      tabindex="-1"
+      title="Open on {gitStore.forgeInfo.host}"
+      onclick={(e) => { e.stopPropagation(); openCommitOnForge(); }}
+      onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openCommitOnForge(); } }}
+    >
+      <ExternalLink size={12} />
+    </span>
+  {/if}
 </button>
 
 <style>
@@ -84,5 +109,31 @@
     font-size: 0.65rem;
     color: var(--th-text-400);
     white-space: nowrap;
+  }
+
+  .forge-link-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--th-text-500);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    padding: 0;
+  }
+
+  .commit-row:hover .forge-link-btn {
+    opacity: 1;
+  }
+
+  .forge-link-btn:hover {
+    background: var(--th-bg-700);
+    color: var(--th-text-200);
   }
 </style>

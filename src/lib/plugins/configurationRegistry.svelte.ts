@@ -12,6 +12,7 @@ import type {
   Disposable,
 } from "./pluginTypes.js";
 import { projectSettingsStore, type ProjectSettings } from "../stores/projectSettingsStore.svelte.js";
+import type { Component } from "svelte";
 
 interface RegisteredConfiguration {
   pluginId: string;
@@ -29,6 +30,12 @@ class ConfigurationRegistry {
    * to the registry value or schema default.
    */
   private projectKeyMap: Record<string, keyof ProjectSettings> = {};
+
+  /**
+   * Custom renderers registered by plugins for specific config keys.
+   * When set, the settings UI renders this Svelte component instead of the auto-generated form field.
+   */
+  private customRenderers: Record<string, Component> = {};
 
   /** Register a plugin's configuration schema */
   registerConfiguration(pluginId: string, config: ConfigurationContribution): Disposable {
@@ -112,6 +119,21 @@ class ConfigurationRegistry {
   /** Restore values from persisted storage */
   restoreValues(stored: Record<string, unknown>): void {
     this.values = { ...this.values, ...stored };
+  }
+
+  /** Register a custom Svelte component to render instead of the auto-generated field for a config key. */
+  registerCustomRenderer(key: string, component: Component): Disposable {
+    this.customRenderers[key] = component;
+    return {
+      dispose: () => {
+        delete this.customRenderers[key];
+      },
+    };
+  }
+
+  /** Get a custom renderer for a config key, if one is registered. */
+  getCustomRenderer(key: string): Component | undefined {
+    return this.customRenderers[key];
   }
 }
 

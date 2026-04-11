@@ -417,6 +417,12 @@
       <h3 class="settings-section-title">{section.title}</h3>
       <div class="space-y-3">
         {#each Object.entries(section.properties).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)) as [key, prop] (key)}
+          {#if configurationRegistry.getCustomRenderer(key)}
+            {@const CustomComponent = configurationRegistry.getCustomRenderer(key)}
+            {#if CustomComponent}
+              <CustomComponent />
+            {/if}
+          {:else}
           <div>
             <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="plugin-{key}">{prop.description}</label>
             {#if prop.type === "boolean"}
@@ -457,6 +463,7 @@
               />
             {/if}
           </div>
+          {/if}
         {/each}
       </div>
     {/each}

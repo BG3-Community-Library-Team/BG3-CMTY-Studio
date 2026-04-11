@@ -12,6 +12,7 @@
   import GitInitPrompt from "./GitInitPrompt.svelte";
   import GitMergeConflictBanner from "./GitMergeConflictBanner.svelte";
   import ExplorerDrawer from "../ExplorerDrawer.svelte";
+  import ForgeSection from "./ForgeSection.svelte";
 
   let gitPath = $derived(modStore.projectPath || modStore.selectedModPath || "");
 
@@ -101,6 +102,9 @@
           </ExplorerDrawer>
         </div>
       {/if}
+
+      <!-- Forge Integration -->
+      <ForgeSection />
     </div>
   {/if}
 </div>

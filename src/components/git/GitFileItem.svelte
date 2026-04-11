@@ -5,6 +5,8 @@
   import Plus from "@lucide/svelte/icons/plus";
   import Minus from "@lucide/svelte/icons/minus";
   import Undo2 from "@lucide/svelte/icons/undo-2";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import { forgeFileUrl } from "../../lib/utils/forgeUrls.js";
 
   interface Props {
     file: GitFileStatus;
@@ -49,6 +51,17 @@
     if (parts.length <= 1) return "";
     return parts.slice(0, -1).join("/") + "/";
   }
+
+  async function openOnForge() {
+    const info = gitStore.forgeInfo;
+    if (!info) return;
+    const branch = gitStore.currentBranch ?? "main";
+    const url = forgeFileUrl(info, branch, file.path);
+    if (url) {
+      const { open } = await import("@tauri-apps/plugin-shell");
+      await open(url);
+    }
+  }
 </script>
 
 <div
@@ -89,6 +102,15 @@
           <Undo2 size={14} />
         </button>
       {/if}
+    {/if}
+    {#if gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"}
+      <button
+        class="git-action-btn"
+        title="Open on {gitStore.forgeInfo.host}"
+        onclick={(e) => { e.stopPropagation(); openOnForge(); }}
+      >
+        <ExternalLink size={14} />
+      </button>
     {/if}
   </div>
 </div>

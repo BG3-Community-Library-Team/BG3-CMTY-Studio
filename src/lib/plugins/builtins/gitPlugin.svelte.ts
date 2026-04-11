@@ -18,6 +18,7 @@ import { uiStore } from "../../stores/uiStore.svelte.js";
 import { toastStore } from "../../stores/toastStore.svelte.js";
 import { m } from "../../../paraglide/messages.js";
 import GitPanel from "../../../components/git/GitPanel.svelte";
+import GitSettingsSection from "../../../components/settings/GitSettingsSection.svelte";
 
 function getGitPath(): string {
   return modStore.projectPath || modStore.selectedModPath || "";
@@ -47,6 +48,7 @@ export const gitPlugin: PluginModule = {
         { command: "git:sync", title: "Sync", category: "Git", enablement: "gitRepoActive" },
         { command: "git:stash", title: "Stash Changes", category: "Git", enablement: "gitRepoActive && gitHasChanges" },
         { command: "git:stashPop", title: "Pop Stash", category: "Git", enablement: "gitRepoActive" },
+        { command: "git:openOnRemote", title: "Open on Forge", category: "Git", icon: "external-link", enablement: "gitRepoActive && gitForgeDetected" },
       ],
       configuration: {
         title: "Git",
@@ -75,6 +77,12 @@ export const gitPlugin: PluginModule = {
             default: "origin",
             description: "Default remote for push/pull operations",
             order: 4,
+          },
+          "git.forge.accounts": {
+            type: "object",
+            default: {},
+            description: "Connected forge accounts (managed by custom component)",
+            order: 10,
           },
         },
       },
@@ -107,6 +115,7 @@ export const gitPlugin: PluginModule = {
           { command: "git:sync", when: "gitRepoActive" },
           { command: "git:stash", when: "gitRepoActive && gitHasChanges" },
           { command: "git:stashPop", when: "gitRepoActive" },
+          { command: "git:openOnRemote", when: "gitRepoActive && gitForgeDetected" },
         ],
       },
     },
@@ -382,6 +391,21 @@ export const gitPlugin: PluginModule = {
           }
         },
       },
+      {
+        id: "git:openOnRemote",
+        label: "Open Repository on Forge",
+        category: "action",
+        icon: "↗",
+        when: "gitRepoActive && gitForgeDetected",
+        enabled: () => gitStore.isRepo && !!(gitStore as any).forgeInfo,
+        execute: async () => {
+          const info = (gitStore as any).forgeInfo;
+          if (!info?.owner || !info?.repo) return;
+          const url = `https://${info.host}/${info.owner}/${info.repo}`;
+          const { open } = await import("@tauri-apps/plugin-shell");
+          await open(url);
+        },
+      },
     ];
     commandRegistry.registerMany(commands);
 
@@ -409,7 +433,14 @@ export const gitPlugin: PluginModule = {
       "git.defaultRemote": "gitDefaultRemote",
     });
 
-    // 5. Set up context key syncing and status bar text via $effect.root
+    // 5. Register custom forge account settings section
+    const rendererDisposable = configurationRegistry.registerCustomRenderer(
+      "git.forge.accounts",
+      GitSettingsSection,
+    );
+    ctx.subscriptions.push(rendererDisposable);
+
+    // 6. Set up context key syncing and status bar text via $effect.root
     const cleanupEffects = $effect.root(() => {
       // Sync gitStore → context keys
       $effect(() => {
@@ -425,6 +456,11 @@ export const gitPlugin: PluginModule = {
       });
       $effect(() => {
         contextKeys.set("gitConflicts", gitStore.conflictedFiles.length > 0);
+      });
+      $effect(() => {
+        contextKeys.set("gitForgeDetected",
+          !!gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"
+        );
       });
       // Update status bar item text reactively
       $effect(() => {
@@ -457,6 +493,7 @@ export const gitPlugin: PluginModule = {
     contextKeys.delete("gitBranchName");
     contextKeys.delete("gitHasChanges");
     contextKeys.delete("gitConflicts");
+    contextKeys.delete("gitForgeDetected");
     // Commands will be cleaned up by pluginHost via unregisterPrefix
   },
 };

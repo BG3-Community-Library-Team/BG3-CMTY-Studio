@@ -2,6 +2,7 @@ pub mod db;
 pub mod diff;
 pub mod export;
 pub mod filesystem;
+pub mod forge_api;
 pub mod generate;
 pub mod git_branch;
 pub mod git_core;
