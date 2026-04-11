@@ -133,6 +133,20 @@ describe("CommandRegistry", () => {
     });
   });
 
+  // ── getVisibleCommands() ────────────────────────────────
+
+  describe("getVisibleCommands()", () => {
+    it("returns commands that are visible and enabled", () => {
+      commandRegistry.registerMany([
+        makeCmd({ id: "v1", enabled: () => true }),
+        makeCmd({ id: "v2", enabled: () => false }),
+      ]);
+      const visible = commandRegistry.getVisibleCommands();
+      expect(visible).toHaveLength(1);
+      expect(visible[0].id).toBe("v1");
+    });
+  });
+
   // ── getEnabledByCategory() ─────────────────────────────
 
   describe("getEnabledByCategory()", () => {

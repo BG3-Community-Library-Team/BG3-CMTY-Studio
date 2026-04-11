@@ -151,7 +151,9 @@
   }
 
   function onChildReorder(parentName: string, draggedId: string, targetId: string, position: "before" | "after") {
-    uiStore.reorderNode(`data:${parentName}`, draggedId, targetId, position);
+    const parent = nodeMap.get(parentName);
+    const childIds = parent?.children?.map(c => c.name);
+    uiStore.reorderNode(`data:${parentName}`, draggedId, targetId, position, childIds);
   }
 
   function getOrderedChildren(parentName: string, children: FolderNode[]): FolderNode[] {
@@ -221,7 +223,7 @@
     if (targetIdx < 0 || targetIdx >= orderedNodeIds.length) return;
     const targetId = orderedNodeIds[targetIdx];
     const position = direction === "up" ? "before" : "after";
-    uiStore.reorderNode("data", nodeId, targetId, position);
+    uiStore.reorderNode("data", nodeId, targetId, position, defaultNodeIds);
     const label = nodeMap.get(nodeId)?.label ?? nodeId;
     announce(m.explorer_reorder_announce({ name: label, position: String(targetIdx + 1) }));
     requestAnimationFrame(() => {
@@ -601,7 +603,7 @@
               draggable={true}
               ondragstart={(e) => handleDragStart(e, "_Additional_", "data", dragState)}
               ondragover={(e) => handleDragOver(e, "_Additional_", "data", dragState)}
-              ondrop={(e) => handleDrop(e, "_Additional_", "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+              ondrop={(e) => handleDrop(e, "_Additional_", "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos, defaultNodeIds))}
               ondragend={() => handleDragEnd(dragState)}
               oncontextmenu={(e) => showContextMenu(e, "", "Additional Data", undefined, undefined, true, "_Additional_")}
               onkeydown={(e) => handleNodeKeydown(e, "_Additional_", idx)}
@@ -643,7 +645,7 @@
                   draggable={true}
                   ondragstart={(e) => handleDragStart(e, nodeId, "data", dragState)}
                   ondragover={(e) => handleDragOver(e, nodeId, "data", dragState)}
-                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos, defaultNodeIds))}
                   ondragend={() => handleDragEnd(dragState)}
                   oncontextmenu={(e) => showContextMenu(e, resolveNodePath(node.name, pathKind), node.label, node.Section, node, true, nodeId)}
                   onkeydown={(e) => handleNodeKeydown(e, nodeId, idx)}
@@ -735,7 +737,7 @@
                   draggable={true}
                   ondragstart={(e) => handleDragStart(e, nodeId, "data", dragState)}
                   ondragover={(e) => handleDragOver(e, nodeId, "data", dragState)}
-                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos))}
+                  ondrop={(e) => handleDrop(e, nodeId, "data", dragState, (src, tgt, pos) => uiStore.reorderNode("data", src, tgt, pos, defaultNodeIds))}
                   ondragend={() => handleDragEnd(dragState)}
                   onclick={() => openNode(node)}
                   ondblclick={() => openNode(node, false)}
@@ -798,63 +800,11 @@
   }
 
   /* ── Drop indicators ── */
-  :global(.tree-node.drop-before),
+  :global(.tree-node.drop-before) {
+    box-shadow: 0 -2px 0 0 var(--th-accent-500, #0ea5e9);
+  }
+
   :global(.tree-node.drop-after) {
-    position: relative;
-    background: color-mix(in srgb, var(--th-accent-500) 8%, transparent) !important;
-  }
-
-  :global(.tree-node.drop-before)::before {
-    content: '';
-    position: absolute;
-    top: -1px;
-    left: 8px;
-    right: 0;
-    height: 2px;
-    background: var(--th-accent-500);
-    box-shadow: 0 0 4px var(--th-accent-500);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  :global(.tree-node.drop-before)::after {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: 4px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 2px solid var(--th-accent-500);
-    background: var(--th-bg-900, #1a1a2e);
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  :global(.tree-node.drop-after)::before {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 8px;
-    right: 0;
-    height: 2px;
-    background: var(--th-accent-500);
-    box-shadow: 0 0 4px var(--th-accent-500);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  :global(.tree-node.drop-after)::after {
-    content: '';
-    position: absolute;
-    bottom: -4px;
-    left: 4px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 2px solid var(--th-accent-500);
-    background: var(--th-bg-900, #1a1a2e);
-    pointer-events: none;
-    z-index: 2;
+    box-shadow: 0 2px 0 0 var(--th-accent-500, #0ea5e9);
   }
 </style>

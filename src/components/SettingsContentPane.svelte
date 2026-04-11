@@ -8,6 +8,24 @@
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { open } from "@tauri-apps/plugin-dialog";
   import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
+  import { projectSettingsStore, type ProjectSettings } from "../lib/stores/projectSettingsStore.svelte.js";
+
+  /** Map of configurationRegistry keys → projectSettingsStore keys for project-level persistence. */
+  const CONFIG_TO_PROJECT: Record<string, keyof ProjectSettings> = {
+    "git.userName": "gitUserName",
+    "git.userEmail": "gitUserEmail",
+    "git.autoFetchInterval": "gitAutoFetchInterval",
+    "git.defaultRemote": "gitDefaultRemote",
+  };
+
+  /** Set a config value in the registry and also persist to project settings if applicable. */
+  function setConfigValue(key: string, value: unknown): void {
+    configurationRegistry.set(key, value);
+    const projectKey = CONFIG_TO_PROJECT[key];
+    if (projectKey) {
+      projectSettingsStore.set(projectKey, value as any);
+    }
+  }
 
   let { stagingOverrideStyle = $bindable("") }: { stagingOverrideStyle?: string } = $props();
 
@@ -19,8 +37,12 @@
         directory: true,
       });
       if (selected) {
-        settingsStore.ideHelpersPath = selected;
-        settingsStore.persist();
+        if (projectSettingsStore.loaded) {
+          projectSettingsStore.set("ideHelpersPath", selected);
+        } else {
+          settingsStore.ideHelpersPath = selected;
+          settingsStore.persist();
+        }
       }
     } catch { /* user cancelled */ }
   }
@@ -33,8 +55,12 @@
         directory: true,
       });
       if (selected) {
-        settingsStore.templateFoldersPath = selected;
-        settingsStore.persist();
+        if (projectSettingsStore.loaded) {
+          projectSettingsStore.set("templateFoldersPath", selected);
+        } else {
+          settingsStore.templateFoldersPath = selected;
+          settingsStore.persist();
+        }
       }
     } catch { /* user cancelled */ }
   }
@@ -284,8 +310,8 @@
             type="text"
             class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
             placeholder={m.settings_schemas_mcm_placeholder()}
-            value={settingsStore.mcmSchemaUrl}
-            oninput={(e) => { settingsStore.mcmSchemaUrl = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("mcmSchemaUrl") || "") : settingsStore.mcmSchemaUrl}
+            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("mcmSchemaUrl", v); } else if (v !== settingsStore.mcmSchemaUrl) { settingsStore.mcmSchemaUrl = v; settingsStore.persist(); } }}
           />
           <button
             class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
@@ -352,8 +378,8 @@
             type="text"
             class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
             placeholder={m.settings_scripts_ide_helpers_placeholder()}
-            value={settingsStore.ideHelpersPath}
-            oninput={(e) => { settingsStore.ideHelpersPath = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("ideHelpersPath") || "") : settingsStore.ideHelpersPath}
+            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("ideHelpersPath", v); } else if (v !== settingsStore.ideHelpersPath) { settingsStore.ideHelpersPath = v; settingsStore.persist(); } }}
           />
           <button
             class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
@@ -373,8 +399,8 @@
             type="text"
             class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
             placeholder="Select a template folder..."
-            value={settingsStore.templateFoldersPath}
-            oninput={(e) => { settingsStore.templateFoldersPath = (e.target as HTMLInputElement).value; settingsStore.persist(); }}
+            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("templateFoldersPath") || "") : settingsStore.templateFoldersPath}
+            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("templateFoldersPath", v); } else if (v !== settingsStore.templateFoldersPath) { settingsStore.templateFoldersPath = v; settingsStore.persist(); } }}
           />
           <button
             class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
@@ -399,7 +425,7 @@
                 type="checkbox"
                 class="form-checkbox"
                 checked={!!configurationRegistry.get(key)}
-                onchange={(e) => configurationRegistry.set(key, (e.target as HTMLInputElement).checked)}
+                onchange={(e) => setConfigValue(key, (e.target as HTMLInputElement).checked)}
               />
             {:else if prop.type === "number"}
               <input
@@ -407,14 +433,14 @@
                 type="number"
                 class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
                 value={configurationRegistry.get(key) ?? ""}
-                oninput={(e) => configurationRegistry.set(key, Number((e.target as HTMLInputElement).value))}
+                onblur={(e) => { const v = Number((e.target as HTMLInputElement).value); if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
               />
             {:else if prop.enum}
               <select
                 id="plugin-{key}"
                 class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
                 value={configurationRegistry.get(key) ?? prop.default}
-                onchange={(e) => configurationRegistry.set(key, (e.target as HTMLSelectElement).value)}
+                onchange={(e) => setConfigValue(key, (e.target as HTMLSelectElement).value)}
               >
                 {#each prop.enum as opt, idx}
                   <option value={opt}>{prop.enumDescriptions?.[idx] ?? String(opt)}</option>
@@ -427,7 +453,7 @@
                 autocomplete="off"
                 class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
                 value={configurationRegistry.get(key) ?? ""}
-                oninput={(e) => configurationRegistry.set(key, (e.target as HTMLInputElement).value)}
+                onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
               />
             {/if}
           </div>

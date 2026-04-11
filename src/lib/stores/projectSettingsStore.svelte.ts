@@ -14,6 +14,10 @@ export interface ProjectSettings {
   mcmSchemaUrl?: string;
   gitUserName?: string;
   gitUserEmail?: string;
+  gitAutoFetchInterval?: string;
+  gitDefaultRemote?: string;
+  ideHelpersPath?: string;
+  templateFoldersPath?: string;
   scriptEnginePreferences?: Record<string, unknown>;
 }
 
@@ -24,6 +28,10 @@ const PROJECT_SCOPED_KEYS = new Set<keyof ProjectSettings>([
   "mcmSchemaUrl",
   "gitUserName",
   "gitUserEmail",
+  "gitAutoFetchInterval",
+  "gitDefaultRemote",
+  "ideHelpersPath",
+  "templateFoldersPath",
   "scriptEnginePreferences",
 ]);
 
@@ -34,6 +42,10 @@ const PROJECT_DEFAULTS: Required<ProjectSettings> = {
   mcmSchemaUrl: "",
   gitUserName: "",
   gitUserEmail: "",
+  gitAutoFetchInterval: "off",
+  gitDefaultRemote: "origin",
+  ideHelpersPath: "",
+  templateFoldersPath: "",
   scriptEnginePreferences: {},
 };
 
@@ -64,6 +76,11 @@ class ProjectSettingsStore {
   /** Set a project-level override value. */
   set<K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]): void {
     if (!PROJECT_SCOPED_KEYS.has(key)) return;
+    // Skip if the value is unchanged (avoid unnecessary persist cycles)
+    const current = this.overrides[key];
+    if (current === value) return;
+    if (typeof current === "object" && typeof value === "object"
+      && JSON.stringify(current) === JSON.stringify(value)) return;
     this.overrides = { ...this.overrides, [key]: value };
     if (!this.loaded) return; // Don't persist if store hasn't been loaded for a project
     this.#schedulePersist();
@@ -124,12 +141,17 @@ class ProjectSettingsStore {
       // Ensure `.cmtystudio/` directory exists
       await invoke("cmd_ensure_cmtystudio_dir", { projectPath });
 
-      const content = await invoke<string>("cmd_read_project_file", {
-        projectPath,
-        filename: SETTINGS_FILENAME,
-      });
+      let parsed: Record<string, unknown> = {};
+      try {
+        const content = await invoke<string>("cmd_read_project_file", {
+          projectPath,
+          filename: SETTINGS_FILENAME,
+        });
+        parsed = JSON.parse(content);
+      } catch {
+        // File doesn't exist yet — that's fine, start with empty overrides
+      }
 
-      const parsed = JSON.parse(content);
       // Only keep keys that are in the project-scoped set
       const filtered: ProjectSettings = {};
       for (const key of PROJECT_SCOPED_KEYS) {
@@ -178,6 +200,15 @@ class ProjectSettingsStore {
   #schedulePersist(): void {
     if (this.#persistTimer) clearTimeout(this.#persistTimer);
     this.#persistTimer = setTimeout(() => this.#executePersist(), 500);
+  }
+
+  /** Flush any pending debounced save immediately. Call on blur / before unload. */
+  async saveNow(): Promise<void> {
+    if (this.#persistTimer) {
+      clearTimeout(this.#persistTimer);
+      this.#persistTimer = null;
+    }
+    await this.#executePersist();
   }
 
   async #executePersist(): Promise<void> {

@@ -13,6 +13,7 @@ import { parseExistingConfig } from "../utils/configParser.js";
 import { modSelectionService } from "./modSelectionService.svelte.js";
 import { detectModFolders } from "../tauri/scanning.js";
 import { ensureCmtystudioDir } from "../tauri/project-settings.js";
+import { projectSettingsStore } from "../stores/projectSettingsStore.svelte.js";
 import type { DetectedMod } from "../types/modSelection.js";
 
 /**
@@ -257,6 +258,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
       try { await ensureCmtystudioDir(projectRoot); } catch (e) {
         console.warn("[scanAndImport] Failed to create .cmtystudio dir:", e);
       }
+      await projectSettingsStore.load(projectRoot);
     }
 
     const result = await scanMod(modPath, extraScanPaths, true);

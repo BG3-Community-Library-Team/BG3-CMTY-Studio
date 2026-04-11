@@ -373,6 +373,17 @@ pub fn populate_db(
     }
 }
 
+/// Query the current maximum file_id in `_source_files` so subsequent inserts
+/// start from a non-overlapping range.  Returns 0 when the table is empty.
+fn existing_max_file_id(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COALESCE(MAX(file_id), 0) FROM _source_files",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
 /// In-memory build path: load schema into memory, insert everything in RAM,
 /// write to disk in one shot via backup API.
 fn populate_db_in_memory(
@@ -408,6 +419,7 @@ fn populate_db_in_memory(
 
     let mut phase_times = PhaseTimes::default();
     let fk_count = count_fk_constraints(&mem_conn)?;
+    let id_offset = existing_max_file_id(&mem_conn);
 
     // --- Parallel partition: split Effect files from the rest ---
     let (counts, row_counts) = {
@@ -434,10 +446,11 @@ fn populate_db_in_memory(
                 &main_files,
                 schema,
                 &mut phase_times,
+                id_offset,
             )?
         } else {
             // Few/no effect files — single pipeline is fine
-            run_pipeline_insert(&mem_conn, files, schema, &mut phase_times, 0, None, None)?
+            run_pipeline_insert(&mem_conn, files, schema, &mut phase_times, id_offset, None, None)?
         }
     };
 
@@ -558,6 +571,7 @@ fn populate_db_on_disk(
     conn.set_prepared_statement_cache_capacity(3000);
 
     let fk_count = count_fk_constraints(&conn)?;
+    let id_offset = existing_max_file_id(&conn);
 
     let (counts, row_counts) = if use_parallel {
         let chunk_size = effect_refs.len().div_ceil(n_parts);
@@ -598,9 +612,10 @@ fn populate_db_on_disk(
             &main_refs,
             schema,
             &mut phase_times,
+            id_offset,
         )?
     } else {
-        run_pipeline_insert(&conn, files, schema, &mut phase_times, 0, None, None)?
+        run_pipeline_insert(&conn, files, schema, &mut phase_times, id_offset, None, None)?
     };
 
     // Post-processing
@@ -727,6 +742,7 @@ fn num_effect_partitions(effect_file_count: usize) -> usize {
 ///                    `None` if in-memory.
 /// `effect_file_groups`: effect files split into contiguous chunks (preserving
 ///                       the original priority sort order).
+#[allow(clippy::too_many_arguments)]
 fn run_parallel_insert(
     main_conn: &mut Connection,
     effect_conns: Vec<Connection>,
@@ -735,6 +751,7 @@ fn run_parallel_insert(
     main_files: &[&FileEntry],
     schema: &DiscoveredSchema,
     phase_times: &mut PhaseTimes,
+    id_offset: i64,
 ) -> Result<(PopulateCounts, HashMap<String, i64>), String> {
     let num_effect = effect_conns.len();
     let total_effect_files: usize = effect_file_groups.iter().map(|g| g.len()).sum::<usize>();
@@ -767,13 +784,14 @@ fn run_parallel_insert(
 
     // File-id ranges: sub-partition 0 gets 1..N0, sub-partition 1 gets N0+1..N0+N1, etc.
     // Main gets IDs after all effect sub-partitions.
+    // `id_offset` ensures we don't collide with existing rows in the DB.
     let mut effect_id_bases: Vec<i64> = Vec::with_capacity(num_effect);
-    let mut cumulative = 0i64;
+    let mut cumulative = id_offset;
     for group in &effect_file_groups {
         effect_id_bases.push(cumulative);
         cumulative += group.len() as i64;
     }
-    let main_id_base: i64 = total_effect_files as i64;
+    let main_id_base: i64 = id_offset + total_effect_files as i64;
 
     // Divide parse threads among partitions.
     let total_threads = std::thread::available_parallelism()

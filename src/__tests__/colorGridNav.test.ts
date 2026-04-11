@@ -177,3 +177,24 @@ describe("nextVisibleIndex", () => {
     expect(nextVisibleIndex(0, -1, 10)).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// gridKeyNav — nearestVisibleIndex backward fallback
+// ---------------------------------------------------------------------------
+describe("gridKeyNav — backward search fallback", () => {
+  it("falls back to backward search when forward has no visible items", () => {
+    // Grid: 10 items, 5 cols. Active=0, press ArrowDown → target=5
+    // Items 5-9 are all hidden; items 0-4 are visible.
+    // Forward search from 5: 5,6,7,8,9 all hidden → backward from 4: finds 4
+    const vis = (i: number) => i < 5;
+    const r = gridKeyNav("ArrowDown", 0, 10, 5, vis);
+    expect(r).toEqual({ handled: true, newIndex: 4 });
+  });
+
+  it("returns activeIndex when no visible items at all", () => {
+    // All items hidden → nearestVisibleIndex returns undefined → fallback to activeIndex
+    const vis = () => false;
+    const r = gridKeyNav("ArrowDown", 2, 10, 5, vis);
+    expect(r).toEqual({ handled: true, newIndex: 2 });
+  });
+});

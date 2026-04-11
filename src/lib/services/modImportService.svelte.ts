@@ -12,6 +12,7 @@ import { settingsStore } from "../stores/settingsStore.svelte.js";
 import { m } from "../../paraglide/messages.js";
 import { modStore } from "../stores/modStore.svelte.js";
 import type { ModImportStatus } from "../stores/modStore.svelte.js";
+import { dataOperationStore } from "../stores/dataOperationStore.svelte.js";
 import type { ModMetaInfo } from "../utils/tauri.js";
 import {
   scanMod,
@@ -20,14 +21,13 @@ import {
   listLoadOrderPaks,
   getActiveModFolders,
   getModStatEntries,
-  recreateStaging,
-  populateStagingFromMod,
-  checkStagingIntegrity,
   getDbPaths,
   populateModsDb,
   removeModFromModsDb,
   clearModsDb,
 } from "../utils/tauri.js";
+import { processModFolder } from "../tauri/mod-management.js";
+import type { ScanResult, SectionResult } from "../types/index.js";
 import { toastStore } from "../stores/toastStore.svelte.js";
 
 /** Callback type for showing the duplicate mod prompt to the user. */
@@ -46,7 +46,11 @@ class ModImportService {
   pendingModPaths: string[] = $state([]);
   modImportStatus: Record<string, ModImportStatus> = $state({});
   isImportingLoadOrder: boolean = $state(false);
+  isClearing: boolean = $state(false);
   loadOrderStatus: string = $state("");
+
+  /** Set to true to abort an in-progress import loop. */
+  #abortImport = false;
 
   /** All mod paths to display: committed (in modStore) + pending (being processed). */
   get allAdditionalModPaths(): string[] {
@@ -54,6 +58,16 @@ class ModImportService {
   }
 
   // ── Utility helpers ────────────────────────────────────────────────
+
+  /** Whether any import operation is in progress (individual or batch). */
+  get isImporting(): boolean {
+    return this.isImportingLoadOrder || this.pendingModPaths.length > 0;
+  }
+
+  /** Cancel any in-progress import loop. */
+  abortImport(): void {
+    this.#abortImport = true;
+  }
 
   formatBytes(bytes: number): string {
     if (bytes === 0) return "0 B";
@@ -65,87 +79,75 @@ class ModImportService {
   // ── Core import logic ──────────────────────────────────────────────
 
   /**
-   * Restore a previously-persisted mod on startup. This function performs NO
-   * disk mutations — no extraction, no conversion. It reads existing metadata
-   * and scans the mod's files so they appear in the UI.
+   * Restore a previously-persisted mod on startup. Lightweight: reads only
+   * metadata from disk (or pak header), adds the path to the mod list
+   * immediately, and fires non-blocking disk-size look-ups.
    *
-   * If the mod's files are missing the onMount validation loop will have
-   * already filtered it out, so this function can assume the paths exist.
+   * Does NOT re-scan files, re-ingest into ref_mods, or touch staging.
+   * The ref_mods data was populated during the original import and persists
+   * across sessions. Staging is only for the primary mod.
    */
   async restoreModPath(p: string): Promise<void> {
     if (modStore.additionalModPaths.includes(p)) return;
 
+    const isPak = p.toLowerCase().endsWith(".pak");
+    const modName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
     let newMeta: ModMetaInfo | null = null;
-    try {
-      newMeta = await readModMeta(p);
-    } catch (e) {
-      console.warn("Mod metadata read failed:", p, e);
+
+    // Read metadata only — lightweight
+    if (isPak) {
+      try {
+        newMeta = await readModMeta(p);
+      } catch {
+        // pak meta read may not be supported via readModMeta — that's fine
+      }
+    } else {
+      try {
+        newMeta = await readModMeta(p);
+      } catch (e) {
+        console.warn("Mod metadata read failed:", p, e);
+      }
     }
 
     if (newMeta) {
       this.additionalModMeta = { ...this.additionalModMeta, [p]: newMeta };
     }
 
-    try {
-      const result = await scanMod(p, undefined, false);
-      modStore.additionalModPaths = [...modStore.additionalModPaths, p];
-      modStore.additionalModResults = [...modStore.additionalModResults, result];
+    // Build a minimal ScanResult for display (no disk scan needed)
+    const result: ScanResult = {
+      mod_meta: newMeta ?? {
+        uuid: "", folder: modName, name: modName, author: "", version: "",
+        version64: "", description: "", md5: "", mod_type: "", tags: "",
+        num_players: "", gm_template: "", char_creation_level: "",
+        lobby_level: "", menu_level: "", startup_level: "", photo_booth: "",
+        main_menu_bg_video: "", publish_version: "", target_mode: "",
+        dependencies: [],
+      },
+      sections: [],
+      existing_config_path: null,
+    };
 
-      // Rehydrate staging from restored mod's files (read-only, non-blocking on failure)
-      const modName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
-      try {
-        const stagingDbPath = await recreateStaging();
-        const summary = await populateStagingFromMod(p, modName, stagingDbPath);
-        if (summary.file_errors > 0 || summary.row_errors > 0) {
-          toastStore.warning(
-            m.import_staging_warnings_title(),
-            m.import_staging_warnings_detail({ file_errors: String(summary.file_errors), row_errors: String(summary.row_errors), mod_name: modName }),
-          );
+    modStore.additionalModPaths = [...modStore.additionalModPaths, p];
+    modStore.additionalModResults = [...modStore.additionalModResults, result];
+
+    // Non-blocking: disk size look-up
+    dirSize(p).then(bytes => {
+      this.modDiskSizes = { ...this.modDiskSizes, [p]: this.formatBytes(bytes) };
+    }).catch(e => {
+      console.warn("Disk size check failed:", p, e);
+      this.modDiskSizes = { ...this.modDiskSizes, [p]: m.import_disk_size_unavailable() };
+    });
+
+    // Non-blocking: stat entries for combobox population
+    getModStatEntries(p).then(entries => {
+      if (entries.length > 0) {
+        const existing = new Set(modStore.modStatEntries.map(e => e.name));
+        const novel = entries.filter(e => !existing.has(e.name));
+        if (novel.length > 0) {
+          modStore.modStatEntries = [...modStore.modStatEntries, ...novel];
         }
-        // Integrity check (diagnostic only)
-        try {
-          const issues = await checkStagingIntegrity();
-          if (issues) {
-            console.warn("[Staging] Integrity check issues after restore:", issues);
-            toastStore.warning(m.import_staging_integrity(), issues);
-          }
-        } catch (intErr) {
-          console.warn("[Staging] Integrity check failed:", intErr);
-        }
-      } catch (stagingErr) {
-        console.warn("[Staging] Failed to rehydrate staging for restored mod:", p, stagingErr);
-        toastStore.warning(m.import_staging_failed(), m.import_staging_population_failed({ mod_name: modName, error: String(stagingErr) }));
       }
-
-      // Merge additional mod stat entries for combobox population (non-blocking)
-      getModStatEntries(p).then(entries => {
-        if (entries.length > 0) {
-          const existing = new Set(modStore.modStatEntries.map(e => e.name));
-          const novel = entries.filter(e => !existing.has(e.name));
-          if (novel.length > 0) {
-            modStore.modStatEntries = [...modStore.modStatEntries, ...novel];
-          }
-        }
-      }).catch(err => console.warn("Failed to load additional mod stat entries:", err));
-
-      // Re-ingest into ref_mods.sqlite on restore (non-blocking)
-      {
-        const modName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
-        getDbPaths().then(dbPaths =>
-          populateModsDb(p, modName, dbPaths.mods, false)
-        ).catch(e => console.warn("[ref_mods] Failed to re-ingest on restore:", modName, e));
-      }
-
-      dirSize(p).then(bytes => {
-        if (bytes > 0) this.modDiskSizes = { ...this.modDiskSizes, [p]: this.formatBytes(bytes) };
-      }).catch(e => {
-        console.warn("Disk size check failed:", p, e);
-        this.modDiskSizes = { ...this.modDiskSizes, [p]: m.import_disk_size_unavailable() };
-      });
-    } catch (e: unknown) {
-      console.warn("Failed to restore mod scan:", p, e);
-      settingsStore.removeAdditionalModPath(p);
-    }
+    }).catch(err => console.warn("Failed to load additional mod stat entries:", err));
   }
 
   /**
@@ -155,13 +157,27 @@ class ModImportService {
   async addModPath(p: string, showDuplicatePrompt: DuplicatePromptFn): Promise<void> {
     if (modStore.additionalModPaths.includes(p) || this.pendingModPaths.includes(p)) return;
 
+    const isPak = p.toLowerCase().endsWith(".pak");
     let newMeta: ModMetaInfo | null = null;
 
     // ── Read metadata (silent) ────────────────────────────────────────
-    try {
-      newMeta = await readModMeta(p);
-    } catch (e) {
-      console.warn("Mod metadata not found:", p, e);
+    if (!isPak) {
+      try {
+        newMeta = await readModMeta(p);
+      } catch (e) {
+        console.warn("Mod metadata not found:", p, e);
+      }
+    }
+    // For .pak files, meta is read later via processModFolder
+
+    // ── Skip if identical to the active (primary) mod ─────────────────
+    if (newMeta) {
+      const activeMeta = modStore.scanResult?.mod_meta;
+      if (activeMeta && activeMeta.uuid && newMeta.uuid && activeMeta.uuid === newMeta.uuid
+        && activeMeta.folder && newMeta.folder && activeMeta.folder === newMeta.folder) {
+        console.info("[modImport] Skipping additional mod — meta.lsx identical to active mod:", p);
+        return;
+      }
     }
 
     // ── Duplicate check (silent) ──────────────────────────────────────
@@ -176,19 +192,78 @@ class ModImportService {
     }
     this.modImportStatus = { ...this.modImportStatus, [p]: "Scanning" };
 
-    try {
-      // Scan the mod for combobox and diff population.
-      const result = await scanMod(p, undefined, false);
+    // Drive the shared status bar spinner via dataOperationStore
+    const ownOperation = !this.isImportingLoadOrder;
+    const displayName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
+    if (ownOperation && !dataOperationStore.isRunning) {
+      dataOperationStore.startOperation("mod-import");
+    }
+    dataOperationStore.phase = "Scanning";
+    dataOperationStore.detail = displayName;
 
-      // ── Ingest into ref_mods.sqlite ─────────────────────────────────
-      {
+    try {
+      let result: ScanResult;
+
+      if (isPak) {
+        // .pak files: use processModFolder which reads from the pak natively
+        // (PakReader for meta + data, ingests into ref_mods.sqlite)
         const modName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
-        this.modImportStatus = { ...this.modImportStatus, [p]: "Ingesting" };
-        try {
-          const dbPaths = await getDbPaths();
-          await populateModsDb(p, modName, dbPaths.mods, false);
-        } catch (e) {
-          console.warn("[ref_mods] Failed to ingest mod data:", modName, e);
+        const processResult = await processModFolder(p, modName);
+
+        // Extract meta from process result for duplicate check
+        if (processResult.mod_meta && !newMeta) {
+          newMeta = processResult.mod_meta;
+          this.additionalModMeta = { ...this.additionalModMeta, [p]: newMeta };
+
+          // Skip if identical to active mod
+          const activeMeta = modStore.scanResult?.mod_meta;
+          if (activeMeta && activeMeta.uuid && newMeta.uuid && activeMeta.uuid === newMeta.uuid
+            && activeMeta.folder && newMeta.folder && activeMeta.folder === newMeta.folder) {
+            console.info("[modImport] Skipping pak mod — meta.lsx identical to active mod:", p);
+            this.pendingModPaths = this.pendingModPaths.filter(x => x !== p);
+            const upd = { ...this.modImportStatus }; delete upd[p]; this.modImportStatus = upd;
+            return;
+          }
+
+          // Late duplicate check for pak mods (meta only known after processing)
+          const dupAction = await this.checkDuplicate(p, newMeta, showDuplicatePrompt);
+          if (dupAction === "cancel") {
+            this.pendingModPaths = this.pendingModPaths.filter(x => x !== p);
+            const upd = { ...this.modImportStatus }; delete upd[p]; this.modImportStatus = upd;
+            return;
+          }
+        }
+
+        // Build a minimal ScanResult for display purposes
+        const sections: SectionResult[] = [];
+        result = {
+          mod_meta: processResult.mod_meta ?? {
+            uuid: "", folder: modName, name: modName, author: "", version: "",
+            version64: "", description: "", md5: "", mod_type: "", tags: "",
+            num_players: "", gm_template: "", char_creation_level: "",
+            lobby_level: "", menu_level: "", startup_level: "", photo_booth: "",
+            main_menu_bg_video: "", publish_version: "", target_mode: "",
+            dependencies: [],
+          },
+          sections,
+          existing_config_path: null,
+        };
+      } else {
+        // Directory mods: full scan + separate ref_mods ingest
+        result = await scanMod(p, undefined, false);
+
+        // ── Ingest into ref_mods.sqlite ─────────────────────────────────
+        {
+          const modName = p.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
+          this.modImportStatus = { ...this.modImportStatus, [p]: "Ingesting" };
+          dataOperationStore.phase = "Ingesting";
+          dataOperationStore.detail = modName;
+          try {
+            const dbPaths = await getDbPaths();
+            await populateModsDb(p, modName, dbPaths.mods, false);
+          } catch (e) {
+            console.warn("[ref_mods] Failed to ingest mod data:", modName, e);
+          }
         }
       }
 
@@ -214,7 +289,7 @@ class ModImportService {
       }).catch(err => console.warn("Failed to load additional mod stat entries:", err));
 
       dirSize(p).then(bytes => {
-        if (bytes > 0) this.modDiskSizes = { ...this.modDiskSizes, [p]: this.formatBytes(bytes) };
+        this.modDiskSizes = { ...this.modDiskSizes, [p]: this.formatBytes(bytes) };
       }).catch(e => {
         console.warn("Disk size check failed:", p, e);
         this.modDiskSizes = { ...this.modDiskSizes, [p]: m.import_disk_size_unavailable() };
@@ -224,6 +299,10 @@ class ModImportService {
     } finally {
       this.pendingModPaths = this.pendingModPaths.filter(x => x !== p);
       const upd = { ...this.modImportStatus }; delete upd[p]; this.modImportStatus = upd;
+      // Complete the shared spinner if this was a standalone (non-batch) import
+      if (ownOperation && dataOperationStore.isRunning && dataOperationStore.operationType === "mod-import") {
+        dataOperationStore.completeOperation(m.import_count_imported({ count: "1" }));
+      }
     }
   }
 
@@ -301,6 +380,8 @@ class ModImportService {
   async importFromLoadOrder(showDuplicatePrompt: DuplicatePromptFn): Promise<void> {
     this.isImportingLoadOrder = true;
     this.loadOrderStatus = m.import_scanning_mods_dir();
+    dataOperationStore.startOperation("mod-import");
+    dataOperationStore.phase = m.import_scanning_mods_dir();
     try {
       const paks = await listLoadOrderPaks();
       if (paks.length === 0) {
@@ -335,7 +416,12 @@ class ModImportService {
       let imported = 0;
       let skipped = 0;
       let failed = 0;
+      let aborted = 0;
       for (const pakPath of filteredPaks) {
+        if (this.#abortImport) {
+          aborted = filteredPaks.length - imported - skipped - failed;
+          break;
+        }
         if (modStore.additionalModPaths.includes(pakPath) || this.pendingModPaths.includes(pakPath)) {
           skipped++;
           continue;
@@ -352,6 +438,7 @@ class ModImportService {
       const parts = [m.import_count_imported({ count: String(imported) })];
       if (skipped > 0) parts.push(m.import_count_already_loaded({ count: String(skipped) }));
       if (failed > 0) parts.push(m.import_count_failed({ count: String(failed) }));
+      if (aborted > 0) parts.push(m.import_count_cancelled({ count: String(aborted) }));
       const inactive = paks.length - filteredPaks.length;
       if (activeFolders && inactive > 0) parts.push(m.import_count_inactive({ count: String(inactive) }));
       this.loadOrderStatus = m.import_load_order_complete({ summary: parts.join(", ") });
@@ -360,6 +447,10 @@ class ModImportService {
       console.error("Import from load order failed:", e);
     } finally {
       this.isImportingLoadOrder = false;
+      this.#abortImport = false;
+      if (dataOperationStore.isRunning && dataOperationStore.operationType === "mod-import") {
+        dataOperationStore.completeOperation(this.loadOrderStatus);
+      }
     }
   }
 
@@ -384,48 +475,63 @@ class ModImportService {
   }
 
   /** Clear all additional mods. */
-  clearAll(): void {
-    // Clear all mod data from ref_mods.sqlite (non-blocking)
-    getDbPaths().then(dbPaths =>
-      clearModsDb(dbPaths.mods)
-    ).catch(e => console.warn("[ref_mods] Failed to clear mods DB:", e));
+  async clearAll(): Promise<void> {
+    this.isClearing = true;
+    try {
+      // Clear all mod data from ref_mods.sqlite (await to avoid db-locked race)
+      try {
+        const dbPaths = await getDbPaths();
+        await clearModsDb(dbPaths.mods);
+      } catch (e) {
+        console.warn("[ref_mods] Failed to clear mods DB:", e);
+      }
 
-    this.additionalModMeta = {};
-    this.modDiskSizes = {};
-    modStore.additionalModPaths = [];
-    modStore.additionalModResults = [];
-    modStore.diffSource = "vanilla";
-    modStore.diffOverrideSections = null;
-    settingsStore.setAdditionalModPaths([]);
+      this.additionalModMeta = {};
+      this.modDiskSizes = {};
+      this.pendingModPaths = [];
+      this.modImportStatus = {};
+      this.loadOrderStatus = "";
+      modStore.additionalModPaths = [];
+      modStore.additionalModResults = [];
+      modStore.modStatEntries = [];
+      modStore.diffSource = "vanilla";
+      modStore.diffOverrideSections = null;
+      settingsStore.setAdditionalModPaths([]);
+    } finally {
+      this.isClearing = false;
+    }
   }
 
   /**
    * Restore persisted additional mods on startup.
-   * Validates each mod's files still exist, unregisters invalid ones.
-   * NO disk operations — only read metadata and scan.
+   * Validates each mod path still exists, unregisters invalid ones,
+   * then restores all valid mods in parallel (lightweight metadata reads only).
    */
   async restorePersistedMods(): Promise<void> {
     const persisted = settingsStore.additionalModPaths;
+    if (persisted.length === 0) return;
 
-    const stillValid: string[] = [];
-    for (const p of persisted) {
-      try {
-        const bytes = await dirSize(p);
-        if (bytes <= 0) {
-          console.warn("Unregistering mod with missing path:", p);
-          continue;
+    // Validate paths exist in parallel
+    const checks = await Promise.all(
+      persisted.map(async (p): Promise<[string, boolean]> => {
+        try {
+          const bytes = await dirSize(p);
+          return [p, bytes > 0];
+        } catch {
+          return [p, false];
         }
-        stillValid.push(p);
-      } catch {
-        console.warn("Unregistering mod with missing path:", p);
-      }
-    }
+      }),
+    );
 
-    if (stillValid.length < persisted.length) {
+    const stillValid = checks.filter(([, ok]) => ok).map(([p]) => p);
+    const removed = checks.filter(([, ok]) => !ok).map(([p]) => p);
+    if (removed.length > 0) {
+      for (const p of removed) console.warn("Unregistering mod with missing path:", p);
       settingsStore.setAdditionalModPaths(stillValid);
     }
 
-    for (const p of stillValid) await this.restoreModPath(p);
+    // Restore all valid mods in parallel (lightweight — only reads metadata)
+    await Promise.all(stillValid.map(p => this.restoreModPath(p)));
   }
 }
 

@@ -56,24 +56,29 @@ Add installation instructions here. Example:
 `;
   }
 
-  onMount(async () => {
-    const modPath = modStore.selectedModPath;
-    const basePath = modStore.projectPath || modPath;
+  // ── Reactive file loader: re-triggers whenever filePath or basePath changes ──
+  $effect(() => {
+    const fp = filePath;
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!fp || !basePath) return;
 
-    // If a specific file path was provided, load that file directly
-    if (filePath && basePath) {
-      // readTextFile needs an absolute path; filePath may be relative to the project root
-      const absPath = filePath.match(/^[a-zA-Z]:[\\/]|^\//) ? filePath : `${basePath}/${filePath}`;
-      readmePath = absPath;
-      try {
-        const existing = await readTextFile(absPath);
-        content = existing ?? "";
-      } catch {
-        content = "";
-      }
-      loaded = true;
-      return;
-    }
+    // readTextFile needs an absolute path; filePath may be relative to the project root
+    const absPath = fp.match(/^[a-zA-Z]:[\\/]|^\//) ? fp : `${basePath}/${fp}`;
+    readmePath = absPath;
+    content = "";   // Clear stale content immediately
+    loaded = false;
+
+    readTextFile(absPath)
+      .then(existing => { content = existing ?? ""; })
+      .catch(() => { content = ""; })
+      .finally(() => { loaded = true; });
+  });
+
+  onMount(async () => {
+    // If filePath is provided, the $effect above handles loading
+    if (filePath) return;
+
+    const modPath = modStore.selectedModPath;
 
     if (!modPath) {
       content = buildTemplate();

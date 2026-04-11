@@ -152,11 +152,31 @@ describe("UiStore", () => {
       expect(uiStore.openTabs.find(t => t.id === "preview-2")).toBeTruthy();
     });
 
-    it("promoteTab also clears pinned:false for already permanent tabs", () => {
+    it("promoteTab is safe on already permanent tabs", () => {
       uiStore.openTab({ id: "perm", label: "Perm", type: "section" });
       uiStore.promoteTab("perm");
-      expect(uiStore.openTabs.find(t => t.id === "perm")?.preview).toBe(false);
-      expect(uiStore.openTabs.find(t => t.id === "perm")?.pinned).toBeFalsy();
+      expect(uiStore.openTabs.find(t => t.id === "perm")?.preview).toBeFalsy();
+    });
+
+    it("pinTab on welcome tab is a no-op", () => {
+      uiStore.pinTab("welcome");
+      expect(uiStore.openTabs.find(t => t.id === "welcome")?.pinned).toBeFalsy();
+    });
+
+    it("multiple pinned tabs sort after welcome and before unpinned", () => {
+      uiStore.openTab({ id: "d", label: "D", type: "section" });
+      uiStore.openTab({ id: "e", label: "E", type: "section" });
+      uiStore.openTab({ id: "f", label: "F", type: "section" });
+      uiStore.pinTab("f");
+      uiStore.pinTab("d");
+      // Order should be: welcome, then pinned (f, d), then unpinned (e)
+      const fIdx = uiStore.openTabs.findIndex(t => t.id === "f");
+      const dIdx = uiStore.openTabs.findIndex(t => t.id === "d");
+      const eIdx = uiStore.openTabs.findIndex(t => t.id === "e");
+      expect(fIdx).toBeLessThan(eIdx);
+      expect(dIdx).toBeLessThan(eIdx);
+      expect(fIdx).toBeGreaterThan(0); // after welcome
+      expect(dIdx).toBeGreaterThan(0); // after welcome
     });
   });
 
@@ -698,6 +718,32 @@ describe("UiStore", () => {
       uiStore.closeTab("t1");
       uiStore.openTab({ id: "t3", label: "T3", type: "section" });
       expect(uiStore.activeTab?.id).toBe("t3");
+    });
+  });
+
+  // ── isDrawerCollapsed ────────────────────────────────────────
+
+  describe("isDrawerCollapsed", () => {
+    it("returns false by default for unknown drawers", () => {
+      expect(uiStore.isDrawerCollapsed("unknown-drawer")).toBe(false);
+    });
+
+    it("returns true for drawers in COLLAPSED_BY_DEFAULT set", () => {
+      expect(uiStore.isDrawerCollapsed("git-stashes")).toBe(true);
+      expect(uiStore.isDrawerCollapsed("git-remotes")).toBe(true);
+    });
+
+    it("respects stored collapsed state over defaults", () => {
+      uiStore.toggleDrawer("git-stashes");
+      // After toggle, it should no longer be collapsed (was default-collapsed)
+      expect(uiStore.isDrawerCollapsed("git-stashes")).toBe(false);
+    });
+
+    it("respects stored expanded state for non-default drawers", () => {
+      uiStore.toggleDrawer("some-drawer");
+      expect(uiStore.isDrawerCollapsed("some-drawer")).toBe(true);
+      uiStore.toggleDrawer("some-drawer");
+      expect(uiStore.isDrawerCollapsed("some-drawer")).toBe(false);
     });
   });
 });

@@ -394,12 +394,27 @@ class UiStore {
     localStorage.setItem(EXPLORER_VIEW_MODE_STORAGE_KEY, mode);
   }
 
+  /** IDs of drawers that should start collapsed when no stored preference exists. */
+  static readonly COLLAPSED_BY_DEFAULT: ReadonlySet<string> = new Set([
+    "git-stashes",
+    "git-remotes",
+  ]);
+
+  /** Returns whether a drawer is collapsed, using a sensible default for first visit. */
+  isDrawerCollapsed(drawerId: string): boolean {
+    const state = this.explorerDrawers[drawerId];
+    if (state !== undefined) return !!state.collapsed;
+    return UiStore.COLLAPSED_BY_DEFAULT.has(drawerId);
+  }
+
   toggleDrawer(drawerId: string): void {
     const current = this.explorerDrawers[drawerId];
     if (current) {
       this.explorerDrawers[drawerId] = { ...current, collapsed: !current.collapsed };
     } else {
-      this.explorerDrawers[drawerId] = { collapsed: true, height: null };
+      // Initialize from effective default so the toggle actually reverses the visual state
+      const wasCollapsed = this.isDrawerCollapsed(drawerId);
+      this.explorerDrawers[drawerId] = { collapsed: !wasCollapsed, height: null };
     }
     this.#persistExplorerDrawers();
   }
@@ -462,7 +477,7 @@ class UiStore {
     }
   }
 
-  reorderNode(drawerId: string, draggedId: string, targetId: string, position: "before" | "after"): void {
+  reorderNode(drawerId: string, draggedId: string, targetId: string, position: "before" | "after", defaultIds?: string[]): void {
     const current = this.explorerNodeOrder[drawerId] || { pinned: [], order: [] };
     const isPinnedDrag = current.pinned.includes(draggedId);
     const isPinnedTarget = current.pinned.includes(targetId);
@@ -479,13 +494,29 @@ class UiStore {
       };
     } else if (!isPinnedDrag && !isPinnedTarget) {
       // Reorder within unpinned order list
-      const order = current.order.filter(id => id !== draggedId);
+      let order = current.order.filter(id => id !== draggedId);
       const targetIdx = order.indexOf(targetId);
       if (targetIdx >= 0) {
         const insertIdx = position === "before" ? targetIdx : targetIdx + 1;
         order.splice(insertIdx, 0, draggedId);
+      } else if (defaultIds) {
+        // Seed the order list with all default IDs to preserve natural positions,
+        // then insert draggedId relative to targetId.
+        const existingSet = new Set(order);
+        for (const id of defaultIds) {
+          if (!existingSet.has(id) && id !== draggedId) {
+            order.push(id);
+          }
+        }
+        const newTargetIdx = order.indexOf(targetId);
+        if (newTargetIdx >= 0) {
+          const insertIdx = position === "before" ? newTargetIdx : newTargetIdx + 1;
+          order.splice(insertIdx, 0, draggedId);
+        } else {
+          order.push(draggedId);
+        }
       } else {
-        // Target not yet in order list — insert both in correct relative position
+        // No defaultIds available — place both to maintain relative adjacency
         if (position === "before") {
           order.push(draggedId, targetId);
         } else {

@@ -95,7 +95,7 @@ const PERSISTED_KEYS = Object.keys(PERSISTED_DEFAULTS) as (keyof StoredSettings)
 /** Keys stored in OS keychain via Tauri secure storage rather than localStorage. */
 const SECURE_KEYS: (keyof StoredSettings)[] = [
   "vanillaPath", "gameDataPath",
-  "additionalModPaths", "lastProjectPath",
+  "lastProjectPath",
 ];
 const SECURE_KEY_SET: ReadonlySet<string> = new Set(SECURE_KEYS);
 

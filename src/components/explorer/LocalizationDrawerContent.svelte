@@ -166,7 +166,8 @@
   }
 
   function onLocaReorder(draggedId: string, targetId: string, position: "before" | "after"): void {
-    uiStore.reorderNode("localization", draggedId, targetId, position);
+    const defaultIds = localizationTree.map(n => n.relPath);
+    uiStore.reorderNode("localization", draggedId, targetId, position, defaultIds);
   }
 
   function onLocaCrossMove(draggedId: string, targetId: string): void {
@@ -408,16 +409,15 @@
               />
             </div>
           {:else}
-            {@const nodeFolder = getNodeFolder(node.relPath)}
             <button
               class="tree-node has-files {lFCls}"
               class:active-node={isActiveFile(node.relPath)}
               class:drop-before={dragState.dropTargetId === node.relPath && dragState.dropPosition === "before" && dragState.draggedId !== node.relPath}
               class:drop-after={dragState.dropTargetId === node.relPath && dragState.dropPosition === "after" && dragState.draggedId !== node.relPath}
               draggable="true"
-              ondragstart={(e) => handleDragStart(e, node.relPath, nodeFolder, dragState)}
-              ondragover={(e) => handleDragOver(e, node.relPath, nodeFolder, dragState, true)}
-              ondrop={(e) => handleDrop(e, node.relPath, nodeFolder, dragState, onLocaReorder, onLocaCrossMove)}
+              ondragstart={(e) => handleDragStart(e, node.relPath, "localization", dragState)}
+              ondragover={(e) => handleDragOver(e, node.relPath, "localization", dragState)}
+              ondrop={(e) => handleDrop(e, node.relPath, "localization", dragState, onLocaReorder)}
               ondragend={() => handleDragEnd(dragState)}
               onclick={() => openFilePreview(node)}
               ondblclick={() => openFilePreview(node, false)}
@@ -643,9 +643,14 @@
     padding: 0 4px;
   }
   .loca-content :global(.drop-before) {
-    box-shadow: inset 0 2px 0 0 var(--th-accent-500);
+    box-shadow: 0 -2px 0 0 var(--th-accent-500, #0ea5e9);
   }
   .loca-content :global(.drop-after) {
-    box-shadow: inset 0 -2px 0 0 var(--th-accent-500);
+    box-shadow: 0 2px 0 0 var(--th-accent-500, #0ea5e9);
+  }
+  .loca-content :global(.drag-over) {
+    outline: 1px dashed var(--th-accent-500, #0ea5e9);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 10%, transparent);
   }
 </style>

@@ -133,4 +133,29 @@ describe("ProjectSettingsStore", () => {
       expect(val).toEqual({});
     });
   });
+
+  // ── saveNow ─────────────────────────────────────────────────
+
+  describe("saveNow", () => {
+    it("saveNow() completes without error when store is not loaded", async () => {
+      projectSettingsStore.unload();
+      await expect(projectSettingsStore.saveNow()).resolves.toBeUndefined();
+    });
+
+    it("saveNow() clears any pending debounce timer", async () => {
+      projectSettingsStore.overrides = { enableMcmSupport: true };
+      projectSettingsStore.loaded = true;
+      // Trigger a set which schedules a debounced persist
+      projectSettingsStore.set("gitUserName", "TestUser");
+      // saveNow should flush immediately without error (IPC mocked out)
+      await expect(projectSettingsStore.saveNow()).resolves.toBeUndefined();
+    });
+
+    it("saveNow() is safe to call multiple times", async () => {
+      projectSettingsStore.unload();
+      await projectSettingsStore.saveNow();
+      await projectSettingsStore.saveNow();
+      // Should not throw
+    });
+  });
 });

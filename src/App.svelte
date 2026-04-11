@@ -32,6 +32,7 @@
   import { fade } from "svelte/transition";
   import { commandRegistry, type Command } from "./lib/utils/commandRegistry.svelte.js";
   import { projectStore, sectionToTable } from "./lib/stores/projectStore.svelte.js";
+  import { projectSettingsStore } from "./lib/stores/projectSettingsStore.svelte.js";
   import { toastStore } from "./lib/stores/toastStore.svelte.js";
   import { uiStore } from "./lib/stores/uiStore.svelte.js";
   import { applyTheme, THEME_COMMANDS, type ThemeId } from "./lib/themes/themeManager.js";
@@ -873,7 +874,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleAppKeydown} oncontextmenu={handleGlobalContextMenu} onbeforeunload={(e) => { settingsStore.persistNow(); if (projectStore.dirty) { e.preventDefault(); } }} />
+<svelte:window onkeydown={handleAppKeydown} oncontextmenu={handleGlobalContextMenu} onblur={() => { projectSettingsStore.saveNow(); }} onbeforeunload={(e) => { settingsStore.persistNow(); projectSettingsStore.saveNow(); if (projectStore.dirty) { e.preventDefault(); } }} />
 
 <div bind:this={appContainer} use:clampSidebarOnResize class="app-frame flex flex-col h-screen bg-[var(--th-sidebar-bg-deep,var(--th-bg-950))] text-[var(--th-text-100)] {isMaximized ? 'maximized' : ''}">
   <!-- Custom titlebar with hamburger menu & command palette integration -->

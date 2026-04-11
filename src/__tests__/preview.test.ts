@@ -105,10 +105,14 @@ describe("summarizeChange", () => {
     expect(summarizeChange(c)).toBe("SpellType changed");
   });
 
-  it("returns 'Modified' for unknown change type", () => {
+  it("returns field:null for BooleanChanged with null mod_value", () => {
     const c = makeChange({ change_type: "BooleanChanged" as ChangeType, field: "x" });
-    // BooleanChanged with null mod_value
     expect(summarizeChange(c)).toBe("x: null");
+  });
+
+  it("returns 'Modified' for unknown change type", () => {
+    const c = makeChange({ change_type: "FutureType" as ChangeType, field: "x" });
+    expect(summarizeChange(c)).toBe("Modified");
   });
 });
 

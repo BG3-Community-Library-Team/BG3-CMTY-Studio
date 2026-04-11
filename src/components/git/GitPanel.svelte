@@ -49,7 +49,7 @@
     <div class="git-drawer-layout">
       <!-- Staged Changes (hidden when empty) -->
       {#if hasStagedFiles}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-staged"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-staged"]?.collapsed && uiStore.explorerDrawers["git-staged"]?.height != null}>
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-staged")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-staged") && uiStore.explorerDrawers["git-staged"]?.height != null}>
           <ExplorerDrawer id="git-staged" title={m.git_staged_changes()} isFirst={true}>
             {#snippet children()}
               <GitFileList files={gitStore.stagedFiles} staged={true} modPath={gitPath} />
@@ -59,7 +59,7 @@
       {/if}
 
       <!-- Changes (unstaged + untracked) -->
-      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-changes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-changes"]?.collapsed && uiStore.explorerDrawers["git-changes"]?.height != null}>
+      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-changes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-changes") && uiStore.explorerDrawers["git-changes"]?.height != null}>
         <ExplorerDrawer id="git-changes" title={m.git_changes()} isFirst={!hasStagedFiles}>
           {#snippet children()}
             {#if gitStore.unstagedFiles.length > 0 || gitStore.untrackedFiles.length > 0}
@@ -72,7 +72,7 @@
       </div>
 
       <!-- History -->
-      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-history"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-history"]?.collapsed && uiStore.explorerDrawers["git-history"]?.height != null}>
+      <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-history")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-history") && uiStore.explorerDrawers["git-history"]?.height != null}>
         <ExplorerDrawer id="git-history" title={m.git_history_heading()} isFirst={false}>
           {#snippet children()}
             <GitHistoryPanel modPath={gitPath} />
@@ -82,7 +82,7 @@
 
       <!-- Stashes -->
       {#if hasStashes || gitStore.changedFileCount > 0}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-stashes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-stashes"]?.collapsed && uiStore.explorerDrawers["git-stashes"]?.height != null}>
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-stashes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-stashes") && uiStore.explorerDrawers["git-stashes"]?.height != null}>
           <ExplorerDrawer id="git-stashes" title={m.git_stash_heading()} isFirst={false}>
             {#snippet children()}
               <GitStashPanel modPath={gitPath} />
@@ -93,7 +93,7 @@
 
       <!-- Remotes -->
       {#if gitStore.remotes.length > 0 || gitStore.isRepo}
-        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.explorerDrawers["git-remotes"]?.collapsed} class:drawer-sized={!uiStore.explorerDrawers["git-remotes"]?.collapsed && uiStore.explorerDrawers["git-remotes"]?.height != null}>
+        <div class="git-drawer-slot" class:drawer-collapsed={uiStore.isDrawerCollapsed("git-remotes")} class:drawer-sized={!uiStore.isDrawerCollapsed("git-remotes") && uiStore.explorerDrawers["git-remotes"]?.height != null}>
           <ExplorerDrawer id="git-remotes" title={m.git_remote_heading()} isFirst={false}>
             {#snippet children()}
               <GitRemoteManager modPath={gitPath} />

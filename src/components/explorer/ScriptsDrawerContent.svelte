@@ -55,7 +55,8 @@
   }
 
   function onSectionReorder(sectionKey: string, draggedId: string, targetId: string, position: "before" | "after") {
-    uiStore.reorderNode(`scripts:${sectionKey}`, draggedId, targetId, position);
+    const defaultIds = getTreeData(sectionKey).map(n => n.relPath);
+    uiStore.reorderNode(`scripts:${sectionKey}`, draggedId, targetId, position, defaultIds);
   }
 
   function onSectionMove(sectionKey: string, draggedRelPath: string, targetRelPath: string) {

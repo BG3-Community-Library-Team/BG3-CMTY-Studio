@@ -728,6 +728,8 @@
   "loaded_data_db_size": "Database size:",
   "loaded_data_additional_mods": "Additional Mods",
   "loaded_data_clear_all": "Clear All",
+  "loaded_data_cancel_import": "Cancel Import",
+  "loaded_data_clearing": "Clearing…",
   "loaded_data_additional_mods_desc": "Additional mods are used for diff comparisons and combobox population. They are not scanned as the primary mod.",
   "loaded_data_set_primary": "Set as primary mod",
   "loaded_data_open_mod_folder": "Open project folder",
@@ -896,6 +898,7 @@
   "import_count_imported": "{count} imported",
   "import_count_already_loaded": "{count} already loaded",
   "import_count_failed": "{count} failed",
+  "import_count_cancelled": "{count} cancelled",
   "import_count_inactive": "{count} inactive",
 
   "tag_tooltip_new": "New: This entry has been introduced by the active mod",

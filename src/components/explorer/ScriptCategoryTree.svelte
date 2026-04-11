@@ -653,6 +653,11 @@
   :global(.tree-node).drop-after {
     box-shadow: inset 0 -2px 0 0 var(--th-accent-500, #3b82f6);
   }
+  :global(.tree-node).drag-over {
+    outline: 1px dashed var(--th-accent-500, #3b82f6);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--th-accent-500, #3b82f6) 10%, transparent);
+  }
   :global(.tree-node).dragging {
     opacity: 0.4;
   }

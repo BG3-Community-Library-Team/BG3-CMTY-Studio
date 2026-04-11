@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { m } from "../../paraglide/messages.js";
 import type { PipelineProgress } from "../utils/tauri.js";
 
-export type OperationType = "populate" | "reset";
+export type OperationType = "populate" | "reset" | "mod-import";
 
 /** Default timeout ceiling in seconds (35 minutes — above backend's 30-min timeout). */
 const DEFAULT_TIMEOUT_SECS = 35 * 60;

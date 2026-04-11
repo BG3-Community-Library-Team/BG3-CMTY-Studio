@@ -246,6 +246,7 @@ const DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   SpeakerGroups: "Speaker Groups",
   ProgressionTables: "Progression Tables",
   VoiceTables: "Voice Tables",
+  TextureAtlasInfo: "Texture Atlas",
 };
 
 /**

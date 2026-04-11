@@ -189,9 +189,13 @@
     }
   }
 
-  function handleClearAllMods() {
-    modImportService.clearAll();
+  async function handleClearAllMods() {
+    await modImportService.clearAll();
     refreshDbSize();
+  }
+
+  function handleCancelImport() {
+    modImportService.abortImport();
   }
 
   async function handleRefreshMod(modPath: string) {
@@ -371,7 +375,18 @@
           {#if modsDbSizeDisplay}
             <span class="text-xs text-[var(--th-text-500)]">{modsDbSizeDisplay}</span>
           {/if}
-          {#if modStore.additionalModPaths.length > 0}
+          {#if modImportService.isImportingLoadOrder}
+            <button
+              class="text-xs text-yellow-400/70 hover:text-yellow-300 cursor-pointer"
+              onclick={handleCancelImport}
+              title="Cancel import"
+            >{m.loaded_data_cancel_import()}</button>
+          {:else if modImportService.isClearing}
+            <span class="text-xs text-[var(--th-text-500)] inline-flex items-center gap-1">
+              <LoaderCircle size={12} class="animate-spin" />
+              {m.loaded_data_clearing()}
+            </span>
+          {:else if modStore.additionalModPaths.length > 0 || modsDbSizeDisplay}
             <button
               class="text-xs text-red-400/70 hover:text-red-300 cursor-pointer"
               onclick={handleClearAllMods}
@@ -411,7 +426,7 @@
           {/if}
           <!-- Directory display -->
           <div class="text-xs text-[var(--th-text-500)] truncate" title={modPath}>
-            {modPath}
+            {modPath}{#if modImportService.modDiskSizes[modPath]}{' · '}{modImportService.modDiskSizes[modPath]}{/if}
           </div>
         </div>
         <!-- Status indicators -->

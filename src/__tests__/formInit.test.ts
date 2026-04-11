@@ -139,6 +139,57 @@ describe("buildFormState", () => {
     });
     expect(result.listType).toBe("StatusList");
   });
+
+  it("populates fields from rawAttributes when section has no fieldKeys", () => {
+    // Lists section has SECTION_CAPS but no fieldKeys defined
+    const result = buildFormState({
+      prefill: null,
+      section: "Lists",
+      rawAttributes: { CustomField: "val1", AnotherField: "val2" },
+    });
+    const keys = result.fields.map(f => f.key);
+    expect(keys).toContain("CustomField");
+    expect(keys).toContain("AnotherField");
+    expect(result.fields.find(f => f.key === "CustomField")?.value).toBe("val1");
+    expect(result.fields.find(f => f.key === "AnotherField")?.value).toBe("val2");
+  });
+
+  it("auto-generates UUID for new non-spell entries", () => {
+    const result = buildFormState({
+      prefill: null,
+      section: "Progressions",
+      generateUuid: () => "generated-uuid-123",
+    });
+    expect(result.uuids).toEqual(["generated-uuid-123"]);
+  });
+
+  it("does not auto-generate UUID for spell entries", () => {
+    const result = buildFormState({
+      prefill: null,
+      section: "Spells",
+      generateUuid: () => "should-not-appear",
+    });
+    expect(result.uuids).toEqual([""]);
+  });
+
+  it("does not auto-generate UUID when autoEntryId is set", () => {
+    const result = buildFormState({
+      prefill: null,
+      section: "Progressions",
+      autoEntryId: "existing-id",
+      generateUuid: () => "should-not-appear",
+    });
+    expect(result.uuids).toEqual([""]);
+  });
+
+  it("does not auto-generate UUID when prefill has UUID", () => {
+    const result = buildFormState({
+      prefill: { UUID: "pre-existing-uuid" },
+      section: "Progressions",
+      generateUuid: () => "should-not-appear",
+    });
+    expect(result.uuids).toEqual(["pre-existing-uuid"]);
+  });
 });
 
 describe("encodeFormState", () => {

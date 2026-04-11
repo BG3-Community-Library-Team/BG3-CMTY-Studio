@@ -10,6 +10,8 @@ import { commandRegistry, type Command } from "../../utils/commandRegistry.svelt
 import { contextKeys } from "../contextKeyService.svelte.js";
 import { viewRegistry } from "../viewRegistry.svelte.js";
 import { statusBarRegistry } from "../statusBarRegistry.svelte.js";
+import { configurationRegistry } from "../configurationRegistry.svelte.js";
+import { projectSettingsStore } from "../../stores/projectSettingsStore.svelte.js";
 import { gitStore } from "../../stores/gitStore.svelte.js";
 import { modStore } from "../../stores/modStore.svelte.js";
 import { uiStore } from "../../stores/uiStore.svelte.js";
@@ -399,7 +401,15 @@ export const gitPlugin: PluginModule = {
       syncItem.icon = "refresh-ccw";
     }
 
-    // 4. Set up context key syncing and status bar text via $effect.root
+    // 4. Register project-level mapping for git config keys
+    configurationRegistry.registerProjectMapping({
+      "git.userName": "gitUserName",
+      "git.userEmail": "gitUserEmail",
+      "git.autoFetchInterval": "gitAutoFetchInterval",
+      "git.defaultRemote": "gitDefaultRemote",
+    });
+
+    // 5. Set up context key syncing and status bar text via $effect.root
     const cleanupEffects = $effect.root(() => {
       // Sync gitStore → context keys
       $effect(() => {

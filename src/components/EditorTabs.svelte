@@ -8,6 +8,7 @@
   import { BG3_CORE_FOLDERS, type FolderNode } from "../lib/data/bg3FolderStructure.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import SectionPanel from "./SectionPanel.svelte";
+  import TextureAtlasPanel from "./TextureAtlasPanel.svelte";
   import MetaLsxForm from "./MetaLsxForm.svelte";
   import LocalizationPanel from "./LocalizationPanel.svelte";
   import FilePreviewPanel from "./FilePreviewPanel.svelte";
@@ -16,7 +17,6 @@
   import McmBlueprintEditor from "./McmBlueprintEditor.svelte";
   import LocalizationFileEditor from "./LocalizationFileEditor.svelte";
   import ReadmeEditor from "./ReadmeEditor.svelte";
-  import TextureAtlasPanel from "./TextureAtlasPanel.svelte";
   import GitDiffView from "./git/GitDiffView.svelte";
   import GitCommitDetailView from "./git/GitCommitDetailView.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
@@ -39,6 +39,9 @@
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import { createModScaffold } from "../lib/utils/tauri.js";
   import { getErrorMessage } from "../lib/types/index.js";
+  import { parseLsxContentToSections } from "../lib/utils/lsxRegionParser.js";
+  import { scriptRead } from "../lib/tauri/scripts.js";
+  import { readTextFile } from "../lib/tauri/readme.js";
   import { m } from "../paraglide/messages.js";
   import { APP_VERSION } from "../lib/version.js";
 
@@ -55,6 +58,48 @@
   let isCreatingMod = $state(false);
   let lsxTabViewMode = $state<Record<string, "form" | "raw">>({});
   let lsxRawEditorRef: any = $state(undefined);
+
+  /** Cache of parsed LSX file sections for File Tree form view, keyed by tab ID. */
+  let fileParsedSections = $state<Record<string, SectionResult[]>>({});
+
+  /** Load and parse an LSX file's sections for the form view. Returns from cache if available. */
+  async function loadFileParsedSections(tabId: string, filePath: string): Promise<SectionResult[]> {
+    if (fileParsedSections[tabId]) return fileParsedSections[tabId];
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) {
+      // Don't cache — basePath may become available later
+      return [];
+    }
+    try {
+      // Detect absolute paths (drive letter or UNC path on Windows, / on Unix)
+      const isAbsolute = /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\\\");
+
+      let content: string | null = null;
+      if (isAbsolute) {
+        // File is already an absolute path — read directly
+        content = await readTextFile(filePath);
+      } else {
+        content = await scriptRead(basePath, filePath);
+        // Fallback: read via joined absolute path
+        if (!content) {
+          const abs = basePath.replace(/[\\/]$/, "") + "/" + filePath;
+          content = await readTextFile(abs);
+        }
+      }
+      if (!content) {
+        // Don't cache — file may appear later or basePath may change
+        console.warn("[loadFileParsedSections] No content for:", filePath);
+        return [];
+      }
+      const parsed = parseLsxContentToSections(content);
+      fileParsedSections = { ...fileParsedSections, [tabId]: parsed };
+      return parsed;
+    } catch (e) {
+      // Don't cache errors — allow retry on next attempt
+      console.warn("[loadFileParsedSections] Failed to load:", filePath, e);
+      return [];
+    }
+  }
 
   function resetNewModForm() {
     showNewModForm = false;
@@ -105,14 +150,20 @@
     lsxTabViewMode = { ...lsxTabViewMode, [tabId]: mode };
   }
 
-  // Clean up lsxTabViewMode entries when tabs are closed
+  // Clean up lsxTabViewMode and fileParsedSections entries when tabs are closed
   $effect(() => {
     const openIds = new Set(uiStore.openTabs.map(t => t.id));
     const staleKeys = Object.keys(lsxTabViewMode).filter(k => !openIds.has(k));
+    const staleParsed = Object.keys(fileParsedSections).filter(k => !openIds.has(k));
     if (staleKeys.length > 0) {
       const next = { ...lsxTabViewMode };
       for (const k of staleKeys) delete next[k];
       lsxTabViewMode = next;
+    }
+    if (staleParsed.length > 0) {
+      const next = { ...fileParsedSections };
+      for (const k of staleParsed) delete next[k];
+      fileParsedSections = next;
     }
   });
 
@@ -121,6 +172,34 @@
 
   /** Staging theme CSS overrides from SettingsContentPane (for live ThemePreview). */
   let themeStagingStyle = $state("");
+
+  // Eagerly load file-parsed sections when a lsx-file tab is in form view
+  $effect(() => {
+    const tab = activeTab;
+    if (!tab || tab.type !== "lsx-file" || !tab.filePath) return;
+    const mode = getLsxTabViewMode(tab.id);
+    if (mode !== "form") return;
+    if (fileParsedSections[tab.id]) return;
+    // Track basePath so the effect re-runs when a project is loaded
+    const _basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!_basePath) return;
+    loadFileParsedSections(tab.id, tab.filePath);
+  });
+
+  /**
+   * Resolve the SectionResult for a File Tree lsx-file tab.
+   * Uses file-parsed sections (from parsing the actual file content) if available,
+   * otherwise falls back to the scan result.
+   */
+  function getFileSectionResult(tabId: string, sectionName: string): SectionResult | null {
+    const parsed = fileParsedSections[tabId];
+    if (parsed) {
+      const sec = parsed.find(s => s.section === sectionName);
+      if (sec) return sec;
+    }
+    // Fall back to scan result filtered by source
+    return getSectionResult(sectionName);
+  }
 
   /**
    * Resolve the SectionResult for a tab with type "section".
@@ -476,12 +555,10 @@
       {@const groupChildren = getGroupChildren(activeTab.category ?? "")}
       {@const fallbackSections = activeTab.groupSections ?? []}
       {#if activeTab.category === "_TextureAtlas"}
-        <!-- Texture Atlas combined form -->
-        {@const infoChild = groupChildren.find(c => c.node.name === "TextureAtlasInfo")}
-        {@const uvChild = groupChildren.find(c => c.node.name === "IconUVList")}
-        {@const infoResult = infoChild?.result ?? getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo" as Section, entries: [] }}
-        {@const uvResultTA = uvChild?.result ?? getSectionResult("IconUVList") ?? { section: "IconUVList" as Section, entries: [] }}
-        <TextureAtlasPanel infoResult={infoResult} uvResult={uvResultTA} globalFilter={modStore.globalFilter} />
+        <!-- Texture Atlas: specialized combined form -->
+        {@const atlasInfoResult = getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo", entries: [] }}
+        {@const atlasUvResult = getSectionResult("IconUVList") ?? { section: "IconUVList", entries: [] }}
+        <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} globalFilter={modStore.globalFilter} />
       {:else}
       <div class="section-tab-content">
         {#if groupChildren.length > 0}
@@ -565,7 +642,21 @@
             <span class="text-xs font-medium text-[var(--th-text-200)] truncate">
               {activeTab.filePath.split("/").pop() ?? activeTab.filePath.split("\\").pop() ?? activeTab.filePath}
             </span>
-            <div class="mode-pill ml-auto" role="tablist" aria-label="View mode">
+            {#if activeTab.dirty}
+              <span class="text-[10px] text-amber-400">{m.script_editor_unsaved()}</span>
+            {/if}
+            <span class="flex-1"></span>
+            {#if lsxViewMode === 'raw'}
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors flex items-center gap-1"
+                onclick={() => lsxRawEditorRef?.save()}
+                aria-label={m.script_editor_save_label()}
+              >
+                <Save size={12} />
+                {m.common_save()}
+              </button>
+            {/if}
+            <div class="mode-pill" role="tablist" aria-label="View mode">
               <button
                 class="mode-pill-option"
                 class:active={lsxViewMode === 'form'}
@@ -587,19 +678,6 @@
                 {m.lsx_editor_raw_mode()}
               </button>
             </div>
-            {#if activeTab.dirty}
-              <span class="text-[10px] text-amber-400 ml-1">{m.script_editor_unsaved()}</span>
-            {/if}
-            {#if lsxViewMode === 'raw'}
-              <button
-                class="text-[10px] px-1.5 py-0.5 rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors flex items-center gap-1 ml-1"
-                onclick={() => lsxRawEditorRef?.save()}
-                aria-label={m.script_editor_save_label()}
-              >
-                <Save size={12} />
-                {m.common_save()}
-              </button>
-            {/if}
             <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-500)]">.LSX</span>
           </div>
         {/if}
@@ -610,17 +688,32 @@
           {:else if lsxGroupSections.length > 1}
             <div class="section-tab-content">
               {#each lsxGroupSections as sectionName (sectionName)}
-                {@const sectionResult = getSectionResult(sectionName) ?? { section: sectionName as Section, entries: [] }}
+                {@const sectionResult = (activeTab.filePath ? getFileSectionResult(activeTab.id, sectionName) : getSectionResult(sectionName)) ?? { section: sectionName as Section, entries: [] }}
                 <div class="group-section">
                   <SectionPanel sectionResult={sectionResult} globalFilter={modStore.globalFilter} displayLabel={sectionName} />
                 </div>
               {/each}
             </div>
           {:else if lsxCategory}
-            {@const lsxResult = getSectionResult(lsxCategory) ?? { section: lsxCategory as Section, entries: [] }}
-            <div class="section-tab-content">
-              <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
-            </div>
+            {@const lsxResult = activeTab.filePath ? getFileSectionResult(activeTab.id, lsxCategory) : getSectionResult(lsxCategory)}
+            {#if activeTab.filePath && fileParsedSections[activeTab.id]?.length}
+              <!-- Always prefer file-parsed sections for external files -->
+              <div class="section-tab-content">
+                {#each fileParsedSections[activeTab.id] as parsedSection (parsedSection.section)}
+                  <div class="group-section">
+                    <SectionPanel sectionResult={parsedSection} globalFilter={modStore.globalFilter} displayLabel={parsedSection.section} />
+                  </div>
+                {/each}
+              </div>
+            {:else if lsxResult && lsxResult.entries.length > 0}
+              <div class="section-tab-content">
+                <SectionPanel sectionResult={lsxResult} globalFilter={modStore.globalFilter} />
+              </div>
+            {:else}
+              <div class="section-tab-content">
+                <SectionPanel sectionResult={lsxResult ?? { section: lsxCategory as Section, entries: [] }} globalFilter={modStore.globalFilter} />
+              </div>
+            {/if}
           {:else if activeTab.filePath}
             <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
           {:else}
@@ -807,7 +900,7 @@
   .lsx-file-content {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
   }

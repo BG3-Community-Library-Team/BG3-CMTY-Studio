@@ -9,7 +9,6 @@
   import { projectStore } from "../lib/stores/projectStore.svelte.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import { dataOperationStore } from "../lib/stores/dataOperationStore.svelte.js";
-  import { modImportService } from "../lib/services/modImportService.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { statusBarRegistry } from "../lib/plugins/statusBarRegistry.svelte.js";
   import { commandRegistry } from "../lib/utils/commandRegistry.svelte.js";
@@ -69,13 +68,6 @@
     // Show mod scanning phase
     if (modStore.isScanning && modStore.scanPhase) {
       return { kind: "running" as const, text: modStore.scanPhase };
-    }
-    // Show mod import/ingestion activity
-    const importEntries = Object.entries(modImportService.modImportStatus);
-    if (importEntries.length > 0) {
-      const [path, status] = importEntries[0];
-      const modName = path.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
-      return { kind: "importing" as const, text: `${status} ${modName}…` };
     }
     if (dataOperationStore.lastError) {
       return { kind: "error" as const, text: dataOperationStore.lastError.message };
@@ -177,19 +169,23 @@
   </div>
   {:else}
   <div class="flex items-center gap-3 min-w-0 whitespace-nowrap">
-    {#each pluginLeftItems as item (item.id)}
-      <button
-        class="flex items-center gap-1 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] transition-colors cursor-pointer"
-        onclick={() => item.command && commandRegistry.execute(item.command)}
-        title={item.tooltip || item.text}
-        type="button"
-      >
-        {#if item.icon === "git-branch"}
-          <GitBranchIcon class="w-3.5 h-3.5" />
+    {#each pluginLeftItems as item, idx (item.id)}
+      {#if item.text}
+        <button
+          class="flex items-center gap-1 text-[var(--th-text-400)] hover:text-[var(--th-text-200)] transition-colors cursor-pointer"
+          onclick={() => item.command && commandRegistry.execute(item.command)}
+          title={item.tooltip || item.text}
+          type="button"
+        >
+          {#if item.icon === "git-branch"}
+            <GitBranchIcon class="w-3.5 h-3.5" />
+          {/if}
+          <span class="text-[var(--th-text-300)]">{item.text}</span>
+        </button>
+        {#if modName || idx < pluginLeftItems.length - 1}
+          <span class="text-[var(--th-border-600)]">│</span>
         {/if}
-        <span class="text-[var(--th-text-300)]">{item.text}</span>
-      </button>
-      <span class="text-[var(--th-border-600)]">│</span>
+      {/if}
     {/each}
     {#if modName}
       <span class="truncate max-w-[200px]" title={modName}>
@@ -293,12 +289,6 @@
   <div class="flex-1 text-center truncate flex items-center justify-center gap-2" aria-live="polite">
     {#if centerDisplay?.kind === "running"}
       <!-- Running state is rendered in the right cluster -->
-    {:else if centerDisplay?.kind === "importing"}
-      <span class="text-[var(--th-border-600)]">│</span>
-      <span class="inline-flex items-center gap-1.5 text-amber-400">
-        <LoaderCircle class="w-3.5 h-3.5 animate-spin" />
-        <span class="truncate">{centerDisplay.text}</span>
-      </span>
     {:else if centerDisplay?.kind === "error"}
       <span class="text-red-400 truncate">{centerDisplay.text}</span>
     {:else if centerDisplay?.kind === "success"}

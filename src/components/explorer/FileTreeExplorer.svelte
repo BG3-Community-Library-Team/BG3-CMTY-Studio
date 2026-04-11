@@ -715,10 +715,9 @@
   }
 
   .tree-node.drag-over {
-    outline: 2px solid var(--th-accent-500, #0ea5e9);
-    outline-offset: -2px;
+    outline: 1px dashed var(--th-accent-500, #0ea5e9);
+    outline-offset: -1px;
     background: color-mix(in srgb, var(--th-accent-500, #0ea5e9) 10%, transparent);
-    box-shadow: inset 0 0 4px color-mix(in srgb, var(--th-accent-500, #0ea5e9) 20%, transparent);
   }
 
   .node-label {

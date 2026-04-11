@@ -11,6 +11,7 @@ import type {
   ConfigurationProperty,
   Disposable,
 } from "./pluginTypes.js";
+import { projectSettingsStore, type ProjectSettings } from "../stores/projectSettingsStore.svelte.js";
 
 interface RegisteredConfiguration {
   pluginId: string;
@@ -21,6 +22,13 @@ interface RegisteredConfiguration {
 class ConfigurationRegistry {
   private schemas: RegisteredConfiguration[] = $state([]);
   private values: Record<string, unknown> = $state({});
+
+  /**
+   * Mapping from configuration registry key → projectSettingsStore key.
+   * When set, `get()` will check project-level overrides before falling back
+   * to the registry value or schema default.
+   */
+  private projectKeyMap: Record<string, keyof ProjectSettings> = {};
 
   /** Register a plugin's configuration schema */
   registerConfiguration(pluginId: string, config: ConfigurationContribution): Disposable {
@@ -51,18 +59,33 @@ class ConfigurationRegistry {
     };
   }
 
-  /** Get a configuration value (returns default if not set) */
+  /** Get a configuration value: Project override > Registry value > Schema default */
   get<T>(key: string): T {
+    // 1. Check project-level override via projectSettingsStore
+    const projectKey = this.projectKeyMap[key];
+    if (projectKey && projectSettingsStore.loaded) {
+      const projectVal = projectSettingsStore.get(projectKey);
+      if (projectVal !== undefined && projectVal !== null && projectVal !== "") {
+        return projectVal as T;
+      }
+    }
+
+    // 2. Registry value
     if (key in this.values) {
       return this.values[key] as T;
     }
-    // Find default from schema
+    // 3. Schema default
     for (const section of this.schemas) {
       if (key in section.properties) {
         return section.properties[key].default as T;
       }
     }
     return undefined as T;
+  }
+
+  /** Register a mapping from config key → projectSettingsStore key for project-level resolution. */
+  registerProjectMapping(map: Record<string, keyof ProjectSettings>): void {
+    Object.assign(this.projectKeyMap, map);
   }
 
   /** Set a configuration value */

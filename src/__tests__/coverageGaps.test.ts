@@ -320,3 +320,37 @@ describe("Coverage gap regression tests", () => {
     }
   });
 });
+
+// ── modStore.modFilesPrefix branches ──────────────────────────────────
+
+describe("modStore.modFilesPrefix", () => {
+  beforeEach(() => {
+    modStore.projectPath = "";
+    modStore.selectedModPath = "";
+    modStore.scanResult = null;
+  });
+
+  it("returns empty when no scan result", () => {
+    expect(modStore.modFilesPrefix).toBe("");
+  });
+
+  it("returns Mods/folder/ when only selectedModPath is set", () => {
+    modStore.scanResult = { mod_meta: { folder: "TestMod", name: "T", author: "", description: "", version: "" }, sections: [] } as any;
+    modStore.selectedModPath = "/some/path";
+    expect(modStore.modFilesPrefix).toBe("Mods/TestMod/");
+  });
+
+  it("returns relative prefix when projectPath and selectedModPath are set", () => {
+    modStore.scanResult = { mod_meta: { folder: "TestMod", name: "T", author: "", description: "", version: "" }, sections: [] } as any;
+    modStore.projectPath = "/project";
+    modStore.selectedModPath = "/project/Mods/TestMod";
+    expect(modStore.modFilesPrefix).toBe("Mods/TestMod/Mods/TestMod/");
+  });
+
+  it("returns Mods/folder/ when projectPath equals selectedModPath", () => {
+    modStore.scanResult = { mod_meta: { folder: "TestMod", name: "T", author: "", description: "", version: "" }, sections: [] } as any;
+    modStore.projectPath = "/project";
+    modStore.selectedModPath = "/project";
+    expect(modStore.modFilesPrefix).toBe("Mods/TestMod/");
+  });
+});
