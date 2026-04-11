@@ -1301,5 +1301,18 @@
   "texture_preview_error": "Preview unavailable",
   "texture_preview_empty": "No DDS file selected",
   "texture_preview_drop_hint": "Drop .dds file here",
-  "texture_preview_click_enlarge": "Click to enlarge"
+  "texture_preview_click_enlarge": "Click to enlarge",
+
+  "publishingSection": "Publishing",
+  "nexusSettings": "Nexus Mods",
+  "modioSettings": "mod.io",
+  "apiKeyLabel": "API Key",
+  "apiKeyPlaceholder": "Paste your API key",
+  "apiKeyStatusNotConfigured": "Not configured",
+  "apiKeyStatusSaved": "Key saved (untested)",
+  "apiKeyStatusValid": "Connected",
+  "apiKeyStatusInvalid": "Invalid key",
+  "testApiKey": "Test",
+  "clearApiKey": "Clear",
+  "saveApiKey": "Save"
 }

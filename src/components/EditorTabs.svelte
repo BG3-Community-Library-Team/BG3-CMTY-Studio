@@ -140,6 +140,7 @@
       await openProject(p);
     } catch (e) {
       console.error("Dialog error:", e);
+      toastStore.error("Dialog error", getErrorMessage(e));
     }
   }
 

@@ -15,7 +15,7 @@ const EXPLORER_VIEW_MODE_STORAGE_KEY = "bg3-cmty-explorer-view-mode";
 const DEFAULT_ACTIVITY_BAR_ORDER: ActivityView[] = ["project", "explorer", "search", "git", "loaded-data", "settings", "help"];
 const DEFAULT_EXPLORER_DRAWER_ORDER: ExplorerDrawerId[] = ["data", "scripts", "localization"];
 
-export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts" | "git";
+export type SettingsSection = "" | "theme" | "display" | "dataHandling" | "modConfig" | "schemas" | "notifications" | "scripts" | "git" | "publishing";
 
 /** Data needed to render the summary drawer at the App layout level */
 export interface SummaryDrawerState {

@@ -313,9 +313,7 @@
                     <span class="text-[10px] text-emerald-500/70 font-normal ml-1">(saved)</span>
                   {/if}
                   <span class="font-mono text-[10px] text-[var(--th-text-500)] select-all cursor-text truncate font-normal translate-y-px">{sub.id}</span>
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <span class="ml-auto" onclick={(e) => e.stopPropagation()}>
+                  <span class="ml-auto" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
                     <button type="button" class="text-xs text-red-400 hover:text-red-300 px-1.5 min-w-6 min-h-6 inline-flex items-center justify-center"
                       onclick={() => removeSubform(sub.id)} aria-label="Remove progression">
                       <X size={14} />

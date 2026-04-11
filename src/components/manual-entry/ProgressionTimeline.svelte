@@ -287,9 +287,7 @@
 
             <!-- Inline edit form (always mounted when editing; collapsed via height to preserve fixed summary drawer) -->
             {#if isEditing}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div class="timeline-form-container" style:height={isFormCollapsed ? "0px" : ""} style:overflow={isFormCollapsed ? "hidden" : ""} style:padding={isFormCollapsed ? "0" : ""} onclick={(e) => e.stopPropagation()} oncontextmenu={(e) => e.stopPropagation()}>
+              <div class="timeline-form-container" role="presentation" style:height={isFormCollapsed ? "0px" : ""} style:overflow={isFormCollapsed ? "hidden" : ""} style:padding={isFormCollapsed ? "0" : ""} onclick={(e) => e.stopPropagation()} oncontextmenu={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
                 <UnifiedForm
                   {section}
                   table={tableOverride}

@@ -454,7 +454,7 @@
               const path = Array.isArray(selected) ? selected[0] : String(selected);
               await modImportService.addModPath(path, sidebarDuplicatePrompt);
             }
-          } catch (e) { console.error("Dialog error:", e); }
+          } catch (e) { console.error("Dialog error:", e); toastStore.error("Dialog error", getErrorMessage(e)); }
         },
       },
       {
@@ -470,7 +470,7 @@
               const path = Array.isArray(selected) ? selected[0] : String(selected);
               await modImportService.addModPath(path, sidebarDuplicatePrompt);
             }
-          } catch (e) { console.error("Dialog error:", e); }
+          } catch (e) { console.error("Dialog error:", e); toastStore.error("Dialog error", getErrorMessage(e)); }
         },
       },
       // ── Dev: Theme Gallery ──

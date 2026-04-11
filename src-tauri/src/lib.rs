@@ -9,6 +9,7 @@ pub mod logging;
 pub mod models;
 pub mod pak;
 pub mod parsers;
+pub mod platform;
 pub mod reference_db;
 pub mod schema;
 pub mod script;

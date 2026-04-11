@@ -86,6 +86,46 @@
     }
   }
 
+  function handleBcDropdownKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      bcDropdownIdx = null;
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]');
+      if (items.length === 0) return;
+      const current = Array.from(items).indexOf(document.activeElement as HTMLElement);
+      let next: number;
+      if (e.key === 'ArrowDown') {
+        next = current < items.length - 1 ? current + 1 : 0;
+      } else {
+        next = current > 0 ? current - 1 : items.length - 1;
+      }
+      items[next]?.focus();
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      const first = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="menuitem"]');
+      first?.focus();
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      const items = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]');
+      items[items.length - 1]?.focus();
+    }
+  }
+
+  // Auto-focus first dropdown item when breadcrumb dropdown opens
+  $effect(() => {
+    if (bcDropdownIdx !== null) {
+      requestAnimationFrame(() => {
+        const first = document.querySelector('.bc-dropdown [role="menuitem"]') as HTMLElement;
+        first?.focus();
+      });
+    }
+  });
+
   async function bcDropdownSelect(item: { name: string; isDir: boolean; fullPath: string }) {
     bcDropdownIdx = null;
     if (item.isDir) {
@@ -498,8 +538,7 @@
       <span class="text-[10px] text-[var(--th-text-600)] ml-2">{m.script_editor_line_count({ count: lineCount })}</span>
     </div>
     {/if}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="breadcrumb-bar" role="toolbar" aria-label="File path" tabindex="-1" onclick={(e) => { if (!(e.target as HTMLElement).closest('.bc-dropdown')) bcDropdownIdx = null; }}>
+    <div class="breadcrumb-bar" role="toolbar" aria-label="File path" tabindex="-1" onclick={(e) => { if (!(e.target as HTMLElement).closest('.bc-dropdown')) bcDropdownIdx = null; }} onkeydown={(e) => { if (e.key === 'Escape') bcDropdownIdx = null; }}>
       {#each breadcrumbs as segment, i}
         {#if i > 0}
           <span class="breadcrumb-sep">/</span>
@@ -508,6 +547,8 @@
           <button
             class="breadcrumb-segment"
             class:breadcrumb-active={i === breadcrumbs.length - 1}
+            aria-haspopup="menu"
+            aria-expanded={bcDropdownIdx === i}
             onclick={(e) => { e.stopPropagation(); toggleBreadcrumbDropdown(i, e); }}
           >
             {segment}
@@ -516,11 +557,11 @@
       {/each}
     </div>
     {#if bcDropdownIdx !== null}
-      <div class="bc-dropdown" role="listbox" tabindex="-1" style="top:{bcDropdownPos.top}px;left:{bcDropdownPos.left}px"
+      <div class="bc-dropdown" role="menu" tabindex="-1" style="top:{bcDropdownPos.top}px;left:{bcDropdownPos.left}px"
         onclick={(e) => e.stopPropagation()}
-        onkeydown={(e) => { if (e.key === 'Escape') bcDropdownIdx = null; }}>
+        onkeydown={handleBcDropdownKeydown}>
         {#each bcDropdownItems as item}
-          <button class="bc-dropdown-item" class:bc-dropdown-dir={item.isDir} role="option" aria-selected="false" onclick={() => bcDropdownSelect(item)}>
+          <button class="bc-dropdown-item" class:bc-dropdown-dir={item.isDir} role="menuitem" onclick={() => bcDropdownSelect(item)}>
             {item.name}{item.isDir ? '/' : ''}
           </button>
         {/each}

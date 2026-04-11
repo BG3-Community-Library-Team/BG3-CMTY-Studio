@@ -36,9 +36,7 @@
       {/if}
     </span>
     {#if headerActions}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="card-header-actions" onclick={(e) => e.stopPropagation()}>
+      <span class="card-header-actions" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
         {@render headerActions()}
       </span>
     {/if}

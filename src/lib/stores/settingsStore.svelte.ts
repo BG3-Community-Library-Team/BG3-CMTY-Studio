@@ -55,6 +55,26 @@ interface StoredSettings {
   gitUserName: string;
   /** Git commit author email (falls back to ~/.gitconfig if empty) */
   gitUserEmail: string;
+  /** Nexus Mods numeric mod ID */
+  nexusModId: string;
+  /** Nexus Mods mod UUID */
+  nexusModUuid: string;
+  /** Nexus Mods mod display name */
+  nexusModName: string;
+  /** Default Nexus file group (main/optional/etc.) */
+  nexusDefaultFileGroup: string;
+  /** Default Nexus file category */
+  nexusDefaultCategory: string;
+  /** Nexus game domain slug (e.g. "baldursgate3") */
+  nexusGameDomain: string;
+  /** mod.io numeric user ID */
+  modioUserId: string;
+  /** mod.io username */
+  modioUserName: string;
+  /** mod.io game ID */
+  modioGameId: string;
+  /** mod.io OAuth token expiry (ISO 8601) */
+  modioTokenExpiry: string;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -87,6 +107,16 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   mcmSchemaUrl: "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json",
   gitUserName: "",
   gitUserEmail: "",
+  nexusModId: "",
+  nexusModUuid: "",
+  nexusModName: "",
+  nexusDefaultFileGroup: "",
+  nexusDefaultCategory: "",
+  nexusGameDomain: "baldursgate3",
+  modioUserId: "",
+  modioUserName: "",
+  modioGameId: "",
+  modioTokenExpiry: "",
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
