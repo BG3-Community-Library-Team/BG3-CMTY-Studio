@@ -87,6 +87,7 @@ describe("Theme compliance: hardcoded zinc color lint", () => {
     "src/components/SectionAccordion.svelte": 6,
     "src/components/OutputSidebar.svelte": 1,
     "src/components/SectionPanel.svelte": 1,
+    "src/components/TextureAtlasPanel.svelte": 6,
     "src/components/MultiSelectCombobox.svelte": 10,
     "src/components/SingleSelectCombobox.svelte": 8,
     // --- manual-entry sub-components ---

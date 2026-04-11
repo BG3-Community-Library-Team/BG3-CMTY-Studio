@@ -555,7 +555,66 @@
       <!-- Texture Atlas: specialized combined form -->
       {@const atlasInfoResult = getSectionResult("TextureAtlasInfo") ?? { section: "TextureAtlasInfo", entries: [] }}
       {@const atlasUvResult = getSectionResult("IconUVList") ?? { section: "IconUVList", entries: [] }}
-      <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} globalFilter={modStore.globalFilter} />
+      {#if activeTab.filePath}
+        <!-- File Tree entry: show form/raw toggle -->
+        {@const atlasViewMode = getLsxTabViewMode(activeTab.id)}
+        <div class="lsx-file-tab">
+          <div class="editor-header">
+            <FileCode size={14} class="text-[var(--th-text-400)] flex-shrink-0" />
+            <span class="text-xs font-medium text-[var(--th-text-200)] truncate">
+              {activeTab.filePath.split("/").pop() ?? activeTab.filePath.split("\\").pop() ?? activeTab.filePath}
+            </span>
+            <span class="flex-1"></span>
+            {#if atlasViewMode === 'raw'}
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded text-[var(--th-text-400)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] transition-colors flex items-center gap-1"
+                onclick={() => lsxRawEditorRef?.save()}
+                aria-label={m.script_editor_save_label()}
+              >
+                <Save size={12} />
+                {m.common_save()}
+              </button>
+            {/if}
+            <div class="mode-pill" role="tablist" aria-label="View mode">
+              <button
+                class="mode-pill-option"
+                class:active={atlasViewMode === 'form'}
+                onclick={() => setLsxTabViewMode(activeTab.id, 'form')}
+                role="tab"
+                aria-selected={atlasViewMode === 'form'}
+                onkeydown={(e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setLsxTabViewMode(activeTab.id, atlasViewMode === 'form' ? 'raw' : 'form'); e.preventDefault(); }}}
+              >
+                {m.lsx_editor_form_mode()}
+              </button>
+              <button
+                class="mode-pill-option"
+                class:active={atlasViewMode === 'raw'}
+                onclick={() => setLsxTabViewMode(activeTab.id, 'raw')}
+                role="tab"
+                aria-selected={atlasViewMode === 'raw'}
+                onkeydown={(e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { setLsxTabViewMode(activeTab.id, atlasViewMode === 'form' ? 'raw' : 'form'); e.preventDefault(); }}}
+              >
+                {m.lsx_editor_raw_mode()}
+              </button>
+            </div>
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[var(--th-bg-700)] text-[var(--th-text-500)]">.LSX</span>
+          </div>
+          <div class="lsx-file-content">
+            {#if atlasViewMode === 'raw'}
+              <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
+            {:else}
+              <div class="section-tab-content">
+                <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} initialSourceFile={activeTab.filePath} />
+              </div>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <!-- Studio View: no form/raw toggle, just section panel -->
+        <div class="section-tab-content">
+          <TextureAtlasPanel infoResult={atlasInfoResult} uvResult={atlasUvResult} />
+        </div>
+      {/if}
 
     {:else if activeTab.type === "group"}
       <!-- Group tab: multiple sections, with per-child entry filters -->

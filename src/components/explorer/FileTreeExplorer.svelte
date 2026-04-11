@@ -109,7 +109,7 @@
         || /Public\/[^/]+\/GUI\//i.test(relPath.replace(/\\/g, "/"));
       if (isTextureAtlas) {
         uiStore.openTab({
-          id: "texture-atlas",
+          id: `texture-atlas:${relPath}`,
           label: node.name,
           type: "texture-atlas",
           filePath: relPath,

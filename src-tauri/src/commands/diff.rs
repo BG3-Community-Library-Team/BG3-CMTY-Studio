@@ -45,9 +45,27 @@ pub fn diff_section(
     let allowed_node_ids = section.expected_node_ids();
 
     for mod_entry in mod_entries {
-        if mod_entry.uuid.is_empty() {
-            continue;
-        }
+        // TextureAtlasInfo / IconUVList child nodes may lack UUIDs.
+        // Use node_id + MapKey (when available) as synthetic identifier.
+        // IconUV nodes share a node_id but each has a unique MapKey attribute.
+        let effective_uuid = if mod_entry.uuid.is_empty() {
+            if section == Section::TextureAtlasInfo || section == Section::IconUVList {
+                let map_key = mod_entry
+                    .attributes
+                    .get("MapKey")
+                    .map(|a| a.value.as_str())
+                    .unwrap_or("");
+                if map_key.is_empty() {
+                    format!("__node_{}__", mod_entry.node_id)
+                } else {
+                    format!("__node_{}_{}__", mod_entry.node_id, map_key)
+                }
+            } else {
+                continue;
+            }
+        } else {
+            mod_entry.uuid.clone()
+        };
 
         // Skip entries whose node_id doesn't match the expected type for this section
         if let Some(ids) = allowed_node_ids {
@@ -56,11 +74,11 @@ pub fn diff_section(
             }
         }
 
-        match vanilla.get(&mod_entry.uuid) {
+        match vanilla.get(&effective_uuid) {
             None => {
                 // New entry — not in vanilla
                 results.push(DiffEntry {
-                    uuid: mod_entry.uuid.clone(),
+                    uuid: effective_uuid.clone(),
                     display_name: build_display_name(mod_entry, section),
                     source_file: source_file.to_string(),
                     entry_kind: EntryKind::New,
@@ -102,7 +120,7 @@ pub fn diff_section(
 
                 if !changes.is_empty() {
                     results.push(DiffEntry {
-                        uuid: mod_entry.uuid.clone(),
+                        uuid: effective_uuid.clone(),
                         display_name: build_display_name(mod_entry, section),
                         source_file: source_file.to_string(),
                         entry_kind: EntryKind::Modified,

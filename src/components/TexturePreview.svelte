@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { getErrorMessage } from "../lib/types/index.js";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import ImageOff from "@lucide/svelte/icons/image-off";
   import { m } from "../paraglide/messages.js";
@@ -48,7 +49,7 @@
         pngData = result;
         loading = false;
       } catch (e) {
-        error = String(e);
+        error = getErrorMessage(e);
         pngData = "";
         loading = false;
       }

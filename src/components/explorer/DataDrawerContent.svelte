@@ -557,6 +557,11 @@
     if (isScriptFile(fileNode.extension)) { uiStore.openScriptTab(fullRelPath); return; }
     if (fileNode.extension === "txt" && fileNode.relPath.includes("Story/RawFiles/Goals/")) { uiStore.openScriptTab(fullRelPath); return; }
     if (fileNode.extension === "xml" && fileNode.relPath.startsWith("Localization/")) { uiStore.openScriptTab(fullRelPath); return; }
+    // Route GUI .lsx files to the texture-atlas tab (form + raw toggle)
+    if (fileNode.extension === "lsx" && /[/\\]GUI[/\\]/i.test(fileNode.relPath)) {
+      uiStore.openTab({ id: `texture-atlas:${fullRelPath}`, label: fileNode.name, type: "texture-atlas", category: "_TextureAtlas", filePath: fullRelPath, icon: "🎨", preview });
+      return;
+    }
     uiStore.openTab({ id: `file:${fullRelPath}`, label: fileNode.name, type: "file-preview", filePath: fullRelPath, icon: "📄", preview });
   }
 

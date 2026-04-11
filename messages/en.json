@@ -1291,6 +1291,10 @@
   "texture_atlas_warn_capacity_exceeded": "{count} icons defined but atlas can only fit {capacity}",
   "texture_atlas_warn_dimension_mismatch": "Atlas dimensions ({w}×{h}) do not match DDS file ({dw}×{dh})",
   "texture_atlas_at_capacity": "Atlas is at capacity",
+  "texture_atlas_browse": "Browse…",
+  "texture_atlas_back_to_list": "Back to atlas list",
+  "texture_atlas_list_title": "Icon Texture Atlases",
+  "texture_atlas_list_count": "{count} {count, plural, one {atlas} other {atlases}}",
 
   "texture_preview_title": "DDS Preview",
   "texture_preview_loading": "Converting DDS…",

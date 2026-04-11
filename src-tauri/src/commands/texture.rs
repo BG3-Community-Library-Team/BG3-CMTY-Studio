@@ -1,13 +1,21 @@
 use std::path::PathBuf;
 
 use base64::prelude::*;
+use image_dds::{ddsfile::Dds, image_from_dds};
 
 /// Convert a DDS file to PNG, returning a base64-encoded PNG string.
+/// Supports BC1–BC7 and uncompressed DXGI formats via image_dds.
 pub fn convert_dds_to_png(path: &str, project_dir: &str) -> Result<String, String> {
     let file_path = resolve_and_validate(path, project_dir)?;
 
-    let img = image::open(&file_path)
+    let dds_data = std::fs::read(&file_path)
         .map_err(|e| format!("Failed to read DDS file '{}': {e}", file_path.display()))?;
+
+    let dds = Dds::read(&dds_data[..])
+        .map_err(|e| format!("Failed to parse DDS header '{}': {e}", file_path.display()))?;
+
+    let img = image_from_dds(&dds, 0)
+        .map_err(|e| format!("Failed to decode DDS texture '{}': {e}", file_path.display()))?;
 
     let mut png_bytes = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut png_bytes);
@@ -21,14 +29,13 @@ pub fn convert_dds_to_png(path: &str, project_dir: &str) -> Result<String, Strin
 pub fn get_dds_dimensions(path: &str, project_dir: &str) -> Result<(u32, u32), String> {
     let file_path = resolve_and_validate(path, project_dir)?;
 
-    let reader = image::ImageReader::open(&file_path)
-        .map_err(|e| format!("Failed to open file '{}': {e}", file_path.display()))?
-        .with_guessed_format()
-        .map_err(|e| format!("Failed to detect format: {e}"))?;
+    let dds_data = std::fs::read(&file_path)
+        .map_err(|e| format!("Failed to read DDS file '{}': {e}", file_path.display()))?;
 
-    reader
-        .into_dimensions()
-        .map_err(|e| format!("Failed to read DDS dimensions: {e}"))
+    let dds = Dds::read(&dds_data[..])
+        .map_err(|e| format!("Failed to parse DDS header '{}': {e}", file_path.display()))?;
+
+    Ok((dds.get_width(), dds.get_height()))
 }
 
 /// Validate path is within the project directory (prevent path traversal).

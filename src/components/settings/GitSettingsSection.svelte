@@ -9,7 +9,6 @@
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Check from "@lucide/svelte/icons/check";
   import X from "@lucide/svelte/icons/x";
-  import Plus from "@lucide/svelte/icons/plus";
 
   interface ForgeAccount {
     host: string;
@@ -26,13 +25,15 @@
     { host: "codeberg.org", forgeType: "Gitea", apiBase: "https://codeberg.org/api/v1", user: null, tokenCreationUrl: "https://codeberg.org/user/settings/applications", loading: true },
   ];
 
+  const OTHER_SENTINEL = "__other__";
+
   let accounts = $state<ForgeAccount[]>(structuredClone(KNOWN_FORGES));
   let tokenInputs = $state<Record<string, string>>({});
-  let showAddHost = $state(false);
   let newHost = $state("");
-  let selectedHost = $state(KNOWN_FORGES[0].host);
+  let selectedHost = $state<string>(KNOWN_FORGES[0].host);
 
-  let selectedAcct = $derived(accounts.find(a => a.host === selectedHost) ?? null);
+  let isOtherSelected = $derived(selectedHost === OTHER_SENTINEL);
+  let selectedAcct = $derived(isOtherSelected ? null : (accounts.find(a => a.host === selectedHost) ?? null));
 
   // Check auth on mount
   $effect(() => {
@@ -92,7 +93,7 @@
       loading: false,
     }];
     newHost = "";
-    showAddHost = false;
+    selectedHost = host;
   }
 </script>
 
@@ -109,10 +110,21 @@
           {acct.host}{acct.user ? ` — ${acct.user.login}` : ""}
         </option>
       {/each}
+      <option value={OTHER_SENTINEL}>Other…</option>
     </select>
   </div>
 
-  {#if selectedAcct}
+  {#if isOtherSelected}
+    <div class="forge-add-row">
+      <input
+        class="forge-token-input"
+        placeholder="hostname (e.g., gitea.example.com)"
+        bind:value={newHost}
+        onkeydown={(e) => { if (e.key === "Enter") addHost(); }}
+      />
+      <button class="forge-btn primary" onclick={addHost} disabled={!newHost.trim()}>Add</button>
+    </div>
+  {:else if selectedAcct}
     <div class="forge-account-row">
       <div class="forge-account-info">
         <span class="forge-host">{selectedAcct.host}</span>
@@ -162,23 +174,6 @@
         {/if}
       </div>
     </div>
-  {/if}
-
-  {#if showAddHost}
-    <div class="forge-add-row">
-      <input
-        class="forge-token-input"
-        placeholder="hostname (e.g., gitea.example.com)"
-        bind:value={newHost}
-        onkeydown={(e) => { if (e.key === "Enter") addHost(); }}
-      />
-      <button class="forge-btn primary" onclick={addHost}>Add</button>
-      <button class="forge-btn" onclick={() => { showAddHost = false; newHost = ""; }}>Cancel</button>
-    </div>
-  {:else}
-    <button class="forge-btn add-host" onclick={() => { showAddHost = true; }}>
-      <Plus size={14} /> Add remote host…
-    </button>
   {/if}
 </div>
 
@@ -348,11 +343,6 @@
     background: var(--th-error-600, var(--th-bg-500));
     border-color: var(--th-error-500, var(--th-border-500));
     color: var(--th-text-100);
-  }
-
-  .forge-btn.add-host {
-    align-self: flex-start;
-    margin-top: 0.25rem;
   }
 
   .forge-create-link {
