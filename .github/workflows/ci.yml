@@ -80,7 +80,7 @@ jobs:
         shell: bash
 
   secret-scan:
-    if: {{ github.actor != 'dependabot[bot]' }}
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -107,7 +107,7 @@ jobs:
              [[ "${{ needs.rust-clippy.result }}" != "success" ]] ||
              [[ "${{ needs.cargo-deny.result }}" != "success" ]] ||
              [[ "${{ needs.security-audit.result }}" != "success" ]] ||
-             [[ "${{ needs.secret-scan.result }}" != "success" ]]; then
+             [[ "${{ needs.secret-scan.result }}" != "success" && "${{ needs.secret-scan.result }}" != "skipped" ]]; then
             echo "One or more CI jobs failed"
             exit 1
           fi
