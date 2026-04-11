@@ -22,8 +22,8 @@
   }
 </script>
 
-<button class="branch-toggle" onclick={openBranchPalette} title={m.git_branch_picker_label()}>
-  <GitBranch size={14} />
+<button class="branch-toggle" onclick={openBranchPalette} title={m.git_branch_picker_label()} aria-label={`Current branch: ${gitStore.currentBranch ?? "HEAD"}. Click to switch branch`}>
+  <GitBranch size={14} aria-hidden="true" />
   <span class="branch-name">{gitStore.currentBranch ?? "HEAD"}</span>
 </button>
 

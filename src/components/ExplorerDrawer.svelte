@@ -157,13 +157,13 @@
 </div>
 
 {#if showCtxMenu && allDrawerIds}
-  <div class="drawer-ctx-menu" style:left="{ctxMenuX}px" style:top="{ctxMenuY}px">
+  <div class="drawer-ctx-menu" role="menu" style:left="{ctxMenuX}px" style:top="{ctxMenuY}px">
     {#if uiStore.isDrawerPinned(id)}
-      <button class="drawer-ctx-item" onclick={() => { uiStore.unpinDrawer(id); showCtxMenu = false; }}>
+      <button class="drawer-ctx-item" role="menuitem" onclick={() => { uiStore.unpinDrawer(id); showCtxMenu = false; }}>
         Unpin drawer
       </button>
     {:else}
-      <button class="drawer-ctx-item" onclick={() => { uiStore.pinDrawer(id); showCtxMenu = false; }}>
+      <button class="drawer-ctx-item" role="menuitem" onclick={() => { uiStore.pinDrawer(id); showCtxMenu = false; }}>
         Pin to top
       </button>
     {/if}
@@ -173,6 +173,8 @@
       {@const visibleCount = allDrawerIds.filter(d => !uiStore.isDrawerHidden(d)).length}
       <button
         class="drawer-ctx-item drawer-ctx-toggle"
+        role="menuitemcheckbox"
+        aria-checked={!uiStore.isDrawerHidden(did)}
         onclick={() => {
           if (visible) { uiStore.hideDrawer(did, allDrawerIds); }
           else { uiStore.showDrawer(did); }

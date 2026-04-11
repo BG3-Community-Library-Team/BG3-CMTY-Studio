@@ -11,6 +11,9 @@ pub struct GitRepoInfo {
     pub clean: bool,
     pub ahead: u32,
     pub behind: u32,
+    pub shallow: bool,
+    pub bare: bool,
+    pub submodules: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

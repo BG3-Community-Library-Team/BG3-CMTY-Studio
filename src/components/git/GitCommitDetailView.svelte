@@ -55,10 +55,10 @@
   }
 </script>
 
-<div class="commit-detail-view">
+<div class="commit-detail-view" role="region" aria-label="Commit details">
   {#if loading && !detail}
-    <div class="loading-state">
-      <Loader size={24} class="spin" />
+    <div class="loading-state" aria-live="polite">
+      <Loader size={24} class="spin" aria-hidden="true" />
       <span>Loading commit…</span>
     </div>
   {:else if detail}
@@ -109,13 +109,14 @@
         Changed files
         <span class="file-count">{detail.files.length}</span>
       </div>
-      <div class="file-list">
+      <div class="file-list" role="list" aria-label="Changed files">
         {#each detail.files as file}
           <button
             class="file-row"
             onclick={() => handleFileClick(file.path)}
+            aria-label="{file.status} file: {file.path}"
           >
-            <span class="file-status" style="color: {statusColor(file.status)}">
+            <span class="file-status" style="color: {statusColor(file.status)}" aria-hidden="true">
               {statusIcon(file.status)}
             </span>
             <FileIcon size={14} class="file-icon" />

@@ -10,7 +10,7 @@
   let { files, staged, modPath }: Props = $props();
 </script>
 
-<div class="git-file-list">
+<div class="git-file-list" role="list" aria-label={staged ? "Staged files" : "Changed files"}>
   {#each files as file (file.path + (file.staged ? "-staged" : "-unstaged"))}
     <GitFileItem {file} {staged} {modPath} />
   {/each}

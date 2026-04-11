@@ -10,7 +10,7 @@
 </script>
 
 {#if gitStore.forgeInfo && gitStore.forgeInfo.forgeType !== "Unknown"}
-  <div class="forge-section">
+  <div class="forge-section" role="region" aria-label="Forge integration">
     {#if gitStore.forgeConnected && gitStore.forgeInfo}
       <details class="forge-details" open>
         <summary>{prLabel}s ({gitStore.prs.length})</summary>

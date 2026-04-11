@@ -74,8 +74,8 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="diff-view" onkeydown={onKeydown} tabindex="-1">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div class="diff-view" role="region" aria-label="Diff view for {displayPath(filePath)}" onkeydown={onKeydown} tabindex="-1">
   <div class="diff-toolbar">
     <span class="diff-filepath" title={filePath}>{displayPath(filePath)}</span>
 
@@ -87,18 +87,20 @@
         <button
           class="diff-btn"
           title="Previous hunk (k/↑)"
+          aria-label="Previous hunk"
           disabled={currentHunkIndex === 0}
           onclick={() => navigateHunk(-1)}
         >
-          <ChevronUp size={16} />
+          <ChevronUp size={16} aria-hidden="true" />
         </button>
         <button
           class="diff-btn"
           title="Next hunk (j/↓)"
+          aria-label="Next hunk"
           disabled={!diff || currentHunkIndex >= diff.hunks.length - 1}
           onclick={() => navigateHunk(1)}
         >
-          <ChevronDown size={16} />
+          <ChevronDown size={16} aria-hidden="true" />
         </button>
       {/if}
 
@@ -106,24 +108,28 @@
         class="diff-btn"
         class:active={viewMode === "unified"}
         title="Unified view (u)"
+        aria-label="Unified view"
+        aria-pressed={viewMode === "unified"}
         onclick={toggleViewMode}
       >
-        <AlignJustify size={16} />
+        <AlignJustify size={16} aria-hidden="true" />
       </button>
       <button
         class="diff-btn"
         class:active={viewMode === "split"}
         title="Split view (s)"
+        aria-label="Split view"
+        aria-pressed={viewMode === "split"}
         onclick={toggleViewMode}
       >
-        <Columns2 size={16} />
+        <Columns2 size={16} aria-hidden="true" />
       </button>
     </div>
   </div>
 
   <div class="diff-content">
     {#if !diff}
-      <div class="diff-empty">Loading diff…</div>
+      <div class="diff-empty" aria-live="polite">Loading diff…</div>
     {:else if diff.isBinary}
       <div class="diff-empty">Binary file differs</div>
     {:else if diff.hunks.length === 0}

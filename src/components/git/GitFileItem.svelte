@@ -101,8 +101,9 @@
   tabindex="0"
   onclick={openDiffTab}
   onkeydown={(e) => { if (e.key === "Enter") openDiffTab(); }}
+  aria-label="{file.status}: {fileName()}"
 >
-  <span class="git-file-status" style="color: {getStatusColor()}">{getStatusLabel()}</span>
+  <span class="git-file-status" style="color: {getStatusColor()}" aria-hidden="true">{getStatusLabel()}</span>
   <span class="git-file-name" title={file.path}>{fileName()}</span>
   {#if dirPart()}
     <span class="git-file-dir-hint">{dirPart()}</span>
@@ -112,34 +113,38 @@
       <button
         class="git-action-btn"
         title="Open file"
+        aria-label="Open {fileName()}"
         onclick={(e) => { e.stopPropagation(); openFileInExplorer(); }}
       >
-        <FileIcon size={14} />
+        <FileIcon size={14} aria-hidden="true" />
       </button>
     {/if}
     {#if staged}
       <button
         class="git-action-btn"
         title={m.git_unstage_tooltip()}
+        aria-label="Unstage {fileName()}"
         onclick={(e) => { e.stopPropagation(); gitStore.unstage(modPath, [file.path]); }}
       >
-        <Minus size={14} />
+        <Minus size={14} aria-hidden="true" />
       </button>
     {:else}
       <button
         class="git-action-btn"
         title={m.git_stage_tooltip()}
+        aria-label="Stage {fileName()}"
         onclick={(e) => { e.stopPropagation(); gitStore.stage(modPath, [file.path]); }}
       >
-        <Plus size={14} />
+        <Plus size={14} aria-hidden="true" />
       </button>
       {#if file.status !== "untracked"}
         <button
           class="git-action-btn discard"
           title={m.git_discard_tooltip()}
+          aria-label="Discard changes to {fileName()}"
           onclick={(e) => { e.stopPropagation(); gitStore.discard(modPath, [file.path]); }}
         >
-          <Undo2 size={14} />
+          <Undo2 size={14} aria-hidden="true" />
         </button>
       {/if}
     {/if}
@@ -147,9 +152,10 @@
       <button
         class="git-action-btn"
         title="Open on {gitStore.forgeInfo.host}"
+        aria-label="Open {fileName()} on {gitStore.forgeInfo.host}"
         onclick={(e) => { e.stopPropagation(); openOnForge(); }}
       >
-        <ExternalLink size={14} />
+        <ExternalLink size={14} aria-hidden="true" />
       </button>
     {/if}
   </div>

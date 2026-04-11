@@ -11,6 +11,9 @@ export interface GitRepoInfo {
   clean: boolean;
   ahead: number;
   behind: number;
+  shallow: boolean;
+  bare: boolean;
+  submodules: string[];
 }
 
 export interface GitFileStatus {

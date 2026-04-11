@@ -2,6 +2,7 @@
   import { forgeGetIssue, forgeAssignIssue, type ForgeIssueDetail } from "../../lib/tauri/git.js";
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
+  import { friendlyGitError } from "../../lib/utils/gitErrors.js";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import UserPlus from "@lucide/svelte/icons/user-plus";
 
@@ -33,7 +34,7 @@
         info.owner, info.repo, num,
       );
     } catch (e) {
-      error = String(e);
+      error = friendlyGitError(e instanceof Error ? e.message : String(e));
       detail = null;
     } finally {
       loading = false;
@@ -53,7 +54,7 @@
       await loadIssue(detail.number);
       await gitStore.refreshForge();
     } catch (e) {
-      toastStore.error("Failed to assign", String(e));
+      toastStore.error("Failed to assign", friendlyGitError(e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -76,7 +77,7 @@
 
 <div class="issue-view">
   {#if loading}
-    <div class="issue-loading">Loading issue…</div>
+    <div class="issue-loading" aria-live="polite">Loading issue…</div>
   {:else if error}
     <div class="issue-error">{error}</div>
   {:else if detail}
@@ -86,17 +87,17 @@
         {detail.title}
       </h2>
       <div class="issue-header-actions">
-        <button class="issue-btn" title="Assign to me" onclick={assignSelf}>
-          <UserPlus size={14} /> Assign me
+        <button class="issue-btn" title="Assign to me" aria-label="Assign issue #{detail.number} to me" onclick={assignSelf}>
+          <UserPlus size={14} aria-hidden="true" /> Assign me
         </button>
-        <button class="issue-btn" title="Open on forge" onclick={openOnForge}>
-          <ExternalLink size={14} /> Open in browser
+        <button class="issue-btn" title="Open on forge" aria-label="Open issue #{detail.number} in browser" onclick={openOnForge}>
+          <ExternalLink size={14} aria-hidden="true" /> Open in browser
         </button>
       </div>
     </div>
 
     <div class="issue-meta">
-      <span class="issue-state" class:open={detail.state === "open"} class:closed={detail.state === "closed"}>
+      <span class="issue-state" class:open={detail.state === "open"} class:closed={detail.state === "closed"} aria-label="Issue state: {detail.state}">
         {detail.state}
       </span>
       <span class="issue-meta-item">Opened by <strong>{detail.author}</strong> on {formatDate(detail.createdAt)}</span>

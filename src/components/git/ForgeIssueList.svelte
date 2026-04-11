@@ -4,6 +4,7 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
+  import { friendlyGitError } from "../../lib/utils/gitErrors.js";
   import CircleDot from "@lucide/svelte/icons/circle-dot";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import UserPlus from "@lucide/svelte/icons/user-plus";
@@ -43,13 +44,13 @@
       toastStore.success(`Assigned #${issue.number} to ${user.login}`);
       await gitStore.refreshForge();
     } catch (err) {
-      toastStore.error("Failed to assign issue", String(err));
+      toastStore.error("Failed to assign issue", friendlyGitError(err instanceof Error ? err.message : String(err)));
     }
   }
 </script>
 
 {#if issues.length > 0}
-  <div class="forge-list">
+  <div class="forge-list" role="list" aria-label="Issues">
     {#each issues as issue}
       <div
         class="forge-list-item"
@@ -57,8 +58,9 @@
         tabindex="0"
         onclick={() => openIssueDetail(issue)}
         onkeydown={(e) => { if (e.key === "Enter") openIssueDetail(issue); }}
+        aria-label="Issue #{issue.number}: {issue.title}"
       >
-        <CircleDot size={14} class="forge-item-icon" />
+        <CircleDot size={14} class="forge-item-icon" aria-hidden="true" />
         <span class="forge-item-number">#{issue.number}</span>
         <span class="forge-item-title">{issue.title}</span>
         {#if issue.assignee}
@@ -68,16 +70,18 @@
           <button
             class="forge-action-btn"
             title="Assign to me"
+            aria-label="Assign issue #{issue.number} to me"
             onclick={(e) => assignSelf(e, issue)}
           >
-            <UserPlus size={13} />
+            <UserPlus size={13} aria-hidden="true" />
           </button>
           <button
             class="forge-action-btn"
             title="Open on {info.host}"
+            aria-label="Open issue #{issue.number} on forge"
             onclick={(e) => openOnForge(e, issue)}
           >
-            <ExternalLink size={13} />
+            <ExternalLink size={13} aria-hidden="true" />
           </button>
         </span>
       </div>

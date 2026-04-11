@@ -59,12 +59,12 @@
     oncontextmenu={oncontextmenu}
     aria-expanded={!collapsed}
   >
-    <span class="drawer-chevron" class:expanded={!collapsed}>
+    <span class="drawer-chevron" class:expanded={!collapsed} aria-hidden="true">
       <ChevronRight size={14} />
     </span>
     {#if pinned}
-      <span class="drawer-pin-icon" title="Pinned">
-        <Pin size={11} />
+      <span class="drawer-pin-icon" title="Pinned" aria-label="Pinned">
+        <Pin size={11} aria-hidden="true" />
       </span>
     {/if}
     <span class="drawer-title">{title.toUpperCase()}</span>
@@ -83,9 +83,10 @@
           <button
             class="drawer-hide-btn"
             title="Hide drawer"
+            aria-label="Hide drawer"
             onclick={(e: MouseEvent) => { e.stopPropagation(); onhide(); }}
           >
-            <XIcon size={12} />
+            <XIcon size={12} aria-hidden="true" />
           </button>
         {/if}
       </span>

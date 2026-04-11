@@ -57,42 +57,42 @@
 </script>
 
 <div class="diff-hunk" data-selectable="true">
-  <div class="hunk-header">{hunk.header}</div>
+  <div class="hunk-header" aria-label="Diff hunk: {hunk.header}">{hunk.header}</div>
 
   {#if viewMode === "unified"}
-    <table class="diff-table unified">
+    <table class="diff-table unified" role="presentation">
       <tbody>
         {#each hunk.lines as line, idx (idx)}
-          <tr class="diff-line" class:line-add={line.origin === "+"} class:line-del={line.origin === "-"}>
-            <td class="line-num">{line.oldLineno ?? ""}</td>
-            <td class="line-num">{line.newLineno ?? ""}</td>
-            <td class="line-origin">{line.origin}</td>
+          <tr class="diff-line" class:line-add={line.origin === "+"} class:line-del={line.origin === "-"} aria-label={line.origin === "+" ? "Added line" : line.origin === "-" ? "Removed line" : "Context line"}>
+            <td class="line-num" aria-hidden="true">{line.oldLineno ?? ""}</td>
+            <td class="line-num" aria-hidden="true">{line.newLineno ?? ""}</td>
+            <td class="line-origin" aria-hidden="true">{line.origin}</td>
             <td class="line-content">{line.content}</td>
           </tr>
         {/each}
       </tbody>
     </table>
   {:else}
-    <table class="diff-table split">
+    <table class="diff-table split" role="presentation">
       <tbody>
         {#each paired.left as leftLine, idx (idx)}
           {@const rightLine = paired.right[idx]}
           <tr class="diff-line">
             <!-- Left side (old) -->
             {#if leftLine}
-              <td class="line-num">{leftLine.oldLineno ?? ""}</td>
-              <td class="line-content side-left" class:line-del={leftLine.origin === "-"}>{leftLine.content}</td>
+              <td class="line-num" aria-hidden="true">{leftLine.oldLineno ?? ""}</td>
+              <td class="line-content side-left" class:line-del={leftLine.origin === "-"} aria-label={leftLine.origin === "-" ? "Removed line" : "Context line"}>{leftLine.content}</td>
             {:else}
-              <td class="line-num"></td>
+              <td class="line-num" aria-hidden="true"></td>
               <td class="line-content side-left empty-line"></td>
             {/if}
-            <td class="split-gutter"></td>
+            <td class="split-gutter" aria-hidden="true"></td>
             <!-- Right side (new) -->
             {#if rightLine}
-              <td class="line-num">{rightLine.newLineno ?? ""}</td>
-              <td class="line-content side-right" class:line-add={rightLine.origin === "+"}>{rightLine.content}</td>
+              <td class="line-num" aria-hidden="true">{rightLine.newLineno ?? ""}</td>
+              <td class="line-content side-right" class:line-add={rightLine.origin === "+"} aria-label={rightLine.origin === "+" ? "Added line" : "Context line"}>{rightLine.content}</td>
             {:else}
-              <td class="line-num"></td>
+              <td class="line-num" aria-hidden="true"></td>
               <td class="line-content side-right empty-line"></td>
             {/if}
           </tr>

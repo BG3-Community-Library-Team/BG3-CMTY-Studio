@@ -49,7 +49,7 @@
   }
 </script>
 
-<form class="forge-form" onsubmit={(e) => { e.preventDefault(); submit(); }}>
+<form class="forge-form" onsubmit={(e) => { e.preventDefault(); submit(); }} aria-label="Create {prLabel} form">
   <h4 class="forge-form-title">Create {prLabel}</h4>
 
   <label class="forge-field">

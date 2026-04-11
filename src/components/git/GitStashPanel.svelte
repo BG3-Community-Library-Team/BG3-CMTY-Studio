@@ -32,9 +32,9 @@
 
 <div class="stash-panel">
   {#if gitStore.stashes.length > 0}
-    <ul class="stash-list">
+    <ul class="stash-list" role="list" aria-label="Stash entries">
       {#each gitStore.stashes as entry (entry.index)}
-        <li class="stash-entry">
+        <li class="stash-entry" role="listitem">
           <span class="stash-message" title={entry.message}>
             <span class="stash-index">#{entry.index + 1}</span>
             {entry.message}
@@ -43,16 +43,18 @@
             <button
               class="stash-action-btn"
               title={m.git_stash_apply()}
+              aria-label="Apply stash #{entry.index + 1}"
               onclick={() => handleApply(entry.index)}
             >
-              <ArchiveRestore size={12} />
+              <ArchiveRestore size={12} aria-hidden="true" />
             </button>
             <button
               class="stash-action-btn stash-action-danger"
               title={m.git_stash_drop()}
+              aria-label="Drop stash #{entry.index + 1}"
               onclick={() => handleDrop(entry.index)}
             >
-              <Trash2 size={12} />
+              <Trash2 size={12} aria-hidden="true" />
             </button>
           </div>
         </li>

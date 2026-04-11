@@ -58,6 +58,13 @@ fn repo_to_info(repo: &Repository) -> Result<GitRepoInfo, String> {
 
     let (ahead, behind) = compute_ahead_behind(repo);
 
+    let shallow = repo.is_shallow();
+    let bare = repo.is_bare();
+    let submodules = repo
+        .submodules()
+        .map(|subs| subs.iter().map(|s| s.path().to_string_lossy().into_owned()).collect())
+        .unwrap_or_default();
+
     Ok(GitRepoInfo {
         is_repo: true,
         head_branch,
@@ -67,6 +74,9 @@ fn repo_to_info(repo: &Repository) -> Result<GitRepoInfo, String> {
         clean,
         ahead,
         behind,
+        shallow,
+        bare,
+        submodules,
     })
 }
 

@@ -3,6 +3,7 @@
   import { gitStore } from "../../lib/stores/gitStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
+  import { friendlyGitError } from "../../lib/utils/gitErrors.js";
   import GitPullRequest from "@lucide/svelte/icons/git-pull-request";
   import GitBranch from "@lucide/svelte/icons/git-branch";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -41,7 +42,7 @@
       }
       toastStore.success(`Checked out ${pr.headRef}`);
     } catch (e) {
-      toastStore.error("Checkout failed", String(e));
+      toastStore.error("Checkout failed", friendlyGitError(e instanceof Error ? e.message : String(e)));
     } finally {
       checkingOut = null;
     }
@@ -55,15 +56,15 @@
 </script>
 
 {#if prs.length > 0}
-  <div class="forge-list">
+  <div class="forge-list" role="list" aria-label="{prLabel} list">
     {#each prs as pr}
-      <div class="forge-list-item">
-        <GitPullRequest size={14} class="forge-item-icon" />
+      <div class="forge-list-item" role="listitem">
+        <GitPullRequest size={14} class="forge-item-icon" aria-hidden="true" />
         <span class="forge-item-number">#{pr.number}</span>
         <span class="forge-item-title">{pr.title}</span>
         {#if pr.mergeable === false}
-          <span class="forge-conflict" title="Has merge conflicts">
-            <AlertTriangle size={12} />
+          <span class="forge-conflict" title="Has merge conflicts" aria-label="Merge conflicts">
+            <AlertTriangle size={12} aria-hidden="true" />
           </span>
         {/if}
         <span class="forge-item-meta">{pr.headRef}</span>
@@ -71,17 +72,19 @@
           <button
             class="forge-action-btn"
             title="Checkout {pr.headRef}"
+            aria-label="Checkout PR #{pr.number}"
             onclick={(e) => checkoutPR(e, pr)}
             disabled={checkingOut !== null}
           >
-            <GitBranch size={13} />
+            <GitBranch size={13} aria-hidden="true" />
           </button>
           <button
             class="forge-action-btn"
             title="Open on {info.host}"
+            aria-label="Open PR #{pr.number} on forge"
             onclick={(e) => openOnForge(e, pr)}
           >
-            <ExternalLink size={13} />
+            <ExternalLink size={13} aria-hidden="true" />
           </button>
         </span>
       </div>

@@ -10,9 +10,9 @@
 </script>
 
 <div class="git-init-prompt">
-  <GitBranch size={32} strokeWidth={1.5} />
+  <GitBranch size={32} strokeWidth={1.5} aria-hidden="true" />
   <p>{m.git_init_prompt()}</p>
-  <button class="git-init-btn" onclick={() => gitStore.init(modPath)}>
+  <button class="git-init-btn" onclick={() => gitStore.init(modPath)} aria-label="Initialize Git repository">
     {m.git_init_button()}
   </button>
 </div>

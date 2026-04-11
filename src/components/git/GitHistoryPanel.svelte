@@ -30,9 +30,9 @@
 </script>
 
 <div class="history-panel">
-  <div class="history-list">
+  <div class="history-list" role="list" aria-label="Commit history">
     {#if gitStore.commitsLoading && gitStore.commits.length === 0}
-      <div class="history-loading">
+      <div class="history-loading" aria-live="polite">
         <LoaderCircle size={16} class="animate-spin" />
         <span>{m.git_history_loading()}</span>
       </div>

@@ -114,7 +114,7 @@
   let showRemoteAddForm = $state(false);
 </script>
 
-<div class="git-panel">
+<div class="git-panel" role="region" aria-label="Git">
   {#if !gitPath}
     <div class="git-panel-empty">
       <p>{m.git_no_mod_loaded()}</p>
@@ -167,10 +167,11 @@
                 <button
                   class="drawer-hdr-btn"
                   title={m.git_stash_save()}
+                  aria-label={m.git_stash_save()}
                   onclick={(e: MouseEvent) => { e.stopPropagation(); handleCreateStash(); }}
                   disabled={!hasChanges || gitStore.isSyncing}
                 >
-                  <Plus size={13} />
+                  <Plus size={13} aria-hidden="true" />
                 </button>
               {/snippet}
               {#snippet children()}
@@ -184,12 +185,13 @@
                 <button
                   class="drawer-hdr-btn"
                   title={m.git_remote_add()}
+                  aria-label={m.git_remote_add()}
                   onclick={(e: MouseEvent) => { e.stopPropagation(); showRemoteAddForm = !showRemoteAddForm; }}
                 >
                   {#if showRemoteAddForm}
-                    <XIcon size={13} />
+                    <XIcon size={13} aria-hidden="true" />
                   {:else}
-                    <Plus size={13} />
+                    <Plus size={13} aria-hidden="true" />
                   {/if}
                 </button>
               {/snippet}

@@ -137,6 +137,15 @@ pub struct GitLabAdapter {
 impl GitLabAdapter {
     pub fn new(host: &str) -> Self {
         let api_base = format!("https://{}/api/v4", host);
+        Self::with_api_base_and_host(&api_base, host)
+    }
+
+    /// Create a `GitLabAdapter` with a custom API base URL (for testing or non-standard deployments).
+    pub fn with_api_base(api_base: &str) -> Self {
+        Self::with_api_base_and_host(api_base, "custom")
+    }
+
+    fn with_api_base_and_host(api_base: &str, host: &str) -> Self {
         let client = Client::builder()
             .user_agent("CMTY-Studio")
             .timeout(Duration::from_secs(30))
@@ -144,7 +153,7 @@ impl GitLabAdapter {
             .expect("failed to build reqwest client");
         Self {
             client,
-            api_base,
+            api_base: api_base.to_string(),
             host: host.to_string(),
         }
     }

@@ -59,12 +59,14 @@
       <input
         class="remote-input"
         type="text"
+        aria-label="Remote name"
         placeholder={m.git_remote_name_placeholder()}
         bind:value={newName}
       />
       <input
         class="remote-input"
         type="text"
+        aria-label="Remote URL"
         placeholder={m.git_remote_url_placeholder()}
         bind:value={newUrl}
       />
@@ -84,7 +86,7 @@
   {/if}
 
   {#if gitStore.remotes.length > 0}
-    <ul class="remote-list">
+    <ul class="remote-list" role="list" aria-label="Git remotes">
       {#each gitStore.remotes as remote (remote.name)}
         <li class="remote-entry">
           <div class="remote-info">
@@ -94,9 +96,10 @@
           <button
             class="remote-remove-btn"
             title={m.git_remote_remove()}
+            aria-label="Remove remote {remote.name}"
             onclick={() => handleRemove(remote.name)}
           >
-            <Trash2 size={12} />
+            <Trash2 size={12} aria-hidden="true" />
           </button>
         </li>
       {/each}

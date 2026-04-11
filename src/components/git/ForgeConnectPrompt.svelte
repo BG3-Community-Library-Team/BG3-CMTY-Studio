@@ -46,6 +46,7 @@
     <input
       type="password"
       class="forge-token-input"
+      aria-label="Access token for {info.host}"
       placeholder="Paste access token…"
       bind:value={token}
       onkeydown={(e) => { if (e.key === "Enter") connect(); }}
@@ -57,7 +58,7 @@
   </div>
   {#if tokenUrl()}
     <a class="forge-token-link" href={tokenUrl()} target="_blank" rel="noopener noreferrer">
-      Create token <ExternalLink size={12} />
+      Create token <ExternalLink size={12} aria-hidden="true" />
     </a>
   {/if}
 </div>

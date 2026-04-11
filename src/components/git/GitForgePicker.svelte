@@ -93,14 +93,17 @@
       class="forge-picker-btn"
       class:connected
       title={connected ? `${info.forgeType}: ${user?.login ?? info.host}` : `Connect to ${info.host}`}
+      aria-label={connected ? `Forge: ${info.forgeType}, connected as ${user?.login ?? info.host}` : `Connect to ${info.host}`}
+      aria-expanded={showDropdown}
+      aria-haspopup="true"
       onclick={toggleDropdown}
     >
-      <Globe size={13} />
+      <Globe size={13} aria-hidden="true" />
       {#if connected}
         <span class="forge-picker-label">{info.forgeType}</span>
-        <span class="forge-dot connected"></span>
+        <span class="forge-dot connected" aria-hidden="true"></span>
       {:else}
-        <span class="forge-dot"></span>
+        <span class="forge-dot" aria-hidden="true"></span>
       {/if}
     </button>
 
@@ -118,7 +121,7 @@
           </div>
           <div class="forge-dd-actions">
             <button class="forge-dd-btn danger" onclick={disconnect}>
-              <LogOut size={12} />
+              <LogOut size={12} aria-hidden="true" />
               Disconnect
             </button>
           </div>
@@ -128,6 +131,7 @@
             <input
               type="password"
               class="forge-dd-token"
+              aria-label="Access token for {info.host}"
               placeholder="Paste access token…"
               bind:value={token}
               onkeydown={(e) => { if (e.key === "Enter") connect(); }}

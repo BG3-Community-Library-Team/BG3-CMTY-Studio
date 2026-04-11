@@ -77,44 +77,48 @@
       <button
         class="git-toolbar-btn"
         title={m.git_pull_tooltip()}
+        aria-label={m.git_pull_tooltip()}
         onclick={handlePull}
         disabled={gitStore.isSyncing}
       >
-        <ArrowDown size={14} />
+        <ArrowDown size={14} aria-hidden="true" />
       </button>
 
       <button
         class="git-toolbar-btn"
         title={m.git_push_tooltip()}
+        aria-label={m.git_push_tooltip()}
         onclick={handlePush}
         disabled={gitStore.isSyncing}
       >
-        <ArrowUp size={14} />
+        <ArrowUp size={14} aria-hidden="true" />
       </button>
 
       <button
         class="git-toolbar-btn"
         title={m.git_fetch_tooltip()}
+        aria-label={m.git_fetch_tooltip()}
         onclick={handleFetch}
         disabled={gitStore.isSyncing}
       >
-        <CloudDownload size={14} />
+        <CloudDownload size={14} aria-hidden="true" />
       </button>
     {/if}
 
     <button
       class="git-toolbar-btn"
       title={m.git_refresh_tooltip()}
+      aria-label={m.git_refresh_tooltip()}
       onclick={() => gitStore.refresh(modPath)}
       disabled={gitStore.isLoading}
     >
-      <RefreshCw size={14} class={gitStore.isLoading ? "spinning" : ""} />
+      <RefreshCw size={14} class={gitStore.isLoading ? "spinning" : ""} aria-hidden="true" />
     </button>
   </div>
 </div>
 
 {#if gitStore.syncProgress}
-  <div class="git-sync-progress">
+  <div class="git-sync-progress" aria-live="polite">
     <span class="git-sync-text">{gitStore.syncProgress}</span>
   </div>
 {/if}

@@ -17,6 +17,11 @@ pub struct GitHubAdapter {
 
 impl GitHubAdapter {
     pub fn new() -> Self {
+        Self::with_api_base("https://api.github.com")
+    }
+
+    /// Create a `GitHubAdapter` with a custom API base URL (for testing or GitHub Enterprise).
+    pub fn with_api_base(api_base: &str) -> Self {
         let client = Client::builder()
             .user_agent("CMTY-Studio")
             .timeout(std::time::Duration::from_secs(30))
@@ -25,7 +30,7 @@ impl GitHubAdapter {
 
         Self {
             client,
-            api_base: "https://api.github.com".to_string(),
+            api_base: api_base.to_string(),
         }
     }
 }

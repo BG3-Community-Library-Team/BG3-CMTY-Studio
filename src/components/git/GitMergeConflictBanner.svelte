@@ -17,7 +17,7 @@
 
 <div class="conflict-banner" role="alert">
   <div class="conflict-banner-header">
-    <AlertTriangle size={14} class="conflict-icon" />
+    <AlertTriangle size={14} class="conflict-icon" aria-hidden="true" />
     <span class="conflict-title">{m.git_conflict_banner_title()}</span>
     <span class="conflict-count">{m.git_conflict_banner_message({ count: gitStore.conflictedFiles.length })}</span>
   </div>
@@ -25,7 +25,7 @@
   <ul class="conflict-file-list">
     {#each gitStore.conflictedFiles as file (file.path)}
       <li class="conflict-file-item">
-        <FileWarning size={12} />
+        <FileWarning size={12} aria-hidden="true" />
         <span class="conflict-file-path" title={file.path}>{file.path}</span>
         <button
           class="conflict-open-btn"

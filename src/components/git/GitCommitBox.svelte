@@ -20,6 +20,7 @@
 <div class="git-commit-box">
   <textarea
     class="git-commit-input"
+    aria-label="Commit message"
     placeholder={m.git_commit_placeholder()}
     bind:value={gitStore.commitMessage}
     onkeydown={handleKeydown}
@@ -29,6 +30,7 @@
   ></textarea>
   <button
     class="git-commit-btn"
+    aria-label="Commit staged changes"
     disabled={!gitStore.commitMessage.trim() || gitStore.isCommitting || gitStore.stagedFiles.length === 0}
     onclick={() => gitStore.commit(modPath)}
   >

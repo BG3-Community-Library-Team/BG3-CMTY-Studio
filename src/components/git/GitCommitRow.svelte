@@ -39,6 +39,7 @@
   class="commit-row"
   onclick={() => onselect?.(commit.oid)}
   type="button"
+  aria-label="Commit {commit.shortOid}: {firstLine} by {commit.authorName}"
 >
   <span class="commit-oid">{commit.shortOid}</span>
   <span class="commit-message">{firstLine}</span>
@@ -48,12 +49,13 @@
     <span
       class="forge-link-btn"
       role="button"
-      tabindex="-1"
+      tabindex="0"
       title="Open on {gitStore.forgeInfo.host}"
+      aria-label="Open commit {commit.shortOid} on {gitStore.forgeInfo.host}"
       onclick={(e) => { e.stopPropagation(); openCommitOnForge(); }}
       onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openCommitOnForge(); } }}
     >
-      <Globe size={12} />
+      <Globe size={12} aria-hidden="true" />
     </span>
   {/if}
 </button>

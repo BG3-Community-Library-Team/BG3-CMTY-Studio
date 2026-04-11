@@ -1,3 +1,4 @@
+import { friendlyGitError } from "../utils/gitErrors.js";
 import {
   gitRepoInfo,
   gitStatus,
@@ -114,6 +115,21 @@ class GitStore {
     );
   }
 
+  /** Whether HEAD is detached (not on a branch) */
+  get isDetachedHead(): boolean {
+    return this.repoInfo?.isDetached === true;
+  }
+
+  /** Whether the repo is a shallow clone */
+  get isShallow(): boolean {
+    return this.repoInfo?.shallow === true;
+  }
+
+  /** Whether the repo is bare (no working tree) */
+  get isBare(): boolean {
+    return this.repoInfo?.bare === true;
+  }
+
   /** Refresh repo info and file status for the given mod path */
   async refresh(modPath: string): Promise<void> {
     if (!modPath) return;
@@ -155,7 +171,7 @@ class GitStore {
       this.loadRemotes(modPath);
       this.detectForge(modPath);
     } catch (err) {
-      console.error("Git refresh failed:", err);
+      console.error("Git refresh failed:", friendlyGitError(err instanceof Error ? err.message : String(err)));
       this.isRepo = false;
       this.repoInfo = null;
       this._clearFiles();
@@ -308,8 +324,8 @@ class GitStore {
     this.syncProgress = "Fetching…";
     try {
       await gitFetch(modPath, remoteName);
-      await this.refresh(modPath);
-    } finally {
+      await this.refresh(modPath);    } catch (err) {
+      throw new Error(friendlyGitError(err instanceof Error ? err.message : String(err)));    } finally {
       this.isSyncing = false;
       this.syncProgress = null;
     }
@@ -323,8 +339,8 @@ class GitStore {
       const result = await gitPull(modPath, remoteName);
       await this.refresh(modPath);
       await this.loadHistory(modPath);
-      return result;
-    } finally {
+      return result;    } catch (err) {
+      throw new Error(friendlyGitError(err instanceof Error ? err.message : String(err)));    } finally {
       this.isSyncing = false;
       this.syncProgress = null;
     }
@@ -336,8 +352,8 @@ class GitStore {
     this.syncProgress = "Pushing…";
     try {
       await gitPush(modPath, remoteName, force);
-      await this.refresh(modPath);
-    } finally {
+      await this.refresh(modPath);    } catch (err) {
+      throw new Error(friendlyGitError(err instanceof Error ? err.message : String(err)));    } finally {
       this.isSyncing = false;
       this.syncProgress = null;
     }
@@ -351,8 +367,8 @@ class GitStore {
       await gitPull(modPath);
       await gitPush(modPath);
       await this.refresh(modPath);
-      await this.loadHistory(modPath);
-    } finally {
+      await this.loadHistory(modPath);    } catch (err) {
+      throw new Error(friendlyGitError(err instanceof Error ? err.message : String(err)));    } finally {
       this.isSyncing = false;
       this.syncProgress = null;
     }
@@ -510,7 +526,7 @@ class GitStore {
         this.refreshForge();
       }
     } catch (err) {
-      console.error("Forge detection failed:", err);
+      console.error("Forge detection failed:", friendlyGitError(err instanceof Error ? err.message : String(err)));
       this.forgeInfo = null;
       this.forgeUser = null;
       this.forgeConnected = false;
@@ -529,7 +545,7 @@ class GitStore {
       this.prs = prs;
       this.issues = issues;
     } catch (err) {
-      console.error("Forge refresh failed:", err);
+      console.error("Forge refresh failed:", friendlyGitError(err instanceof Error ? err.message : String(err)));
     }
   }
 
