@@ -541,12 +541,12 @@ describe("UiStore", () => {
       expect(uiStore.detectScriptLanguage("data/config.yml")).toBe("yaml");
     });
 
-    it("defaults to lua for unknown extensions", () => {
-      expect(uiStore.detectScriptLanguage("file.xyz")).toBe("lua");
+    it("defaults to plaintext for unknown extensions", () => {
+      expect(uiStore.detectScriptLanguage("file.xyz")).toBe("plaintext");
     });
 
-    it("defaults to lua for files with no extension", () => {
-      expect(uiStore.detectScriptLanguage("Makefile")).toBe("lua");
+    it("defaults to plaintext for files with no extension", () => {
+      expect(uiStore.detectScriptLanguage("Makefile")).toBe("plaintext");
     });
 
     it("non-goal .txt files return plaintext", () => {
