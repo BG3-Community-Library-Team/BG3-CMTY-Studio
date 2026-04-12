@@ -12,6 +12,7 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Save from "@lucide/svelte/icons/save";
+  import WrapText from "@lucide/svelte/icons/wrap-text";
   import { m } from "../paraglide/messages.js";
 
   interface Props {
@@ -181,6 +182,16 @@
     if (tab && !tab.dirty) tab.dirty = true;
     scheduleAutoSave();
   }
+
+  function formatDocument() {
+    try {
+      const parsed = JSON.parse(rawContent);
+      rawContent = JSON.stringify(parsed, null, 2);
+      markDirty();
+    } catch {
+      parseError = m.se_config_invalid_json();
+    }
+  }
 </script>
 
 <div class="se-config-editor">
@@ -226,6 +237,17 @@
             Raw JSON
           </button>
         </div>
+        {#if rawMode}
+          <button
+            class="format-btn"
+            onclick={formatDocument}
+            aria-label={m.se_config_format_document()}
+            title={m.se_config_format_document()}
+          >
+            <WrapText size={12} />
+            {m.se_config_format_document()}
+          </button>
+        {/if}
           <button
             class="save-btn"
             onclick={saveForm}
@@ -386,6 +408,25 @@
   }
 
   .save-btn:hover {
+    color: var(--th-text-200);
+    background: var(--th-bg-700);
+  }
+
+  .format-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--th-text-400);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .format-btn:hover {
     color: var(--th-text-200);
     background: var(--th-bg-700);
   }

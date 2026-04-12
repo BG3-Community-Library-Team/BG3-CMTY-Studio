@@ -34,6 +34,7 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/cli": "^2.10.0",
     "@testing-library/svelte": "^5.3.1",
+    "@types/diff": "^7.0.2",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.0",
     "fast-check": "^4.5.3",
@@ -65,6 +66,7 @@
     "@lezer/highlight": "^1.2.3",
     "@lucide/svelte": "^1.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.0",
-    "@tauri-apps/plugin-shell": "^2.3.5"
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "diff": "^8.0.4"
   }
 }

@@ -1398,5 +1398,29 @@
   "deps_suggest_from_meta": "Based on your mod's meta.lsx",
   "deps_suggest_mapped": "Mapped to {platform}",
   "deps_suggest_unmapped": "No platform mapping — add manually",
-  "deps_suggest_base_game_excluded": "Base game dependencies are excluded"
+  "deps_suggest_base_game_excluded": "Base game dependencies are excluded",
+
+  "file_preview_edit": "Edit",
+  "file_preview_editing": "Editing",
+  "file_preview_unsaved": "Unsaved changes",
+  "file_preview_save_success": "File saved",
+  "file_preview_save_failed": "Save failed",
+
+  "se_config_format_document": "Format",
+
+  "lsx_tree_search_placeholder": "Search attributes…",
+  "lsx_tree_copy_xpath": "Copy XPath",
+  "lsx_tree_copied_xpath": "XPath copied",
+  "lsx_tree_no_results": "No matching nodes",
+  "lsx_tree_parse_error": "Failed to parse XML",
+  "lsx_tree_attributes": "attributes",
+  "lsx_tree_children": "children",
+  "lsx_tree_nodes": "nodes",
+
+  "diff_view_unified": "Unified",
+  "diff_view_split": "Split",
+  "diff_view_no_changes": "No changes",
+  "diff_view_next_change": "Next change",
+  "diff_view_prev_change": "Previous change",
+  "diff_view_loading": "Computing diff…"
 }

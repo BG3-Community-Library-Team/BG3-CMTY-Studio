@@ -20,6 +20,7 @@
   import GitDiffView from "./git/GitDiffView.svelte";
   import GitCommitDetailView from "./git/GitCommitDetailView.svelte";
   import ForgeIssueView from "./git/ForgeIssueView.svelte";
+  import DiffView from "./script-editors/DiffView.svelte";
   import ThemeGallery from "./dev/ThemeGallery.svelte";
   import SettingsContentPane from "./SettingsContentPane.svelte";
   import ThemePreview from "./ThemePreview.svelte";
@@ -855,6 +856,14 @@
       {#if activeTab.filePath}
         <ForgeIssueView issueNumber={Number(activeTab.filePath)} />
       {/if}
+    {:else if activeTab.type === "file-diff"}
+      <DiffView
+        leftContent={activeTab.leftContent ?? ""}
+        rightContent={activeTab.rightContent ?? ""}
+        leftLabel={activeTab.leftLabel}
+        rightLabel={activeTab.rightLabel}
+        language={activeTab.language}
+      />
     {:else if import.meta.env.DEV && activeTab.type === "theme-gallery"}
       <ThemeGallery onclose={() => uiStore.closeTab("theme-gallery")} />
     {/if}
