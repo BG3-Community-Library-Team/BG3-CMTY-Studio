@@ -52,7 +52,10 @@ export type ThemeTokenKey =
   | "--th-badge-error-bg" | "--th-badge-error-text"
   | "--th-badge-info-bg" | "--th-badge-info-text"
   | "--th-badge-override-bg" | "--th-badge-override-text"
-  | "--th-badge-success-bg" | "--th-badge-success-text";
+  | "--th-badge-success-bg" | "--th-badge-success-text"
+  | "--th-syntax-keyword" | "--th-syntax-string" | "--th-syntax-comment"
+  | "--th-syntax-num" | "--th-syntax-bool" | "--th-syntax-key"
+  | "--th-syntax-punct";
 
 /** @deprecated Use ThemeTokenKey instead. */
 export type ThemeToken = ThemeTokenKey;
@@ -161,6 +164,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#fdba74",
     "--th-badge-success-bg": "rgba(4,120,87,.5)",
     "--th-badge-success-text": "#6ee7b7",
+    "--th-syntax-keyword": "#a78bfa",
+    "--th-syntax-string": "#34d399",
+    "--th-syntax-comment": "#71717a",
+    "--th-syntax-num": "#fbbf24",
+    "--th-syntax-bool": "#fbbf24",
+    "--th-syntax-key": "#38bdf8",
+    "--th-syntax-punct": "#a1a1aa",
   },
 
   light: {
@@ -262,6 +272,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#9a3412",
     "--th-badge-success-bg": "rgba(16,185,129,.15)",
     "--th-badge-success-text": "#065f46",
+    "--th-syntax-keyword": "#5b21b6",
+    "--th-syntax-string": "#065f46",
+    "--th-syntax-comment": "#52525b",
+    "--th-syntax-num": "#92400e",
+    "--th-syntax-bool": "#92400e",
+    "--th-syntax-key": "#075985",
+    "--th-syntax-punct": "#52525b",
   },
 
   "solarized-dark": {
@@ -363,6 +380,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#e8601c",
     "--th-badge-success-bg": "rgba(133,153,0,.3)",
     "--th-badge-success-text": "#a3bd1b",
+    "--th-syntax-keyword": "#8a8fd8",
+    "--th-syntax-string": "#a3bd1b",
+    "--th-syntax-comment": "#839496",
+    "--th-syntax-num": "#d4a017",
+    "--th-syntax-bool": "#d4a017",
+    "--th-syntax-key": "#48a1e6",
+    "--th-syntax-punct": "#93a1a1",
   },
 
   "solarized-light": {
@@ -464,6 +488,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#a63710",
     "--th-badge-success-bg": "rgba(133,153,0,.15)",
     "--th-badge-success-text": "#4d5c00",
+    "--th-syntax-keyword": "#5b5faf",
+    "--th-syntax-string": "#4d5c00",
+    "--th-syntax-comment": "#4f656d",
+    "--th-syntax-num": "#946d00",
+    "--th-syntax-bool": "#946d00",
+    "--th-syntax-key": "#1a6fb5",
+    "--th-syntax-punct": "#4e646b",
   },
 
   "high-contrast": {
@@ -565,6 +596,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#ffa600",
     "--th-badge-success-bg": "rgba(126,231,135,.2)",
     "--th-badge-success-text": "#7ee787",
+    "--th-syntax-keyword": "#d2a8ff",
+    "--th-syntax-string": "#7ee787",
+    "--th-syntax-comment": "#c0c0c0",
+    "--th-syntax-num": "#ffcc00",
+    "--th-syntax-bool": "#ffcc00",
+    "--th-syntax-key": "#6cb6ff",
+    "--th-syntax-punct": "#e0e0e0",
   },
 
   aubergine: {
@@ -666,6 +704,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#f0a050",
     "--th-badge-success-bg": "rgba(94,184,157,.3)",
     "--th-badge-success-text": "#7ed0b4",
+    "--th-syntax-keyword": "#a67cff",
+    "--th-syntax-string": "#5eb89d",
+    "--th-syntax-comment": "#9a88a6",
+    "--th-syntax-num": "#f7c252",
+    "--th-syntax-bool": "#f7c252",
+    "--th-syntax-key": "#7ba3d6",
+    "--th-syntax-punct": "#b8a9c2",
   },
 
   balance: {
@@ -767,6 +812,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#b35c00",
     "--th-badge-success-bg": "rgba(25,135,84,.12)",
     "--th-badge-success-text": "#146c43",
+    "--th-syntax-keyword": "#5a32a3",
+    "--th-syntax-string": "#146c43",
+    "--th-syntax-comment": "#596168",
+    "--th-syntax-num": "#c56600",
+    "--th-syntax-bool": "#c56600",
+    "--th-syntax-key": "#0a58ca",
+    "--th-syntax-punct": "#5a6269",
   },
 
   "gruvbox-dark": {
@@ -868,6 +920,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#fe8019",
     "--th-badge-success-bg": "rgba(184,187,38,.25)",
     "--th-badge-success-text": "#b8bb26",
+    "--th-syntax-keyword": "#d3869b",
+    "--th-syntax-string": "#b8bb26",
+    "--th-syntax-comment": "#a89984",
+    "--th-syntax-num": "#fabd2f",
+    "--th-syntax-bool": "#fabd2f",
+    "--th-syntax-key": "#83a598",
+    "--th-syntax-punct": "#bdae93",
   },
 
   "gruvbox-light": {
@@ -969,6 +1028,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#af3a03",
     "--th-badge-success-bg": "rgba(121,116,14,.15)",
     "--th-badge-success-text": "#79740e",
+    "--th-syntax-keyword": "#8f3f71",
+    "--th-syntax-string": "#6b6b0a",
+    "--th-syntax-comment": "#7c6f64",
+    "--th-syntax-num": "#b57614",
+    "--th-syntax-bool": "#b57614",
+    "--th-syntax-key": "#076678",
+    "--th-syntax-punct": "#665c54",
   },
 
   prototype: {
@@ -1070,6 +1136,13 @@ export const THEME_TOKENS: Record<Exclude<ThemeId, "custom">, Record<ThemeTokenK
     "--th-badge-override-text": "#ffa600",
     "--th-badge-success-bg": "rgba(6,214,160,.3)",
     "--th-badge-success-text": "#2be8b4",
+    "--th-syntax-keyword": "#9b4dca",
+    "--th-syntax-string": "#06d6a0",
+    "--th-syntax-comment": "#8080a0",
+    "--th-syntax-num": "#ffd166",
+    "--th-syntax-bool": "#ffd166",
+    "--th-syntax-key": "#4361ee",
+    "--th-syntax-punct": "#a0a0c0",
   },
 };
 
