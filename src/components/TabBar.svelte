@@ -38,6 +38,7 @@
     "git-commit": GitCommitVertical,
     "forge-issue": FileText,
     "texture-atlas": Palette,
+    "file-diff": GitCompareArrows,
   };
 
   let tabs = $derived(uiStore.openTabs);

@@ -36,6 +36,7 @@
   import Lightbulb from "@lucide/svelte/icons/lightbulb";
   import X from "@lucide/svelte/icons/x";
   import Save from "@lucide/svelte/icons/save";
+  import Columns2 from "@lucide/svelte/icons/columns-2";
   import { open } from "@tauri-apps/plugin-dialog";
   import { scanAndImport, openProject } from "../lib/services/scanService.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
@@ -60,6 +61,26 @@
   let isCreatingMod = $state(false);
   let lsxTabViewMode = $state<Record<string, "form" | "raw">>({});
   let lsxRawEditorRef: any = $state(undefined);
+
+  // ── Split editor state ──
+  let splitActive = $state(false);
+  let splitContent = $state("");
+  let splitLanguage = $state<string>("plaintext");
+  let splitFilePath = $state<string | null>(null);
+  /** Guard flag to prevent infinite sync loops between split editors. */
+  let _syncing = false;
+
+  import CodeEditor from "./CodeEditor.svelte";
+  let splitEditorRef: CodeEditor | undefined = $state(undefined);
+  let primaryEditorRef: CodeEditor | undefined = $state(undefined);
+
+  /** Close the split view. */
+  function closeSplit() {
+    splitActive = false;
+    splitContent = "";
+    splitFilePath = null;
+    splitLanguage = "plaintext";
+  }
 
   /** Cache of parsed LSX file sections for File Tree form view, keyed by tab ID. */
   let fileParsedSections = $state<Record<string, SectionResult[]>>({});
@@ -172,6 +193,17 @@
 
   let activeTab = $derived(uiStore.activeTab);
   let sections = $derived(modStore.scanResult?.sections ?? []);
+
+  /** Whether the active tab supports splitting (script-editor or file-preview). */
+  let canSplit = $derived(
+    activeTab?.type === "script-editor" || activeTab?.type === "file-preview"
+  );
+
+  // Close split when active tab changes
+  $effect(() => {
+    const _tab = activeTab;
+    closeSplit();
+  });
 
   /** Staging theme CSS overrides from SettingsContentPane (for live ThemePreview). */
   let themeStagingStyle = $state("");
@@ -348,6 +380,24 @@
 <div class="editor-area">
   <div class="tab-bar-wrapper" class:auto-hide={settingsStore.autoHideTabBar}>
     <TabBar />
+    {#if canSplit}
+      <button
+        class="split-toggle-btn"
+        title={splitActive ? m.editor_close_split() : m.editor_split_right()}
+        onclick={() => {
+          if (splitActive) {
+            closeSplit();
+          } else if (activeTab?.filePath) {
+            splitActive = true;
+            splitFilePath = activeTab.filePath;
+            splitLanguage = activeTab.language ?? "plaintext";
+          }
+        }}
+        aria-label={splitActive ? m.editor_close_split() : m.editor_split_right()}
+      >
+        <Columns2 size={14} />
+      </button>
+    {/if}
   </div>
 
   <div class="editor-content">
@@ -816,12 +866,33 @@
         {:else if activeTab.filePath.includes("Localization/") && activeTab.filePath.endsWith(".xml")}
           <LocalizationFileEditor filePath={activeTab.filePath} />
         {:else}
-          <ScriptEditorPanel
-            filePath={activeTab.filePath}
-            language={(activeTab.language ?? "lua") as ScriptLanguage}
-            readonly={false}
-            hideHeader
-          />
+          <div class="split-container" class:split-active={splitActive}>
+            <div class="split-pane split-primary">
+              <ScriptEditorPanel
+                filePath={activeTab.filePath}
+                language={(activeTab.language ?? "lua") as ScriptLanguage}
+                readonly={false}
+                hideHeader
+              />
+            </div>
+            {#if splitActive && splitFilePath}
+              <div class="split-divider"></div>
+              <div class="split-pane split-secondary">
+                <div class="split-header">
+                  <span class="split-header-label">{splitFilePath.split("/").pop() ?? splitFilePath.split("\\").pop() ?? splitFilePath}</span>
+                  <button class="split-close-btn" onclick={closeSplit} title={m.editor_close_split()} aria-label={m.editor_close_split()}>
+                    <X size={14} />
+                  </button>
+                </div>
+                <ScriptEditorPanel
+                  filePath={splitFilePath}
+                  language={(activeTab.language ?? "lua") as ScriptLanguage}
+                  readonly={false}
+                  hideHeader
+                />
+              </div>
+            {/if}
+          </div>
         {/if}
       {/if}
     {:else if activeTab.type === "readme"}
@@ -1008,5 +1079,87 @@
   .mode-pill-option.active {
     background: var(--th-accent, #4a9eff);
     color: var(--th-text-on-accent, #fff);
+  }
+
+  /* Split editor */
+  .split-toggle-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    z-index: 11;
+  }
+  .split-toggle-btn:hover {
+    background: var(--th-bg-700);
+    color: var(--th-text-200);
+  }
+
+  .split-container {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+  }
+  .split-container.split-active .split-primary {
+    flex: 1;
+    min-width: 0;
+  }
+  .split-pane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .split-divider {
+    width: 3px;
+    background: var(--th-border-700);
+    flex-shrink: 0;
+    cursor: col-resize;
+  }
+  .split-secondary {
+    display: flex;
+    flex-direction: column;
+  }
+  .split-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: var(--th-bg-800);
+    border-bottom: 1px solid var(--th-border-700);
+    flex-shrink: 0;
+  }
+  .split-header-label {
+    font-size: 11px;
+    color: var(--th-text-300);
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .split-close-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--th-text-400);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .split-close-btn:hover {
+    background: var(--th-bg-700);
+    color: var(--th-text-200);
   }
 </style>

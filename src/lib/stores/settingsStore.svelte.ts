@@ -75,6 +75,24 @@ interface StoredSettings {
   modioGameId: string;
   /** mod.io OAuth token expiry (ISO 8601) */
   modioTokenExpiry: string;
+  /** Editor font size in pixels */
+  editorFontSize: number;
+  /** Editor font family */
+  editorFontFamily: string;
+  /** Editor tab size (spaces per tab) */
+  editorTabSize: number;
+  /** Editor word wrap */
+  editorWordWrap: boolean;
+  /** Editor line numbers */
+  editorLineNumbers: boolean;
+  /** Editor bracket matching */
+  editorBracketMatching: boolean;
+  /** Editor active line highlight */
+  editorActiveLineHighlight: boolean;
+  /** Editor minimap (placeholder) */
+  editorMinimap: boolean;
+  /** Editor lint delay in ms */
+  editorLintDelay: number;
 }
 
 /** Default values for all persisted settings. Adding a new persisted field
@@ -117,6 +135,15 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   modioUserName: "",
   modioGameId: "",
   modioTokenExpiry: "",
+  editorFontSize: 12,
+  editorFontFamily: "Cascadia Code, Fira Code, JetBrains Mono, monospace",
+  editorTabSize: 2,
+  editorWordWrap: false,
+  editorLineNumbers: true,
+  editorBracketMatching: true,
+  editorActiveLineHighlight: true,
+  editorMinimap: false,
+  editorLintDelay: 500,
 };
 
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
@@ -269,6 +296,25 @@ class SettingsStore {
   modioGameId: string = $state(this.#initial.modioGameId);
   /** mod.io OAuth token expiry (ISO 8601) */
   modioTokenExpiry: string = $state(this.#initial.modioTokenExpiry);
+
+  /** Editor font size in pixels */
+  editorFontSize: number = $state(this.#initial.editorFontSize);
+  /** Editor font family */
+  editorFontFamily: string = $state(this.#initial.editorFontFamily);
+  /** Editor tab size (spaces per tab) */
+  editorTabSize: number = $state(this.#initial.editorTabSize);
+  /** Editor word wrap */
+  editorWordWrap: boolean = $state(this.#initial.editorWordWrap);
+  /** Editor line numbers */
+  editorLineNumbers: boolean = $state(this.#initial.editorLineNumbers);
+  /** Editor bracket matching */
+  editorBracketMatching: boolean = $state(this.#initial.editorBracketMatching);
+  /** Editor active line highlight */
+  editorActiveLineHighlight: boolean = $state(this.#initial.editorActiveLineHighlight);
+  /** Editor minimap (placeholder) */
+  editorMinimap: boolean = $state(this.#initial.editorMinimap);
+  /** Editor lint delay in ms */
+  editorLintDelay: number = $state(this.#initial.editorLintDelay);
 
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);
@@ -483,6 +529,20 @@ class SettingsStore {
   zoomReset(): void {
     this.zoomLevel = 100;
     this.#schedulePersist("zoomLevel");
+  }
+
+  /** Reset all editor settings to defaults */
+  resetEditorSettings(): void {
+    this.editorFontSize = PERSISTED_DEFAULTS.editorFontSize;
+    this.editorFontFamily = PERSISTED_DEFAULTS.editorFontFamily;
+    this.editorTabSize = PERSISTED_DEFAULTS.editorTabSize;
+    this.editorWordWrap = PERSISTED_DEFAULTS.editorWordWrap;
+    this.editorLineNumbers = PERSISTED_DEFAULTS.editorLineNumbers;
+    this.editorBracketMatching = PERSISTED_DEFAULTS.editorBracketMatching;
+    this.editorActiveLineHighlight = PERSISTED_DEFAULTS.editorActiveLineHighlight;
+    this.editorMinimap = PERSISTED_DEFAULTS.editorMinimap;
+    this.editorLintDelay = PERSISTED_DEFAULTS.editorLintDelay;
+    this.#schedulePersist("editorFontSize");
   }
 }
 

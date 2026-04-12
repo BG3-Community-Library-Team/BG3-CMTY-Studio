@@ -12,6 +12,7 @@
   import ClipboardCopy from "@lucide/svelte/icons/clipboard-copy";
   import { markdownToBBCode } from "../lib/utils/bbcodeConverter.js";
   import { markdownToPlainText } from "../lib/utils/markdownToPlainText.js";
+  import CodeEditor from "./CodeEditor.svelte";
 
   interface Props {
     /** Optional file path (relative to mod). When set, loads that specific .md file. */
@@ -289,12 +290,14 @@ Add installation instructions here. Example:
         {@html previewHtml}
       </div>
     {:else}
-      <textarea
-        class="readme-textarea"
-        bind:value={content}
-        placeholder="Write your README here…"
-        spellcheck="true"
-      ></textarea>
+      <div class="readme-cm-editor">
+        <CodeEditor
+          content={content}
+          language="markdown"
+          onchange={(text) => { content = text; }}
+          onsave={handleSave}
+        />
+      </div>
     {/if}
   </div>
 </div>
@@ -369,23 +372,10 @@ Add installation instructions here. Example:
     overflow: auto;
   }
 
-  .readme-textarea {
+  .readme-cm-editor {
     width: 100%;
     height: 100%;
-    resize: none;
-    border: none;
-    outline: none;
-    padding: 16px 20px;
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    background: var(--th-bg-900);
-    color: var(--th-text-200);
-    tab-size: 2;
-  }
-
-  .readme-textarea::placeholder {
-    color: var(--th-text-600);
+    min-height: 0;
   }
 
   .readme-loading {

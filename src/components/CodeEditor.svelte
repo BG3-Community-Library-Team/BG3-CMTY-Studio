@@ -12,6 +12,7 @@
   import { bg3Linter } from "../lib/editor/lintBridge.js";
   import { completionRegistry } from "../lib/plugins/index.js";
   import { extractPrefix } from "../lib/utils/luaCompletions.js";
+  import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
   import type { ScriptLanguage } from "../lib/editor/types.js";
 
   interface Props {
@@ -46,6 +47,11 @@
   const readonlyCompartment = new Compartment();
   const lintCompartment = new Compartment();
   const extraCompartment = new Compartment();
+  const tabSizeCompartment = new Compartment();
+  const wrapCompartment = new Compartment();
+  const lineNumCompartment = new Compartment();
+  const bracketCompartment = new Compartment();
+  const activeLineCompartment = new Compartment();
 
   /** Bridge CMTY CompletionRegistry into CM6 autocompletion. */
   function cmtyCompletionSource(ctx: CM6CompletionContext): CompletionResult | null {
@@ -82,19 +88,21 @@
   /** Build the full set of extensions for the editor state. */
   function buildExtensions(): Extension[] {
     return [
-      lineNumbers(),
+      lineNumCompartment.of(settingsStore.editorLineNumbers ? lineNumbers() : []),
       highlightActiveLineGutter(),
       history(),
       foldGutter(),
       drawSelection(),
       dropCursor(),
       indentOnInput(),
-      bracketMatching(),
+      bracketCompartment.of(settingsStore.editorBracketMatching ? bracketMatching() : []),
       closeBrackets(),
-      highlightActiveLine(),
+      activeLineCompartment.of(settingsStore.editorActiveLineHighlight ? highlightActiveLine() : []),
       highlightSelectionMatches(),
       autocompletion({ override: [cmtyCompletionSource] }),
       lintGutter(),
+      tabSizeCompartment.of(EditorState.tabSize.of(settingsStore.editorTabSize)),
+      wrapCompartment.of(settingsStore.editorWordWrap ? EditorView.lineWrapping : []),
       lintCompartment.of(filePath ? bg3Linter(filePath, language, projectPath) : []),
       keymap.of([
         ...closeBracketsKeymap,
@@ -181,6 +189,37 @@
     }
   });
 
+  // Watch editor settings → reconfigure compartments
+  $effect(() => {
+    const tabSize = settingsStore.editorTabSize;
+    if (!view) return;
+    view.dispatch({ effects: tabSizeCompartment.reconfigure(EditorState.tabSize.of(tabSize)) });
+  });
+
+  $effect(() => {
+    const wrap = settingsStore.editorWordWrap;
+    if (!view) return;
+    view.dispatch({ effects: wrapCompartment.reconfigure(wrap ? EditorView.lineWrapping : []) });
+  });
+
+  $effect(() => {
+    const show = settingsStore.editorLineNumbers;
+    if (!view) return;
+    view.dispatch({ effects: lineNumCompartment.reconfigure(show ? lineNumbers() : []) });
+  });
+
+  $effect(() => {
+    const show = settingsStore.editorBracketMatching;
+    if (!view) return;
+    view.dispatch({ effects: bracketCompartment.reconfigure(show ? bracketMatching() : []) });
+  });
+
+  $effect(() => {
+    const show = settingsStore.editorActiveLineHighlight;
+    if (!view) return;
+    view.dispatch({ effects: activeLineCompartment.reconfigure(show ? highlightActiveLine() : []) });
+  });
+
   /** Public API: get the current document text. */
   export function getContent(): string {
     return view?.state.doc.toString() ?? content;
@@ -211,14 +250,14 @@
   role="textbox"
   aria-multiline="true"
   aria-label="Code editor"
+  style:font-size="{settingsStore.editorFontSize}px"
+  style:font-family={settingsStore.editorFontFamily}
 ></div>
 
 <style>
   .code-editor {
     height: 100%;
     overflow: hidden;
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
-    font-size: 12px;
   }
 
   .code-editor :global(.cm-editor) {

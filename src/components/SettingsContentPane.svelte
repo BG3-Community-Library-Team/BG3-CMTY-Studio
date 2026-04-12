@@ -11,6 +11,7 @@
   import { projectSettingsStore, type ProjectSettings } from "../lib/stores/projectSettingsStore.svelte.js";
   import NexusSettingsSection from "./platform/nexus/NexusSettingsSection.svelte";
   import ModioSettingsSection from "./platform/modio/ModioSettingsSection.svelte";
+  import EditorSettings from "./settings/EditorSettings.svelte";
 
   /** Map of configurationRegistry keys → projectSettingsStore keys for project-level persistence. */
   const CONFIG_TO_PROJECT: Record<string, keyof ProjectSettings> = {
@@ -476,6 +477,8 @@
       <hr class="border-[var(--th-border-700)]" />
       <ModioSettingsSection />
     </div>
+  {:else if uiStore.settingsSection === "editor"}
+    <EditorSettings />
   {:else}
     <div class="flex flex-col items-center justify-center h-full text-center">
       <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>

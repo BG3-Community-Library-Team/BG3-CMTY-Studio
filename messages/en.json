@@ -1422,5 +1422,22 @@
   "diff_view_no_changes": "No changes",
   "diff_view_next_change": "Next change",
   "diff_view_prev_change": "Previous change",
-  "diff_view_loading": "Computing diff…"
+  "diff_view_loading": "Computing diff…",
+
+  "editor_split_right": "Split Right",
+  "editor_close_split": "Close Split",
+
+  "settings_editor_title": "Editor",
+  "settings_editor_font_size": "Font Size",
+  "settings_editor_font_family": "Font Family",
+  "settings_editor_tab_size": "Tab Size",
+  "settings_editor_word_wrap": "Word Wrap",
+  "settings_editor_line_numbers": "Line Numbers",
+  "settings_editor_bracket_matching": "Bracket Matching",
+  "settings_editor_active_line": "Active Line Highlight",
+  "settings_editor_lint_delay": "Lint Delay (ms)",
+  "settings_editor_minimap": "Minimap",
+  "settings_editor_reset": "Reset to Defaults",
+
+  "readme_editor_cm6_label": "Markdown Editor"
 }
