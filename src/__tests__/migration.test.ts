@@ -6,6 +6,7 @@
  * auto loca entries, osiris goal entries, format preference, and no-op cases.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mockConsoleError, expectConsoleCalled } from "./helpers/suppressConsole.js";
 
 // Mock the staging IPC module
 vi.mock("../lib/tauri/staging.js", () => ({
@@ -210,11 +211,14 @@ describe("migrateLocalStorageProject", () => {
   });
 
   it("returns false on invalid JSON", async () => {
+    const spy = mockConsoleError();
     const key = projectKey(MOD_PATH);
     localStorage.setItem(key, "not valid json {{{");
 
     const result = await migrateLocalStorageProject(MOD_PATH);
     expect(result).toBe(false);
+    expectConsoleCalled(spy, "[migration] Failed to parse");
+    spy.mockRestore();
   });
 
   it("handles combined migration of all data types", async () => {

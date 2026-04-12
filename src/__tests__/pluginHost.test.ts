@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockConsoleError, expectConsoleCalled } from "./helpers/suppressConsole.js";
 import { pluginHost } from "../lib/plugins/pluginHost.svelte.js";
 import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
 import type { PluginModule } from "../lib/plugins/pluginTypes.js";
@@ -104,6 +105,7 @@ describe("PluginHost", () => {
   });
 
   it("does not crash when a plugin throws in activate", async () => {
+    const spy = mockConsoleError();
     const plugin = makeTestPlugin({
       manifest: { id: "test.throw1" },
       activate: () => {
@@ -117,6 +119,8 @@ describe("PluginHost", () => {
     await expect(pluginHost.activate("test.throw1")).resolves.toBeUndefined();
     // Plugin is still considered activated (contributions are valid)
     expect(pluginHost.isActivated("test.throw1")).toBe(true);
+    expectConsoleCalled(spy, "Failed to activate plugin");
+    spy.mockRestore();
   });
 
   // ── deactivate ─────────────────────────────────────────

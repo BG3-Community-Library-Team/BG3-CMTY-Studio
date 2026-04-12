@@ -3,6 +3,7 @@
  * additional mod paths, unpack path management, migrations, and edge cases.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { mockConsoleWarn, expectConsoleCalled } from "./helpers/suppressConsole.js";
 
 // The store reads localStorage on module load, so we seed it before importing.
 beforeEach(() => {
@@ -217,9 +218,12 @@ describe("SettingsStore", () => {
     });
 
     it("handles corrupted custom theme JSON gracefully", async () => {
+      const spy = mockConsoleWarn();
       localStorage.setItem("bg3-cmty-studio-custom-theme", "BROKEN{");
       const store = await freshStore();
       expect(store.customTheme.bgMain).toBe("#18181b"); // falls back to defaults
+      expectConsoleCalled(spy, "Custom theme load failed");
+      spy.mockRestore();
     });
   });
 

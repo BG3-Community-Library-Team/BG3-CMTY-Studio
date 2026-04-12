@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { checkRoundTrip, formatReport, type RoundTripReport } from "../lib/validation/roundtrip.js";
 import { parseExistingConfig } from "../lib/utils/configParser.js";
+import { suppressConsoleError, expectConsoleCalled } from "./helpers/suppressConsole.js";
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -150,6 +151,8 @@ Progressions:
 });
 
 describe("PF-037: Round-Trip Integrity — Edge Cases", () => {
+  const consoleSpy = suppressConsoleError();
+
   it("empty config yields 100% fidelity with zero entries", () => {
     const report = roundTrip("{}", "test.json");
     expect(report.fidelityPercent).toBe(100);
@@ -169,6 +172,7 @@ describe("PF-037: Round-Trip Integrity — Edge Cases", () => {
     // Invalid JSON
     const report = roundTrip("{invalid json!!!!!", "test.json");
     expect(report.fidelityPercent).toBe(0);
+    expectConsoleCalled(consoleSpy, "Failed to parse existing config");
   });
 
   it("JSON with BOM still gets round-trip checked", () => {
@@ -177,6 +181,7 @@ describe("PF-037: Round-Trip Integrity — Edge Cases", () => {
     const report = roundTrip(json, "test.json");
     // The parser fails on BOM'd JSON, so fidelity should reflect that
     expect(report.totalEntriesImported).toBe(0);
+    expectConsoleCalled(consoleSpy, "Failed to parse existing config");
   });
 
   it("handles config with only unknown sections", () => {

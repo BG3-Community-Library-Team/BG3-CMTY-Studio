@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { mockConsoleWarn, expectConsoleCalled } from "./helpers/suppressConsole.js";
 import type {
   CompletionPlugin,
   CompletionContext,
@@ -257,6 +258,7 @@ describe("CompletionRegistry", () => {
     });
 
     it("catches and swallows plugin errors", () => {
+      const warnSpy = mockConsoleWarn();
       completionRegistry.register(
         makePlugin({
           id: "crasher",
@@ -284,6 +286,8 @@ describe("CompletionRegistry", () => {
       const result = completionRegistry.getCompletions(makeCtx());
       expect(result).toHaveLength(1);
       expect(result[0].label).toBe("ok");
+      expectConsoleCalled(warnSpy, "plugin boom");
+      warnSpy.mockRestore();
     });
 
     it("uses default sortOrder 100 when omitted", () => {

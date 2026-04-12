@@ -3,10 +3,14 @@
  * auto-dismiss, history management, and edge cases.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { suppressConsoleError } from "./helpers/suppressConsole.js";
 
 const { toastStore } = await import("../lib/stores/toastStore.svelte.js");
 
 describe("ToastStore", () => {
+  // Suppress console.error — toastStore.error() intentionally logs to stderr
+  suppressConsoleError();
+
   beforeEach(() => {
     vi.useFakeTimers();
     toastStore.clear();

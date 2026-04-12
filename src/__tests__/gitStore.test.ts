@@ -3,6 +3,7 @@
  * forge detection/auto-refresh, and error handling with mocked Tauri backend.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mockConsoleError, expectConsoleCalled } from "./helpers/suppressConsole.js";
 
 import type {
   GitRepoInfo,
@@ -273,6 +274,7 @@ describe("gitStore", () => {
     });
 
     it("handles IPC error gracefully without corrupting state", async () => {
+      const spy = mockConsoleError();
       vi.mocked(gitRepoInfo).mockRejectedValueOnce(new Error("IPC failed"));
 
       await gitStore.refresh(MOD_PATH);
@@ -281,6 +283,8 @@ describe("gitStore", () => {
       expect(gitStore.repoInfo).toBeNull();
       expect(gitStore.stagedFiles).toEqual([]);
       expect(gitStore.isLoading).toBe(false);
+      expectConsoleCalled(spy, "Git refresh failed");
+      spy.mockRestore();
     });
 
     it("correctly classifies conflicted files", async () => {
@@ -458,12 +462,15 @@ describe("gitStore", () => {
     });
 
     it("handles forge detection error gracefully", async () => {
+      const spy = mockConsoleError();
       vi.mocked(gitRemotes).mockRejectedValueOnce(new Error("network error"));
 
       await gitStore.detectForge(MOD_PATH);
 
       expect(gitStore.forgeInfo).toBeNull();
       expect(gitStore.forgeConnected).toBe(false);
+      expectConsoleCalled(spy, "Forge detection failed");
+      spy.mockRestore();
     });
   });
 
@@ -502,6 +509,7 @@ describe("gitStore", () => {
     });
 
     it("handles error without clearing existing data", async () => {
+      const spy = mockConsoleError();
       gitStore.forgeInfo = MOCK_FORGE_INFO;
       gitStore.forgeConnected = true;
       gitStore.prs = [MOCK_PR];
@@ -512,6 +520,8 @@ describe("gitStore", () => {
 
       // Existing data preserved on error (no assignment runs)
       expect(gitStore.prs).toEqual([MOCK_PR]);
+      expectConsoleCalled(spy, "Forge refresh failed");
+      spy.mockRestore();
     });
   });
 

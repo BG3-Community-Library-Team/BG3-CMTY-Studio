@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/svelte";
+import { suppressConsoleError } from "../helpers/suppressConsole.js";
 
 afterEach(cleanup);
 
@@ -24,6 +25,8 @@ vi.mock("../../paraglide/messages.js", () => {
 import ErrorBoundaryWrapper from "./helpers/ErrorBoundaryWrapper.svelte";
 
 describe("TC-001: ErrorBoundary component", () => {
+  // Suppress console.error — ErrorBoundary intentionally logs caught render errors
+  const consoleSpy = suppressConsoleError();
   it("renders children normally when no error occurs", () => {
     render(ErrorBoundaryWrapper, { fail: false });
     const child = screen.getByTestId("child-content");

@@ -3,6 +3,7 @@
  * section lookups, error handling, reset, and concurrent load guards.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mockConsoleWarn, expectConsoleCalled } from "./helpers/suppressConsole.js";
 
 // Mock the tauri lsx-export module so no real IPC calls happen
 const mockDumpDbSchemas = vi.fn();
@@ -103,6 +104,7 @@ describe("schemaStore", () => {
     });
 
     it("sets loaded=true even on error", async () => {
+      const spy = mockConsoleWarn();
       mockDumpDbSchemas.mockRejectedValueOnce(new Error("IPC error"));
 
       await schemaStore.load();
@@ -111,6 +113,8 @@ describe("schemaStore", () => {
       expect(schemaStore.loading).toBe(false);
       // Maps remain empty on failure
       expect(schemaStore.schemas.size).toBe(0);
+      expectConsoleCalled(spy, "Failed to load schemas");
+      spy.mockRestore();
     });
   });
 
