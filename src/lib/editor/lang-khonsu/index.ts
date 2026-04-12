@@ -42,7 +42,8 @@ const contextAccessorPattern = /\bcontext\.(?:Source|Target|HitDescription(?:\.\
 const conditionFnMark = Decoration.mark({ class: "cm-khn-condition-fn" });
 const contextAccessorMark = Decoration.mark({ class: "cm-khn-context" });
 
-function buildDecorations(view: EditorView): DecorationSet {
+/** @internal — exported for testing */
+export function buildDecorations(view: EditorView): DecorationSet {
   const decorations: { from: number; to: number; deco: Decoration }[] = [];
 
   for (const { from, to } of view.visibleRanges) {

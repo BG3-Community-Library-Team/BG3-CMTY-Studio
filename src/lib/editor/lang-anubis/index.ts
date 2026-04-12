@@ -45,7 +45,8 @@ const namespaceMark = Decoration.mark({ class: "cm-anubis-namespace" });
 const eventsMark = Decoration.mark({ class: "cm-anubis-events" });
 const eParamMark = Decoration.mark({ class: "cm-anubis-eparam" });
 
-function buildDecorations(
+/** @internal — exported for testing */
+export function buildDecorations(
   view: EditorView,
   includeEParam: boolean,
 ): DecorationSet {
