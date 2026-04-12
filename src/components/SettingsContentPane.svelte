@@ -99,138 +99,144 @@
   });
 </script>
 
-<div class="settings-content-pane scrollbar-thin">
-  {#if uiStore.settingsSection === "theme"}
-    <h3 class="settings-section-title">{m.settings_theme_title()}</h3>
-    <fieldset class="space-y-2 mb-4">
-      <legend class="text-xs text-[var(--th-text-300)] font-semibold">{m.settings_theme_title()}</legend>
-      <select
-        class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-        value={settingsStore.theme}
-        onchange={(e) => settingsStore.setTheme((e.target as HTMLSelectElement).value as any)}
-      >
-        {#if settingsStore.hasCustomTheme}
-          <option value="custom">{m.settings_theme_custom()}</option>
-        {/if}
-        {#each THEME_OPTIONS as opt}
-          {#if opt.id !== "custom"}
-            <option value={opt.id}>{opt.label}</option>
+<div class="settings-content-pane">
+  <div class="settings-content-inner">
+    {#if uiStore.settingsSection === "theme"}
+      <h3 class="settings-section-title">{m.settings_theme_title()}</h3>
+      <fieldset class="space-y-2 mb-4">
+        <legend class="text-xs text-[var(--th-text-300)] font-semibold">{m.settings_theme_title()}</legend>
+        <select
+          class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
+          value={settingsStore.theme}
+          onchange={(e) => settingsStore.setTheme((e.target as HTMLSelectElement).value as any)}
+        >
+          {#if settingsStore.hasCustomTheme}
+            <option value="custom">{m.settings_theme_custom()}</option>
           {/if}
+          {#each THEME_OPTIONS as opt}
+            {#if opt.id !== "custom"}
+              <option value={opt.id}>{opt.label}</option>
+            {/if}
+          {/each}
+        </select>
+      </fieldset>
+
+      <!-- Custom theme editor -->
+      <div class="space-y-3 mt-4">
+        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold">{m.settings_theme_editor_heading()}</p>
+        <p class="text-xs text-[var(--th-text-500)]">{m.settings_theme_editor_instruction()}</p>
+
+        {#each THEME_COLOR_GROUPS as group}
+          <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold">{group.title()}</p>
+          <div class="grid grid-cols-2 gap-2">
+            {#each group.fields as field}
+              <label class="flex items-center gap-1.5 text-xs text-[var(--th-text-400)]">
+                <input type="color" class="w-5 h-5 rounded cursor-pointer border-0"
+                  value={stagingTheme[field.key]}
+                  oninput={(e) => { stagingTheme[field.key] = (e.target as HTMLInputElement).value; }}
+                /> {field.label()}
+              </label>
+            {/each}
+          </div>
         {/each}
-      </select>
-    </fieldset>
 
-    <!-- Custom theme editor -->
-    <div class="space-y-3 mt-4">
-      <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold">{m.settings_theme_editor_heading()}</p>
-      <p class="text-xs text-[var(--th-text-500)]">{m.settings_theme_editor_instruction()}</p>
+        <div class="flex gap-2 pt-1">
+          <button
+            class="flex-1 px-3 py-1.5 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] hover:opacity-90 text-white transition-colors"
+            onclick={() => { settingsStore.customTheme = { ...stagingTheme }; settingsStore.saveCustomTheme(); }}
+          >{m.settings_theme_apply()}</button>
+          <button
+            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
+            onclick={() => { settingsStore.populateFromCurrentTheme(); stagingTheme = { ...settingsStore.customTheme }; }}
+          >{m.common_reset()}</button>
+        </div>
+      </div>
 
-      {#each THEME_COLOR_GROUPS as group}
-        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold">{group.title()}</p>
-        <div class="grid grid-cols-2 gap-2">
-          {#each group.fields as field}
-            <label class="flex items-center gap-1.5 text-xs text-[var(--th-text-400)]">
-              <input type="color" class="w-5 h-5 rounded cursor-pointer border-0"
-                value={stagingTheme[field.key]}
-                oninput={(e) => { stagingTheme[field.key] = (e.target as HTMLInputElement).value; }}
-              /> {field.label()}
-            </label>
+    {:else if uiStore.settingsSection === "display" || uiStore.settingsSection === "notifications"}
+      <DisplaySettings />
+
+    {:else if uiStore.settingsSection === "modConfig" || uiStore.settingsSection === "schemas"}
+      <ModIntegrationSettings />
+
+    {:else if uiStore.settingsSection === "scripts" || uiStore.settingsSection === "editor"}
+      <EditorSettings />
+
+    {:else if uiStore.settingsSection === "git"}
+      {#each configurationRegistry.getSections().filter(s => s.title === "Git") as section (section.title)}
+        <h3 class="settings-section-title">{section.title}</h3>
+        <div class="space-y-3">
+          {#each Object.entries(section.properties).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)) as [key, prop] (key)}
+            {#if configurationRegistry.getCustomRenderer(key)}
+              {@const CustomComponent = configurationRegistry.getCustomRenderer(key)}
+              {#if CustomComponent}
+                <CustomComponent />
+              {/if}
+            {:else}
+            <div>
+              <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="plugin-{key}">{prop.description}</label>
+              {#if prop.type === "boolean"}
+                <input
+                  id="plugin-{key}"
+                  type="checkbox"
+                  class="form-checkbox"
+                  checked={!!configurationRegistry.get(key)}
+                  onchange={(e) => setConfigValue(key, (e.target as HTMLInputElement).checked)}
+                />
+              {:else if prop.type === "number"}
+                <input
+                  id="plugin-{key}"
+                  type="number"
+                  class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                  value={configurationRegistry.get(key) ?? ""}
+                  onblur={(e) => { const v = Number((e.target as HTMLInputElement).value); if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
+                />
+              {:else if prop.enum}
+                <select
+                  id="plugin-{key}"
+                  class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                  value={configurationRegistry.get(key) ?? prop.default}
+                  onchange={(e) => setConfigValue(key, (e.target as HTMLSelectElement).value)}
+                >
+                  {#each prop.enum as opt, idx}
+                    <option value={opt}>{prop.enumDescriptions?.[idx] ?? String(opt)}</option>
+                  {/each}
+                </select>
+              {:else}
+                <input
+                  id="plugin-{key}"
+                  type="text"
+                  autocomplete="off"
+                  class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+                  value={configurationRegistry.get(key) ?? ""}
+                  onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
+                />
+              {/if}
+            </div>
+            {/if}
           {/each}
         </div>
       {/each}
-
-      <div class="flex gap-2 pt-1">
-        <button
-          class="flex-1 px-3 py-1.5 text-xs rounded bg-[var(--th-accent-500,#0ea5e9)] hover:opacity-90 text-white transition-colors"
-          onclick={() => { settingsStore.customTheme = { ...stagingTheme }; settingsStore.saveCustomTheme(); }}
-        >{m.settings_theme_apply()}</button>
-        <button
-          class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
-          onclick={() => { settingsStore.populateFromCurrentTheme(); stagingTheme = { ...settingsStore.customTheme }; }}
-        >{m.common_reset()}</button>
+    {:else if uiStore.settingsSection === "publishing"}
+      <h3 class="settings-section-title">{m.publishingSection()}</h3>
+      <div class="space-y-6">
+        <NexusSettingsSection />
+        <hr class="border-[var(--th-border-700)]" />
+        <ModioSettingsSection />
       </div>
-    </div>
-
-  {:else if uiStore.settingsSection === "display" || uiStore.settingsSection === "notifications"}
-    <DisplaySettings />
-
-  {:else if uiStore.settingsSection === "modConfig" || uiStore.settingsSection === "schemas"}
-    <ModIntegrationSettings />
-
-  {:else if uiStore.settingsSection === "scripts" || uiStore.settingsSection === "editor"}
-    <EditorSettings />
-
-  {:else if uiStore.settingsSection === "git"}
-    {#each configurationRegistry.getSections().filter(s => s.title === "Git") as section (section.title)}
-      <h3 class="settings-section-title">{section.title}</h3>
-      <div class="space-y-3">
-        {#each Object.entries(section.properties).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)) as [key, prop] (key)}
-          {#if configurationRegistry.getCustomRenderer(key)}
-            {@const CustomComponent = configurationRegistry.getCustomRenderer(key)}
-            {#if CustomComponent}
-              <CustomComponent />
-            {/if}
-          {:else}
-          <div>
-            <label class="text-xs font-medium text-[var(--th-text-300)] mb-1 block" for="plugin-{key}">{prop.description}</label>
-            {#if prop.type === "boolean"}
-              <input
-                id="plugin-{key}"
-                type="checkbox"
-                class="form-checkbox"
-                checked={!!configurationRegistry.get(key)}
-                onchange={(e) => setConfigValue(key, (e.target as HTMLInputElement).checked)}
-              />
-            {:else if prop.type === "number"}
-              <input
-                id="plugin-{key}"
-                type="number"
-                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-                value={configurationRegistry.get(key) ?? ""}
-                onblur={(e) => { const v = Number((e.target as HTMLInputElement).value); if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
-              />
-            {:else if prop.enum}
-              <select
-                id="plugin-{key}"
-                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-                value={configurationRegistry.get(key) ?? prop.default}
-                onchange={(e) => setConfigValue(key, (e.target as HTMLSelectElement).value)}
-              >
-                {#each prop.enum as opt, idx}
-                  <option value={opt}>{prop.enumDescriptions?.[idx] ?? String(opt)}</option>
-                {/each}
-              </select>
-            {:else}
-              <input
-                id="plugin-{key}"
-                type="text"
-                autocomplete="off"
-                class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-                value={configurationRegistry.get(key) ?? ""}
-                onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (v !== configurationRegistry.get(key)) setConfigValue(key, v); }}
-              />
-            {/if}
-          </div>
-          {/if}
-        {/each}
+    {:else}
+      <div class="flex flex-col items-center justify-center h-full text-center">
+        <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>
       </div>
-    {/each}
-  {:else if uiStore.settingsSection === "publishing"}
-    <h3 class="settings-section-title">{m.publishingSection()}</h3>
-    <div class="space-y-6">
-      <NexusSettingsSection />
-      <hr class="border-[var(--th-border-700)]" />
-      <ModioSettingsSection />
-    </div>
-  {:else}
-    <div class="flex flex-col items-center justify-center h-full text-center">
-      <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
   .settings-content-pane {
+    width: 100%;
+    height: 100%;
+  }
+  .settings-content-inner {
     padding: 1.5rem 2rem;
     max-width: 640px;
     overflow-y: auto;

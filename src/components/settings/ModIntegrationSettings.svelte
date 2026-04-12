@@ -18,7 +18,7 @@
 
 <h3 class="settings-section-title">{m.settings_mod_config_title()}</h3>
 
-<div class="space-y-4">
+<div class="flex flex-col gap-4">
 
   <!-- Integration toggles -->
   <SettingsPanel title={m.settings_mod_config_title()} columns={2}>

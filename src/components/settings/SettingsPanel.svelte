@@ -64,7 +64,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    padding: 0.625rem 0.75rem 0.75rem;
+    padding: 0.75rem;
   }
   .panel-body.two-col {
     display: grid;

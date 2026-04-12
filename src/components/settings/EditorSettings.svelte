@@ -50,7 +50,7 @@
 
 <h3 class="settings-section-title">{m.settings_editor_title()}</h3>
 
-<div class="space-y-4">
+<div class="flex flex-col gap-4">
 
   <!-- Font settings row -->
   <div class="font-settings-grid">
