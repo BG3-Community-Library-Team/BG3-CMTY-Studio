@@ -9,6 +9,7 @@
   import { lintGutter } from "@codemirror/lint";
   import { cmtyTheme } from "../lib/editor/cmtyTheme.js";
   import { getLanguageExtension } from "../lib/editor/languages.js";
+  import { bg3Linter } from "../lib/editor/lintBridge.js";
   import { completionRegistry } from "../lib/plugins/index.js";
   import { extractPrefix } from "../lib/utils/luaCompletions.js";
   import type { ScriptLanguage } from "../lib/editor/types.js";
@@ -16,6 +17,7 @@
   interface Props {
     content: string;
     language: ScriptLanguage | string;
+    filePath?: string;
     readonly?: boolean;
     onchange?: (content: string) => void;
     onsave?: () => void;
@@ -26,6 +28,7 @@
   let {
     content,
     language,
+    filePath,
     readonly = false,
     onchange,
     onsave,
@@ -39,6 +42,7 @@
   // Compartments for dynamic reconfiguration
   const languageCompartment = new Compartment();
   const readonlyCompartment = new Compartment();
+  const lintCompartment = new Compartment();
   const extraCompartment = new Compartment();
 
   /** Bridge CMTY CompletionRegistry into CM6 autocompletion. */
@@ -89,6 +93,7 @@
       highlightSelectionMatches(),
       autocompletion({ override: [cmtyCompletionSource] }),
       lintGutter(),
+      lintCompartment.of(filePath ? bg3Linter(filePath, language) : []),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -148,6 +153,16 @@
     if (!view) return;
     view.dispatch({
       effects: readonlyCompartment.reconfigure(EditorState.readOnly.of(ro)),
+    });
+  });
+
+  // Watch filePath/language changes → reconfigure linter
+  $effect(() => {
+    const fp = filePath;
+    const lang = language;
+    if (!view) return;
+    view.dispatch({
+      effects: lintCompartment.reconfigure(fp ? bg3Linter(fp, lang) : []),
     });
   });
 

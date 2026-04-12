@@ -282,6 +282,7 @@
         {content}
         {language}
         {readonly}
+        {filePath}
         onchange={handleChange}
         onsave={save}
       />
