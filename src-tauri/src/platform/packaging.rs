@@ -167,7 +167,8 @@ fn compute_md5(path: &Path) -> Result<String, PlatformError> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    let result = hasher.finalize();
+    Ok(result.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 #[cfg(test)]
