@@ -9,7 +9,17 @@ use crate::platform::errors::PlatformError;
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v3";
 
 /// User-Agent sent with every Nexus API request.
-const USER_AGENT: &str = "BG3-CMTY-Studio/1.0.0";
+/// Uses a static base since reqwest::ClientBuilder::user_agent takes
+/// an impl TryInto<HeaderValue> and concat!() isn't available with env!().
+const USER_AGENT: &str = "BG3-CMTY-Studio";
+
+/// Application-Name header required by Nexus Mods API acceptable use policy.
+/// Sourced from `src/lib/version.ts` APP_NAME at compile time via build.rs.
+const APPLICATION_NAME: &str = env!("FRONTEND_APP_NAME");
+
+/// Application-Version header required by Nexus Mods API acceptable use policy.
+/// Sourced from `src/lib/version.ts` APP_VERSION at compile time via build.rs.
+const APPLICATION_VERSION: &str = env!("FRONTEND_APP_VERSION");
 
 /// Default request timeout in seconds.
 const TIMEOUT_SECS: u64 = 120;
@@ -32,9 +42,17 @@ impl NexusClient {
 
         let mut headers = HeaderMap::new();
         headers.insert("apikey", api_header);
+        headers.insert("Application-Name", HeaderValue::from_static(APPLICATION_NAME));
+        headers.insert(
+            "Application-Version",
+            HeaderValue::from_str(APPLICATION_VERSION)
+                .unwrap_or_else(|_| HeaderValue::from_static("0.0.0")),
+        );
+
+        let user_agent = format!("{USER_AGENT}/{APPLICATION_VERSION}");
 
         let client = Client::builder()
-            .user_agent(USER_AGENT)
+            .user_agent(user_agent)
             .timeout(std::time::Duration::from_secs(TIMEOUT_SECS))
             .default_headers(headers)
             .build()
@@ -92,6 +110,29 @@ impl NexusClient {
                     PlatformError::Timeout
                 } else {
                     PlatformError::HttpError(format!("POST {url}: {e}"))
+                }
+            })?;
+        check_response(resp).await
+    }
+
+    /// Make a PUT request with a JSON body and return the response.
+    pub async fn put_json(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response, PlatformError> {
+        let url = self.url(path);
+        let resp = self
+            .client
+            .put(&url)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    PlatformError::Timeout
+                } else {
+                    PlatformError::HttpError(format!("PUT {url}: {e}"))
                 }
             })?;
         check_response(resp).await

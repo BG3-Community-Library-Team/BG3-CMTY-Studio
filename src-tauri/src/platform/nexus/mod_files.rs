@@ -91,3 +91,17 @@ pub async fn create_mod_file(
     client.post_json("/mod-files", &body).await?;
     Ok(())
 }
+
+/// Rename a file update group.
+///
+/// `PUT /mod-file-update-groups/{group_id}`
+pub async fn rename_file_group(
+    client: &NexusClient,
+    group_id: u64,
+    new_name: &str,
+) -> Result<(), PlatformError> {
+    let path = format!("/mod-file-update-groups/{group_id}");
+    let body = serde_json::json!({ "name": new_name });
+    client.put_json(&path, &body).await?;
+    Ok(())
+}

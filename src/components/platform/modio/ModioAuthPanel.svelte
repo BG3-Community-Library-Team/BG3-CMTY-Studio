@@ -1,6 +1,6 @@
 <!--
-  ModioAuthPanel — mod.io authentication panel with email OAuth2 flow.
-  Visual step indicator, email code entry, connected state display.
+  ModioAuthPanel — mod.io authentication panel with direct OAuth2 token entry.
+  Users generate an Access Token at mod.io/me/access and paste it here.
 -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
@@ -12,12 +12,10 @@
   import LogOut from "@lucide/svelte/icons/log-out";
   import User from "@lucide/svelte/icons/user";
 
-  type AuthState = "disconnected" | "api_key_only" | "awaiting_code" | "connected" | "expired";
+  type AuthState = "disconnected" | "connected" | "expired";
 
-  let apiKeyInput = $state("");
-  let emailInput = $state("");
-  let codeInput = $state("");
-  let authState: AuthState = $state("disconnected");
+  let tokenInput = $state("");
+  let authState = $state<AuthState>("disconnected");
   let errorMsg = $state("");
   let loading = $state(false);
   let showDisconnectConfirm = $state(false);
@@ -34,26 +32,25 @@
   let tokenWarning = $derived(daysUntilExpiry > 0 && daysUntilExpiry <= 30);
   let tokenExpired = $derived(daysUntilExpiry <= 0 && settingsStore.modioTokenExpiry !== "");
 
-  let currentStep = $derived.by(() => {
-    if (authState === "connected") return 3;
-    if (authState === "awaiting_code") return 2;
-    if (authState === "api_key_only") return 1;
-    return 0;
-  });
+  const STEP_LABELS = [
+    () => m.modio_step_access_token(),
+    () => m.modio_step_connected(),
+  ];
 
-  // Check initial state
+  let currentStep = $derived(authState === "connected" || authState === "expired" ? 2 : 0);
+
+  // Check initial state on mount
   $effect(() => {
     checkInitialState();
   });
 
   async function checkInitialState() {
     try {
-      const hasKey = await invoke<boolean>("cmd_modio_has_api_key");
-      if (!hasKey) {
+      const hasToken = await invoke<boolean>("cmd_modio_has_oauth_token");
+      if (!hasToken) {
         authState = "disconnected";
         return;
       }
-      // Try to get user profile (will fail if not authed)
       try {
         const user = await invoke<{ id: number; username: string; avatar: string }>("cmd_modio_get_user");
         userName = user.username;
@@ -61,64 +58,32 @@
         settingsStore.modioUserName = user.username;
         settingsStore.modioUserId = String(user.id);
         settingsStore.persist();
-        if (tokenExpired) {
-          authState = "expired";
-        } else {
-          authState = "connected";
-        }
+        authState = tokenExpired ? "expired" : "connected";
       } catch {
-        authState = "api_key_only";
+        // Token stored but invalid/expired — show as disconnected so user can re-enter
+        authState = "disconnected";
       }
     } catch {
       authState = "disconnected";
     }
   }
 
-  async function saveApiKey() {
-    if (!apiKeyInput.trim()) return;
+  async function saveToken() {
+    if (!tokenInput.trim()) return;
     errorMsg = "";
     loading = true;
     try {
-      await invoke("cmd_modio_set_api_key", { apiKey: apiKeyInput.trim() });
-      authState = "api_key_only";
-      apiKeyInput = "";
-    } catch (e: unknown) {
-      errorMsg = String(e);
-    } finally {
-      loading = false;
-    }
-  }
-
-  async function startEmailAuth() {
-    if (!emailInput.trim()) return;
-    errorMsg = "";
-    loading = true;
-    try {
-      await invoke("cmd_modio_connect", { email: emailInput.trim() });
-      authState = "awaiting_code";
-    } catch (e: unknown) {
-      errorMsg = String(e);
-    } finally {
-      loading = false;
-    }
-  }
-
-  async function verifyCode() {
-    if (!codeInput.trim()) return;
-    errorMsg = "";
-    loading = true;
-    try {
-      await invoke("cmd_modio_verify_code", { code: codeInput.trim() });
-      // Fetch user profile after successful auth
-      const user = await invoke<{ id: number; username: string; avatar: string }>("cmd_modio_get_user");
-      userName = user.username;
-      avatarUrl = user.avatar;
-      settingsStore.modioUserName = user.username;
+      const user = await invoke<{ id: number; name: string; avatar_url: string }>(
+        "cmd_modio_set_oauth_token",
+        { token: tokenInput.trim() },
+      );
+      userName = user.name;
+      avatarUrl = user.avatar_url;
+      settingsStore.modioUserName = user.name;
       settingsStore.modioUserId = String(user.id);
       settingsStore.persist();
       authState = "connected";
-      codeInput = "";
-      emailInput = "";
+      tokenInput = "";
     } catch (e: unknown) {
       errorMsg = String(e);
     } finally {
@@ -139,12 +104,6 @@
     settingsStore.persist();
     showDisconnectConfirm = false;
   }
-
-  const STEP_LABELS = [
-    () => m.modio_step_api_key(),
-    () => m.modio_step_verify_email(),
-    () => m.modio_step_connected(),
-  ];
 </script>
 
 <div class="space-y-4">
@@ -152,7 +111,7 @@
   <div class="flex items-center gap-1" role="list" aria-label="Authentication steps">
     {#each STEP_LABELS as stepLabel, idx}
       {@const stepNum = idx + 1}
-      {@const isActive = currentStep === stepNum || (currentStep > stepNum)}
+      {@const isActive = currentStep >= stepNum}
       {@const isCurrent = currentStep === stepNum}
       <div class="flex items-center gap-1" role="listitem">
         <div
@@ -195,26 +154,27 @@
     </div>
   {/if}
 
-  <!-- State: Disconnected — API key entry -->
+  <!-- State: Disconnected — Token entry -->
   {#if authState === "disconnected"}
     <div class="space-y-2">
-      <label class="text-xs font-medium text-[var(--th-text-300)] block" for="modio-api-key">
-        {m.apiKeyLabel()}
+      <p class="text-xs text-[var(--th-text-400)]">{m.modio_token_hint()}</p>
+      <label class="text-xs font-medium text-[var(--th-text-300)] block" for="modio-token">
+        {m.modio_token_label()}
       </label>
       <div class="flex gap-2">
         <input
-          id="modio-api-key"
+          id="modio-token"
           type="password"
           class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          placeholder={m.apiKeyPlaceholder()}
-          bind:value={apiKeyInput}
+          placeholder={m.modio_token_placeholder()}
+          bind:value={tokenInput}
           autocomplete="off"
         />
         <button
           class="px-3 py-1.5 text-xs rounded bg-[var(--th-accent,#0ea5e9)] hover:brightness-110 text-white font-medium transition-colors disabled:opacity-40"
-          disabled={!apiKeyInput.trim() || loading}
-          onclick={saveApiKey}
-        >{m.saveApiKey()}</button>
+          disabled={!tokenInput.trim() || loading}
+          onclick={saveToken}
+        >{loading ? m.common_loading() : m.modio_connect_btn()}</button>
       </div>
       <a
         href="https://mod.io/me/access"
@@ -222,64 +182,9 @@
         rel="noopener noreferrer"
         class="inline-flex items-center gap-1 text-[10px] text-[var(--th-accent,#0ea5e9)] hover:underline"
       >
-        {m.modio_get_api_key_link()}
+        {m.modio_get_token_link()}
         <ExternalLink size={10} />
       </a>
-    </div>
-
-  <!-- State: API key only — email auth -->
-  {:else if authState === "api_key_only"}
-    <div class="space-y-2">
-      <p class="text-xs text-[var(--th-text-400)]">{m.modio_first_use_hint()}</p>
-      <label class="text-xs font-medium text-[var(--th-text-300)] block" for="modio-email">
-        {m.modio_email_label()}
-      </label>
-      <div class="flex gap-2">
-        <input
-          id="modio-email"
-          type="email"
-          class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          placeholder={m.modio_email_placeholder()}
-          bind:value={emailInput}
-          autocomplete="email"
-        />
-        <button
-          class="px-3 py-1.5 text-xs rounded bg-[var(--th-accent,#0ea5e9)] hover:brightness-110 text-white font-medium transition-colors disabled:opacity-40"
-          disabled={!emailInput.trim() || loading}
-          onclick={startEmailAuth}
-        >{loading ? m.common_loading() : m.modio_send_code()}</button>
-      </div>
-    </div>
-
-  <!-- State: Awaiting code -->
-  {:else if authState === "awaiting_code"}
-    <div class="space-y-2">
-      <label class="text-xs font-medium text-[var(--th-text-300)] block" for="modio-code">
-        {m.modio_code_label()}
-      </label>
-      <p class="text-[10px] text-[var(--th-text-500)]">Check your email for a 5-digit verification code.</p>
-      <div class="flex gap-2">
-        <input
-          id="modio-code"
-          type="text"
-          inputmode="numeric"
-          maxlength={5}
-          pattern="[0-9]{5}"
-          class="w-28 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs text-center tracking-widest font-mono focus:border-[var(--th-accent-500,#0ea5e9)]"
-          placeholder={m.modio_code_placeholder()}
-          bind:value={codeInput}
-          autocomplete="one-time-code"
-        />
-        <button
-          class="px-3 py-1.5 text-xs rounded bg-[var(--th-accent,#0ea5e9)] hover:brightness-110 text-white font-medium transition-colors disabled:opacity-40"
-          disabled={codeInput.trim().length < 5 || loading}
-          onclick={verifyCode}
-        >{loading ? m.common_loading() : m.modio_verify()}</button>
-      </div>
-      <button
-        class="text-[10px] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] transition-colors"
-        onclick={() => { authState = "api_key_only"; errorMsg = ""; }}
-      >{m.common_back()}</button>
     </div>
 
   <!-- State: Connected -->

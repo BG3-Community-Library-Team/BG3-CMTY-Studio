@@ -78,7 +78,7 @@
     try {
       const result = await invoke<{ game_scoped_id: number; uuid: string; name: string }>(
         "cmd_nexus_resolve_mod",
-        { modUrl: modUrlInput.trim(), gameDomain: settingsStore.nexusGameDomain },
+        { urlOrId: modUrlInput.trim() },
       );
       settingsStore.nexusModId = String(result.game_scoped_id);
       settingsStore.nexusModUuid = result.uuid;

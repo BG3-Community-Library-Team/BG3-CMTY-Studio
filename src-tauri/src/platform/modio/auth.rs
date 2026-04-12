@@ -15,8 +15,8 @@ pub struct ModioUserProfile {
     pub date_online: u64,
 }
 
-/// mod.io API base URL.
-const BASE_URL: &str = "https://api.mod.io/v1";
+/// mod.io API base URL (game-specific subdomain for BG3, game ID 629).
+const BASE_URL: &str = "https://g-629.modapi.io/v1";
 
 // ── Response wrappers (mod.io envelope) ─────────────────────────────
 
@@ -45,7 +45,7 @@ struct ModioErrorResponse {
 
 /// Step 1: Request a security code be sent to the user's email.
 ///
-/// `POST /oauth/emailrequest` with `api_key` + `email` form data.
+/// `POST /oauth/emailrequest?api_key=…` with `email` as form data.
 pub async fn email_request(
     client: &reqwest::Client,
     api_key: &str,
@@ -54,7 +54,8 @@ pub async fn email_request(
     let url = format!("{BASE_URL}/oauth/emailrequest");
     let resp = client
         .post(&url)
-        .form(&[("api_key", api_key), ("email", email)])
+        .query(&[("api_key", api_key)])
+        .form(&[("email", email)])
         .send()
         .await
         .map_err(|e| PlatformError::HttpError(format!("Email request failed: {e}")))?;
@@ -68,7 +69,7 @@ pub async fn email_request(
 
 /// Step 2: Exchange the emailed security code for an OAuth2 access token.
 ///
-/// `POST /oauth/emailexchange` with `api_key` + `security_code` form data.
+/// `POST /oauth/emailexchange?api_key=…` with `security_code` as form data.
 /// Returns the OAuth2 bearer token.
 pub async fn email_exchange(
     client: &reqwest::Client,
@@ -78,7 +79,8 @@ pub async fn email_exchange(
     let url = format!("{BASE_URL}/oauth/emailexchange");
     let resp = client
         .post(&url)
-        .form(&[("api_key", api_key), ("security_code", code)])
+        .query(&[("api_key", api_key)])
+        .form(&[("security_code", code)])
         .send()
         .await
         .map_err(|e| PlatformError::HttpError(format!("Email exchange failed: {e}")))?;

@@ -18,14 +18,12 @@
       if (expiry.getTime() <= Date.now()) return "expired";
     }
     if (settingsStore.modioUserName) return "connected";
-    if (settingsStore.modioUserId) return "api_key_only";
     return "disconnected";
   });
 
   function statusLabel(): string {
     switch (connectionStatus) {
       case "disconnected": return m.modio_status_disconnected();
-      case "api_key_only": return m.modio_status_api_key_only();
       case "connected": return m.modio_connected_as({ name: settingsStore.modioUserName });
       case "expired": return m.modio_status_expired();
       default: return "";
@@ -36,7 +34,6 @@
     switch (connectionStatus) {
       case "connected": return "var(--th-success, #10b981)";
       case "expired": return "var(--th-error, #ef4444)";
-      case "api_key_only": return "var(--th-text-amber-400, #fbbf24)";
       default: return "var(--th-text-500)";
     }
   }
@@ -75,6 +72,8 @@
         >
           {m.modio_manage_connection()}
         </button>
+
+
       </div>
 
       <!-- Inline auth panel -->
@@ -105,12 +104,7 @@
         <p class="text-[10px] text-[var(--th-text-600)]">Default: 629 (Baldur's Gate 3)</p>
       </div>
 
-      <!-- First-use guidance -->
-      {#if connectionStatus === "disconnected"}
-        <p class="text-xs text-[var(--th-text-500)] italic">
-          {m.modio_first_use_hint()}
-        </p>
-      {/if}
+
     </div>
   {/if}
 </div>

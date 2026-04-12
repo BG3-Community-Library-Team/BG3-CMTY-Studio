@@ -10,8 +10,8 @@ const USER_AGENT: &str = "BG3-CMTY-Studio/1.0.0";
 /// Request timeout in seconds.
 const TIMEOUT_SECS: u64 = 120;
 
-/// mod.io API base URL.
-pub const BASE_URL: &str = "https://api.mod.io/v1";
+/// mod.io API base URL (game-specific subdomain for BG3, game ID 629).
+pub const BASE_URL: &str = "https://g-629.modapi.io/v1";
 
 /// HTTP client wrapper for the mod.io API.
 ///
@@ -44,6 +44,23 @@ impl ModioClient {
         Ok(Self {
             client,
             api_key: api_key.to_string(),
+            token: Some(token.to_string()),
+            read_limiter: TokenBucket::new_modio_read(true),
+            write_limiter: TokenBucket::new_modio_write(),
+        })
+    }
+
+    /// Create a client authenticated only with an OAuth2 token (no API key).
+    ///
+    /// This is the recommended path for third-party tools: the user generates
+    /// an OAuth2 Access Token at `mod.io/me/access` and pastes it in.
+    /// A Bearer token covers both read and write operations, so no API key
+    /// is needed.
+    pub fn with_token_only(token: &str) -> Result<Self, PlatformError> {
+        let client = build_client(USER_AGENT, TIMEOUT_SECS)?;
+        Ok(Self {
+            client,
+            api_key: String::new(),
             token: Some(token.to_string()),
             read_limiter: TokenBucket::new_modio_read(true),
             write_limiter: TokenBucket::new_modio_write(),

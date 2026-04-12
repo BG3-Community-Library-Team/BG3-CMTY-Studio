@@ -1,7 +1,9 @@
 //! Tauri IPC commands for Nexus Mods integration.
 
+use std::path::Path;
 use std::sync::Mutex;
 
+use serde::Deserialize;
 use tauri::State;
 
 use crate::error::AppError;
@@ -9,6 +11,7 @@ use crate::platform::credentials;
 use crate::platform::errors::PlatformError;
 
 use super::client::NexusClient;
+use super::dependencies::NexusDependency;
 use super::mod_files::FileUpdateGroup;
 use super::mods::NexusModDetails;
 use super::upload::NexusUploadParams;
@@ -87,6 +90,9 @@ pub async fn cmd_nexus_has_api_key() -> Result<bool, AppError> {
 
 /// Validate the stored API key by making a lightweight API call.
 ///
+/// Uses the v1 endpoint (`/v1/users/validate.json`) because v3 has no
+/// equivalent validation route.
+///
 /// Returns `true` if the key is valid, `false` if authentication fails.
 /// Other errors (network, timeout) propagate as `AppError`.
 #[tauri::command]
@@ -95,11 +101,34 @@ pub async fn cmd_nexus_validate_api_key(
 ) -> Result<bool, AppError> {
     let client = get_client(&state)?;
 
-    match client.get("/users/validate").await {
-        Ok(_) => Ok(true),
-        Err(PlatformError::ApiError { status: 401, .. }) => Ok(false),
-        Err(PlatformError::ApiError { status: 403, .. }) => Ok(false),
-        Err(e) => Err(e.into()),
+    let resp = client
+        .inner()
+        .get("https://api.nexusmods.com/v1/users/validate.json")
+        .send()
+        .await
+        .map_err(|e| -> AppError {
+            if e.is_timeout() {
+                PlatformError::Timeout.into()
+            } else {
+                PlatformError::HttpError(
+                    format!("GET /v1/users/validate.json: {e}"),
+                )
+                .into()
+            }
+        })?;
+
+    match resp.status().as_u16() {
+        200 => Ok(true),
+        401 | 403 => Ok(false),
+        code => {
+            let body = resp.text().await.unwrap_or_default();
+            let err: AppError = PlatformError::ApiError {
+                status: code,
+                message: body,
+            }
+            .into();
+            Err(err)
+        }
     }
 }
 
@@ -225,4 +254,121 @@ pub fn try_auto_init(state: &NexusState) {
             tracing::warn!("Failed to read Nexus keyring credential: {e}");
         }
     }
+}
+
+// ── Integrated Package + Upload (AI6) ────────────────────────────────
+
+/// Parameters for integrated package-and-upload.
+#[derive(Debug, Deserialize)]
+pub struct NexusPackageUploadParams {
+    pub source_dir: String,
+    pub mod_uuid: String,
+    pub file_group_id: u64,
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub exclude_patterns: Option<Vec<String>>,
+}
+
+/// Package a mod directory into a zip and upload it to Nexus in one step.
+#[tauri::command]
+pub async fn cmd_nexus_package_and_upload(
+    app: tauri::AppHandle,
+    state: State<'_, NexusState>,
+    params: NexusPackageUploadParams,
+) -> Result<(), AppError> {
+    let client = get_client(&state)?;
+
+    // Create a temp directory for the zip.
+    let temp_dir = std::env::temp_dir().join("cmty-studio-upload");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| PlatformError::IoError(format!("Failed to create temp dir: {e}")))?;
+
+    let zip_name = format!("{}-{}.zip", sanitize_filename(&params.name), &params.version);
+    let zip_path = temp_dir.join(&zip_name);
+
+    let excludes: Vec<&str> = params
+        .exclude_patterns
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
+    let _pkg = crate::platform::packaging::create_upload_zip(
+        Path::new(&params.source_dir),
+        &zip_path,
+        &excludes,
+    )?;
+
+    let upload_params = NexusUploadParams {
+        file_path: zip_path.to_string_lossy().to_string(),
+        mod_uuid: params.mod_uuid,
+        file_group_id: params.file_group_id,
+        name: params.name,
+        version: params.version,
+        description: params.description,
+        category: params.category,
+    };
+
+    let result = super::upload::upload_file(&client, &upload_params, &app).await;
+
+    // Clean up the temp zip regardless of outcome.
+    let _ = std::fs::remove_file(&zip_path);
+
+    result.map_err(AppError::from)
+}
+
+/// Sanitize a string for use as a filename component.
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+// ── File Dependencies (AJ2) ─────────────────────────────────────────
+
+/// Fetch dependencies for a Nexus mod file.
+#[tauri::command]
+pub async fn cmd_nexus_get_file_dependencies(
+    state: State<'_, NexusState>,
+    file_id: String,
+) -> Result<Vec<NexusDependency>, AppError> {
+    let client = get_client(&state)?;
+    super::dependencies::get_dependencies(&client, &file_id)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Replace all dependencies for a Nexus mod file.
+#[tauri::command]
+pub async fn cmd_nexus_set_file_dependencies(
+    state: State<'_, NexusState>,
+    file_id: String,
+    dependency_mod_ids: Vec<String>,
+) -> Result<(), AppError> {
+    let client = get_client(&state)?;
+    super::dependencies::set_dependencies(&client, &file_id, &dependency_mod_ids)
+        .await
+        .map_err(AppError::from)
+}
+
+// ── File Group Rename (AJ8) ──────────────────────────────────────────
+
+/// Rename a file update group on Nexus.
+#[tauri::command]
+pub async fn cmd_nexus_rename_file_group(
+    state: State<'_, NexusState>,
+    group_id: u64,
+    new_name: String,
+) -> Result<(), AppError> {
+    let client = get_client(&state)?;
+    super::mod_files::rename_file_group(&client, group_id, &new_name)
+        .await
+        .map_err(AppError::from)
 }

@@ -4,6 +4,7 @@
 //! rate limiting, progress reporting, input validation, and ZIP packaging.
 
 pub mod credentials;
+pub mod deps_suggest;
 pub mod errors;
 pub mod http;
 pub mod modio;

@@ -1,7 +1,9 @@
-//! Nexus Mods single-part file upload pipeline.
+//! Nexus Mods file upload pipeline (single-part and multipart).
 //!
-//! Flow: create upload → PUT to presigned S3 URL → finalise → poll → publish.
+//! Single-part flow: create upload → PUT to presigned S3 URL → finalise → poll → publish.
+//! Multipart flow: create multipart → PUT parts → complete → finalise → poll → publish.
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -133,6 +135,203 @@ async fn put_to_presigned_url(
     Ok(())
 }
 
+// ── Multipart upload types ───────────────────────────────────────────
+
+/// Response from `POST /uploads/multipart`.
+#[derive(Debug, Deserialize)]
+struct MultipartUploadResponse {
+    #[serde(alias = "upload_id")]
+    id: String,
+    parts_size: u64,
+    parts: Vec<MultipartPart>,
+    complete_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MultipartPart {
+    index: u64,
+    url: String,
+}
+
+// ── Multipart step 1: create session ─────────────────────────────────
+
+async fn create_multipart_upload(
+    client: &NexusClient,
+    file_size: u64,
+    filename: &str,
+) -> Result<MultipartUploadResponse, PlatformError> {
+    let body = serde_json::json!({
+        "file_size": file_size,
+        "filename": filename,
+    });
+
+    let resp = client.post_json("/uploads/multipart", &body).await?;
+    let parsed: MultipartUploadResponse = resp
+        .json()
+        .await
+        .map_err(|e| {
+            PlatformError::HttpError(format!(
+                "Failed to parse multipart upload response: {e}"
+            ))
+        })?;
+    Ok(parsed)
+}
+
+// ── Multipart step 2: upload parts sequentially ──────────────────────
+
+/// Upload file parts sequentially (no parallelism — rate-limit compliance).
+///
+/// Returns `Vec<(part_number, etag)>` for the completion manifest.
+async fn upload_parts(
+    parts: &[MultipartPart],
+    parts_size: u64,
+    file_path: &Path,
+    file_size: u64,
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<(u64, String)>, PlatformError> {
+    // Bare client — S3 presigned URLs use their own auth.
+    let s3_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| PlatformError::HttpError(format!("Failed to build S3 client: {e}")))?;
+
+    let mut file = std::fs::File::open(file_path)
+        .map_err(|e| PlatformError::IoError(format!("Failed to open file: {e}")))?;
+
+    let total_parts = parts.len() as u64;
+    let mut etags: Vec<(u64, String)> = Vec::with_capacity(parts.len());
+
+    for (idx, part) in parts.iter().enumerate() {
+        let offset = part.index * parts_size;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| PlatformError::IoError(format!("Failed to seek in file: {e}")))?;
+
+        let chunk_size = std::cmp::min(parts_size, file_size - offset);
+        let mut chunk = vec![0u8; chunk_size as usize];
+        file.read_exact(&mut chunk)
+            .map_err(|e| PlatformError::IoError(format!("Failed to read file chunk: {e}")))?;
+
+        // Try PUT, retry once on failure.
+        let resp = match s3_client
+            .put(&part.url)
+            .header("Content-Length", chunk_size)
+            .body(chunk.clone())
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_first_err) => {
+                // Retry once.
+                s3_client
+                    .put(&part.url)
+                    .header("Content-Length", chunk_size)
+                    .body(chunk)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        if e.is_timeout() {
+                            PlatformError::Timeout
+                        } else {
+                            PlatformError::HttpError(format!(
+                                "S3 multipart PUT failed for part {}: {e}",
+                                part.index
+                            ))
+                        }
+                    })?
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(PlatformError::ApiError {
+                status,
+                message: format!("S3 multipart PUT failed for part {}: {body}", part.index),
+            });
+        }
+
+        let etag = resp
+            .headers()
+            .get("ETag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                PlatformError::HttpError(format!(
+                    "Missing ETag in response for part {}",
+                    part.index
+                ))
+            })?;
+
+        // Part numbers are 1-based for the XML manifest.
+        etags.push((part.index + 1, etag));
+
+        // Emit progress.
+        let parts_done = (idx + 1) as u64;
+        let percent = (parts_done as f64 / total_parts as f64) * 100.0;
+        let bytes_sent = std::cmp::min(parts_done * parts_size, file_size);
+        let _ = emit_progress(
+            app_handle,
+            &UploadProgress {
+                platform: Platform::Nexus,
+                stage: UploadStage::Uploading,
+                percent,
+                bytes_sent,
+                bytes_total: file_size,
+                message: format!("Uploading part {parts_done}/{total_parts}…"),
+            },
+        );
+    }
+
+    Ok(etags)
+}
+
+// ── Multipart step 3: complete (XML manifest) ────────────────────────
+
+/// Send the multipart completion XML manifest.
+async fn complete_multipart(
+    complete_url: &str,
+    parts_etags: &[(u64, String)],
+) -> Result<(), PlatformError> {
+    let mut xml = String::from("<CompleteMultipartUpload>");
+    for (part_num, etag) in parts_etags {
+        xml.push_str(&format!(
+            "<Part><PartNumber>{part_num}</PartNumber><ETag>{etag}</ETag></Part>"
+        ));
+    }
+    xml.push_str("</CompleteMultipartUpload>");
+
+    // Bare client — the complete_url is a presigned S3 URL.
+    let s3_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| PlatformError::HttpError(format!("Failed to build S3 client: {e}")))?;
+
+    let resp = s3_client
+        .post(complete_url)
+        .header("Content-Type", "application/xml")
+        .body(xml)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                PlatformError::Timeout
+            } else {
+                PlatformError::HttpError(format!("Multipart complete request failed: {e}"))
+            }
+        })?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(PlatformError::ApiError {
+            status,
+            message: format!("Multipart complete failed: {body}"),
+        });
+    }
+
+    Ok(())
+}
+
 // ── Step 3: finalise ─────────────────────────────────────────────────
 
 async fn finalize_upload(client: &NexusClient, upload_id: &str) -> Result<(), PlatformError> {
@@ -212,14 +411,13 @@ async fn create_update_group_version(
 
 // ── Orchestrator ─────────────────────────────────────────────────────
 
-/// Execute the full Nexus single-part upload pipeline.
+/// Execute the full Nexus upload pipeline (single-part or multipart).
 ///
 /// 1. Validate inputs
-/// 2. Create upload session → presigned URL
-/// 3. PUT file to S3 (retry once on 403)
-/// 4. Finalise upload
-/// 5. Poll until processed
-/// 6. Create update-group version
+///
+/// 2a. If ≤100 MiB: single-part upload (create → PUT → finalise → poll → publish)
+///
+/// 2b. If >100 MiB: multipart upload (create → PUT parts → complete → finalise → poll → publish)
 pub async fn upload_file(
     client: &NexusClient,
     params: &NexusUploadParams,
@@ -238,14 +436,6 @@ pub async fn upload_file(
     let metadata = std::fs::metadata(file_path)
         .map_err(|e| PlatformError::IoError(format!("Cannot read file metadata: {e}")))?;
     let file_size = metadata.len();
-
-    if file_size > MAX_SINGLE_PART_SIZE {
-        return Err(PlatformError::ValidationError(format!(
-            "File size ({:.1} MiB) exceeds the 100 MiB single-part limit. \
-             Multipart upload is not yet supported.",
-            file_size as f64 / (1024.0 * 1024.0)
-        )));
-    }
 
     crate::platform::validation::validate_nexus_name(&params.name)?;
     crate::platform::validation::validate_nexus_version(&params.version)?;
@@ -268,6 +458,24 @@ pub async fn upload_file(
         },
     );
 
+    if file_size <= MAX_SINGLE_PART_SIZE {
+        // ── Single-part flow ─────────────────────────────────────────
+        upload_single_part(client, params, file_path, file_size, filename, app_handle).await
+    } else {
+        // ── Multipart flow ───────────────────────────────────────────
+        upload_multipart(client, params, file_path, file_size, filename, app_handle).await
+    }
+}
+
+/// Single-part upload path (≤100 MiB).
+async fn upload_single_part(
+    client: &NexusClient,
+    params: &NexusUploadParams,
+    file_path: &Path,
+    file_size: u64,
+    filename: &str,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), PlatformError> {
     // ── Step 1: create upload ────────────────────────────────────────
     let upload_info = create_upload(client, file_size, filename).await?;
 
@@ -278,13 +486,34 @@ pub async fn upload_file(
         // Presigned URL may have expired — get a fresh one and retry.
         let retry_info = create_upload(client, file_size, filename).await?;
         put_to_presigned_url(&retry_info.url, file_path, file_size, app_handle).await?;
-        // Use the retry upload ID for subsequent steps.
         return finish_upload(client, &retry_info.id, params, file_size, app_handle).await;
     }
 
     put_result?;
 
     finish_upload(client, &upload_info.id, params, file_size, app_handle).await
+}
+
+/// Multipart upload path (>100 MiB).
+async fn upload_multipart(
+    client: &NexusClient,
+    params: &NexusUploadParams,
+    file_path: &Path,
+    file_size: u64,
+    filename: &str,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), PlatformError> {
+    // ── Step 1: create multipart session ─────────────────────────────
+    let mp = create_multipart_upload(client, file_size, filename).await?;
+
+    // ── Step 2: upload parts sequentially ────────────────────────────
+    let etags = upload_parts(&mp.parts, mp.parts_size, file_path, file_size, app_handle).await?;
+
+    // ── Step 3: complete multipart (XML manifest) ────────────────────
+    complete_multipart(&mp.complete_url, &etags).await?;
+
+    // ── Steps 4–6: finalise, poll, publish ───────────────────────────
+    finish_upload(client, &mp.id, params, file_size, app_handle).await
 }
 
 /// Finalise, poll, and publish — shared by normal path and 403-retry path.
