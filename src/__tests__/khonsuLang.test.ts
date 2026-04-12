@@ -39,7 +39,7 @@ describe("Khonsu language", () => {
     it("has extensions (ViewPlugin + theme)", () => {
       const ls = khonsu();
       // LanguageSupport.support contains the extra extensions
-      expect(ls.support.length).toBeGreaterThan(0);
+      expect((ls.support as readonly unknown[]).length).toBeGreaterThan(0);
     });
   });
 

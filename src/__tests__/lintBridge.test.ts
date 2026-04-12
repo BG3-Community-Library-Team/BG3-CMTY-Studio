@@ -19,6 +19,12 @@ const { bg3Linter } = await import("../lib/editor/lintBridge.js");
 const { validateScript } = await import("../lib/tauri/scripts.js");
 const { linter: mockLinter } = await import("@codemirror/lint");
 
+/** Shape returned by our mocked `linter()` — NOT a real CM6 Extension. */
+interface MockLinterExt {
+  __type: string;
+  __linterCallback: (view: unknown) => Promise<unknown[]>;
+}
+
 describe("lintBridge", () => {
   describe("noopLinter", () => {
     it("is an empty array", () => {
@@ -28,7 +34,7 @@ describe("lintBridge", () => {
 
   describe("bg3Linter", () => {
     it("returns a linter extension", () => {
-      const ext = bg3Linter("test.txt", "osiris") as { __type: string };
+      const ext = bg3Linter("test.txt", "osiris") as unknown as MockLinterExt;
       expect(ext.__type).toBe("linter-extension");
     });
 
@@ -44,7 +50,7 @@ describe("lintBridge", () => {
         { line: 2, message: "Unused variable", severity: "Warning" },
       ]);
 
-      const ext = bg3Linter("test.osiris", "osiris") as { __linterCallback: (view: unknown) => Promise<unknown[]> };
+      const ext = bg3Linter("test.osiris", "osiris") as unknown as MockLinterExt;
       const callback = ext.__linterCallback;
 
       // Simulate a CM6 EditorView with a 2-line document
@@ -88,7 +94,7 @@ describe("lintBridge", () => {
         { line: 99, message: "Line 99 (OOB)", severity: "Error" },
       ]);
 
-      const ext = bg3Linter("t.txt", "osiris") as { __linterCallback: (view: unknown) => Promise<unknown[]> };
+      const ext = bg3Linter("t.txt", "osiris") as unknown as MockLinterExt;
       const callback = ext.__linterCallback;
 
       const mockView = {
@@ -115,7 +121,7 @@ describe("lintBridge", () => {
         { line: 1, message: "Info msg", severity: "Info" },
       ]);
 
-      const ext = bg3Linter("t.txt", "osiris") as { __linterCallback: (view: unknown) => Promise<unknown[]> };
+      const ext = bg3Linter("t.txt", "osiris") as unknown as MockLinterExt;
       const mockView = {
         state: {
           doc: {
@@ -134,7 +140,7 @@ describe("lintBridge", () => {
       const mockValidate = vi.mocked(validateScript);
       mockValidate.mockRejectedValueOnce(new Error("IPC failed"));
 
-      const ext = bg3Linter("t.txt", "osiris") as { __linterCallback: (view: unknown) => Promise<unknown[]> };
+      const ext = bg3Linter("t.txt", "osiris") as unknown as MockLinterExt;
       const mockView = {
         state: {
           doc: {
@@ -153,7 +159,7 @@ describe("lintBridge", () => {
       const mockValidate = vi.mocked(validateScript);
       mockValidate.mockResolvedValueOnce([]);
 
-      const ext = bg3Linter("my/file.txt", "stats") as { __linterCallback: (view: unknown) => Promise<unknown[]> };
+      const ext = bg3Linter("my/file.txt", "stats") as unknown as MockLinterExt;
       const mockView = {
         state: {
           doc: {

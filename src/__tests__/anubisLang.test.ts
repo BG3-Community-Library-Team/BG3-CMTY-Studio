@@ -54,11 +54,11 @@ describe("Anubis & Constellations language", () => {
     });
 
     it("anubisLua has extensions", () => {
-      expect(anubisLua().support.length).toBeGreaterThan(0);
+      expect((anubisLua().support as readonly unknown[]).length).toBeGreaterThan(0);
     });
 
     it("constellationsLua has extensions", () => {
-      expect(constellationsLua().support.length).toBeGreaterThan(0);
+      expect((constellationsLua().support as readonly unknown[]).length).toBeGreaterThan(0);
     });
   });
 

@@ -14,6 +14,6 @@ export const parser = LRParser.deserialize({
   tokenData: "$m~RXXYnYZn]^npqnrs!P!P!Q#m!c!}$[#R#S$[#T#o$[~sSb~XYnYZn]^npqn~!SVOr!Prs!is#O!P#O#P!n#P;'S!P;'S;=`#g<%lO!P~!nOV~~!qRO;'S!P;'S;=`!z;=`O!P~!}WOr!Prs!is#O!P#O#P!n#P;'S!P;'S;=`#g;=`<%l!P<%lO!P~#jP;=`<%l!P~#pP!P!Q#s~#xSP~OY#sZ;'S#s;'S;=`$U<%lO#s~$XP;=`<%l#s~$aSc~!Q![$[!c!}$[#R#S$[#T#o$[",
   tokenizers: [0],
   topRules: {"StatsFile":[0,2]},
-  specialized: [{term: 19, get: (value) => spec_word[value] || -1}],
+  specialized: [{term: 19, get: (value: string) => spec_word[value as keyof typeof spec_word] || -1}],
   tokenPrec: 0
 })

@@ -78,6 +78,6 @@ export function expectConsoleCalled(
 ): void {
   const spy = "spy" in spyOrRef ? spyOrRef.spy : spyOrRef;
   expect(spy).toHaveBeenCalled();
-  const allArgs = spy.mock.calls.map((c) => c.join(" ")).join("\n");
+  const allArgs = spy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
   expect(allArgs).toContain(substring);
 }

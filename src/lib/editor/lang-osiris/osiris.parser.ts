@@ -14,6 +14,6 @@ export const parser = LRParser.deserialize({
   tokenData: "&v~R_XY!QYZ!Q]^!Qpq!Qrs!cxy$Pyz$U|}$Z}!O$`!P!Q%P!Q![$f!]!^%n!c!}%s#R#S%s#T#o%s~!VS!^~XY!QYZ!Q]^!Qpq!Q~!fVOr!crs!{s#O!c#O#P#Q#P;'S!c;'S;=`#y<%lO!c~#QOr~~#TRO;'S!c;'S;=`#^;=`O!c~#aWOr!crs!{s#O!c#O#P#Q#P;'S!c;'S;=`#y;=`<%l!c<%lO!c~#|P;=`<%l!c~$UO^~~$ZOq~~$`Os~~$cP!Q![$f~$kQU~!O!P$q!Q![$f~$tP!Q![$w~$|PU~!Q![$w~%SP!P!Q%V~%[SP~OY%VZ;'S%V;'S;=`%h<%lO%V~%kP;=`<%l%V~%sOt~~%xTS~}!O&X!Q![%s!c!}%s#R#S%s#T#o%s~&[R!Q![&e!c!}&e#T#o&e~&jSS~}!O&X!Q![&e!c!}&e#T#o&e",
   tokenizers: [0],
   topRules: {"GoalFile":[0,2]},
-  specialized: [{term: 4, get: (value) => spec_Identifier[value] || -1}],
+  specialized: [{term: 4, get: (value: string) => spec_Identifier[value as keyof typeof spec_Identifier] || -1}],
   tokenPrec: 0
 })
