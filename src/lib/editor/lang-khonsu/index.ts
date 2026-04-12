@@ -3,8 +3,8 @@
  * Extends Lua with additional highlighting for Khonsu-specific constructs:
  * condition functions, context accessors, ConditionResult, and bitwise operators.
  */
-import { StreamLanguage } from "@codemirror/language";
-import { LanguageSupport } from "@codemirror/language";
+import { StreamLanguage, LanguageSupport } from "@codemirror/language";
+import { luaFoldService } from "../luaFoldService.js";
 import {
   ViewPlugin,
   Decoration,
@@ -108,5 +108,5 @@ const khonsuTheme = EditorView.baseTheme({
 const khonsuLua = StreamLanguage.define(lua);
 
 export function khonsu(): LanguageSupport {
-  return new LanguageSupport(khonsuLua, [khonsuHighlighter, khonsuTheme]);
+  return new LanguageSupport(khonsuLua, [khonsuHighlighter, khonsuTheme, luaFoldService]);
 }

@@ -6,12 +6,13 @@
   import { m } from "../paraglide/messages.js";
   import { settingsStore, THEME_OPTIONS, DEFAULT_CUSTOM_THEME, type CustomThemeValues } from "../lib/stores/settingsStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
-  import { open } from "@tauri-apps/plugin-dialog";
   import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
   import { projectSettingsStore, type ProjectSettings } from "../lib/stores/projectSettingsStore.svelte.js";
   import NexusSettingsSection from "./platform/nexus/NexusSettingsSection.svelte";
   import ModioSettingsSection from "./platform/modio/ModioSettingsSection.svelte";
   import EditorSettings from "./settings/EditorSettings.svelte";
+  import DisplaySettings from "./settings/DisplaySettings.svelte";
+  import ModIntegrationSettings from "./settings/ModIntegrationSettings.svelte";
 
   /** Map of configurationRegistry keys → projectSettingsStore keys for project-level persistence. */
   const CONFIG_TO_PROJECT: Record<string, keyof ProjectSettings> = {
@@ -31,49 +32,6 @@
   }
 
   let { stagingOverrideStyle = $bindable("") }: { stagingOverrideStyle?: string } = $props();
-
-  async function browseIdeHelpers() {
-    try {
-      const selected = await open({
-        title: m.settings_scripts_ide_helpers_browse_title(),
-        multiple: false,
-        directory: true,
-      });
-      if (selected) {
-        if (projectSettingsStore.loaded) {
-          projectSettingsStore.set("ideHelpersPath", selected);
-        } else {
-          settingsStore.ideHelpersPath = selected;
-          settingsStore.persist();
-        }
-      }
-    } catch { /* user cancelled */ }
-  }
-
-  async function browseTemplateFolder() {
-    try {
-      const selected = await open({
-        title: "Select Template Folder",
-        multiple: false,
-        directory: true,
-      });
-      if (selected) {
-        if (projectSettingsStore.loaded) {
-          projectSettingsStore.set("templateFoldersPath", selected);
-        } else {
-          settingsStore.templateFoldersPath = selected;
-          settingsStore.persist();
-        }
-      }
-    } catch { /* user cancelled */ }
-  }
-
-  const MCM_SCHEMA_DEFAULT_URL = "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json";
-
-  function resetMcmSchemaUrl() {
-    settingsStore.mcmSchemaUrl = MCM_SCHEMA_DEFAULT_URL;
-    settingsStore.persist();
-  }
 
   /** Maps CustomThemeValues keys → CSS custom property names for live preview overrides. */
   const STAGING_CSS_MAP: Record<keyof CustomThemeValues, string> = {
@@ -193,228 +151,15 @@
       </div>
     </div>
 
-  {:else if uiStore.settingsSection === "display"}
-    <h3 class="settings-section-title">{m.settings_display_title()}</h3>
+  {:else if uiStore.settingsSection === "display" || uiStore.settingsSection === "notifications"}
+    <DisplaySettings />
 
-    <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_display_zoom_heading()}</p>
-    <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_display_zoom_instruction()}</p>
-    <div class="flex items-center gap-3 mb-4">
-      <button class="px-2 py-1 text-sm rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-200)] transition-colors disabled:opacity-40"
-        onclick={() => settingsStore.zoomOut()} disabled={settingsStore.zoomLevel <= 50}>&#8722;</button>
-      <span class="text-xs text-[var(--th-text-200)] min-w-[40px] text-center font-mono">{settingsStore.zoomLevel}%</span>
-      <button class="px-2 py-1 text-sm rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-200)] transition-colors disabled:opacity-40"
-        onclick={() => settingsStore.zoomIn()} disabled={settingsStore.zoomLevel >= 200}>+</button>
-      <button class="px-2 py-1 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-400)] transition-colors disabled:opacity-40"
-        onclick={() => settingsStore.zoomReset()} disabled={settingsStore.zoomLevel === 100}>{m.common_reset()}</button>
-    </div>
+  {:else if uiStore.settingsSection === "modConfig" || uiStore.settingsSection === "schemas"}
+    <ModIntegrationSettings />
 
-    <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_display_motion_heading()}</p>
-    <div class="space-y-2 mb-4">
-      {#each [
-        { value: "system", label: m.settings_display_motion_system_label(), desc: m.settings_display_motion_system_desc() },
-        { value: "on", label: m.settings_display_motion_on_label(), desc: m.settings_display_motion_on_desc() },
-        { value: "off", label: m.settings_display_motion_off_label(), desc: m.settings_display_motion_off_desc() },
-      ] as opt}
-        <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-          <input type="radio" name="settings-reduced-motion" class="w-4 h-4 accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-            value={opt.value}
-            checked={settingsStore.reducedMotion === opt.value}
-            onchange={() => { settingsStore.reducedMotion = opt.value as "system" | "on" | "off"; settingsStore.persist(); }}
-          />
-          <div>
-            <span class="text-xs text-[var(--th-text-200)]">{opt.label}</span>
-            <p class="text-xs text-[var(--th-text-500)]">{opt.desc}</p>
-          </div>
-        </label>
-      {/each}
-    </div>
+  {:else if uiStore.settingsSection === "scripts" || uiStore.settingsSection === "editor"}
+    <EditorSettings />
 
-    <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_display_combobox_heading()}</p>
-    <div class="space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.showComboboxNames}
-          onchange={(e) => { settingsStore.showComboboxNames = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_display_show_names_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_display_show_names_desc()}</p>
-        </div>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.showModNamePrefix}
-          onchange={(e) => { settingsStore.showModNamePrefix = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_display_show_prefix_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_display_show_prefix_desc()}</p>
-        </div>
-      </label>
-    </div>
-
-    <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mt-4 mb-1">{m.settings_display_tab_bar_heading()}</p>
-    <div class="space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.autoHideTabBar}
-          onchange={(e) => { settingsStore.autoHideTabBar = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_display_auto_hide_tab_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_display_auto_hide_tab_desc()}</p>
-        </div>
-      </label>
-    </div>
-
-  {:else if uiStore.settingsSection === "modConfig"}
-    <h3 class="settings-section-title">{m.settings_mod_config_title()}</h3>
-    <div class="space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.enableCfIntegration}
-          onchange={(e) => { settingsStore.enableCfIntegration = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_mod_config_cf_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_mod_config_cf_desc()}</p>
-        </div>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.enableMcmSupport}
-          onchange={(e) => { settingsStore.enableMcmSupport = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_mod_config_mcm_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_mod_config_mcm_desc()}</p>
-        </div>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-        <input type="checkbox" class="w-4 h-4 rounded accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-          checked={settingsStore.enableMazzleDocsSupport}
-          onchange={(e) => { settingsStore.enableMazzleDocsSupport = (e.target as HTMLInputElement).checked; settingsStore.persist(); }}
-        />
-        <div>
-          <span class="text-xs text-[var(--th-text-200)]">{m.settings_mod_config_mazzle_label()}</span>
-          <p class="text-xs text-[var(--th-text-500)]">{m.settings_mod_config_mazzle_desc()}</p>
-        </div>
-      </label>
-    </div>
-
-  {:else if uiStore.settingsSection === "schemas"}
-    <h3 class="settings-section-title">{m.settings_schemas_title()}</h3>
-    <div class="space-y-3">
-      <div>
-        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_schemas_mcm_heading()}</p>
-        <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_schemas_mcm_desc()}</p>
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-            placeholder={m.settings_schemas_mcm_placeholder()}
-            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("mcmSchemaUrl") || "") : settingsStore.mcmSchemaUrl}
-            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("mcmSchemaUrl", v); } else if (v !== settingsStore.mcmSchemaUrl) { settingsStore.mcmSchemaUrl = v; settingsStore.persist(); } }}
-          />
-          <button
-            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
-            onclick={resetMcmSchemaUrl}
-          >{m.settings_schemas_reset()}</button>
-        </div>
-        {#if settingsStore.mcmSchemaUrl}
-          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.mcmSchemaUrl}</p>
-        {/if}
-      </div>
-    </div>
-
-  {:else if uiStore.settingsSection === "notifications"}
-    <h3 class="settings-section-title">{m.settings_notifications_title()}</h3>
-    <div class="space-y-3">
-      <div>
-        <span class="text-xs font-medium text-[var(--th-text-300)]">{m.settings_notifications_success_label()}</span>
-        <div class="space-y-1.5 mt-1">
-          {#each [
-            { value: 2000, label: m.settings_notifications_success_2s() },
-            { value: 3000, label: m.settings_notifications_success_3s() },
-            { value: 5000, label: m.settings_notifications_success_5s() },
-            { value: 8000, label: m.settings_notifications_success_8s() },
-            { value: 0, label: m.settings_notifications_no_dismiss() },
-          ] as opt}
-            <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-              <input type="radio" name="settings-toast-duration" class="w-4 h-4 accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-                value={opt.value} checked={settingsStore.toastDuration === opt.value}
-                onchange={() => { settingsStore.toastDuration = opt.value; settingsStore.persist(); }}
-              />
-              <span class="text-xs text-[var(--th-text-200)]">{opt.label}</span>
-            </label>
-          {/each}
-        </div>
-      </div>
-      <div>
-        <span class="text-xs font-medium text-[var(--th-text-300)]">{m.settings_notifications_error_label()}</span>
-        <div class="space-y-1.5 mt-1">
-          {#each [
-            { value: 5000, label: m.settings_notifications_error_5s() },
-            { value: 8000, label: m.settings_notifications_error_8s() },
-            { value: 15000, label: m.settings_notifications_error_15s() },
-            { value: 0, label: m.settings_notifications_no_dismiss() },
-          ] as opt}
-            <label class="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 -mx-2 hover:bg-[var(--th-bg-700)]/60 transition-colors">
-              <input type="radio" name="settings-error-toast-duration" class="w-4 h-4 accent-[var(--th-accent-500,#0ea5e9)] cursor-pointer"
-                value={opt.value} checked={settingsStore.errorToastDuration === opt.value}
-                onchange={() => { settingsStore.errorToastDuration = opt.value; settingsStore.persist(); }}
-              />
-              <span class="text-xs text-[var(--th-text-200)]">{opt.label}</span>
-            </label>
-          {/each}
-        </div>
-      </div>
-    </div>
-  {:else if uiStore.settingsSection === "scripts"}
-    <h3 class="settings-section-title">{m.settings_scripts_title()}</h3>
-    <div class="space-y-3">
-      <div>
-        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">{m.settings_scripts_ide_helpers_heading()}</p>
-        <p class="text-xs text-[var(--th-text-500)] mb-2">{m.settings_scripts_ide_helpers_desc()}</p>
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-            placeholder={m.settings_scripts_ide_helpers_placeholder()}
-            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("ideHelpersPath") || "") : settingsStore.ideHelpersPath}
-            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("ideHelpersPath", v); } else if (v !== settingsStore.ideHelpersPath) { settingsStore.ideHelpersPath = v; settingsStore.persist(); } }}
-          />
-          <button
-            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
-            onclick={browseIdeHelpers}
-          >{m.common_browse()}</button>
-        </div>
-        {#if settingsStore.ideHelpersPath}
-          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.ideHelpersPath}</p>
-        {/if}
-      </div>
-
-      <div>
-        <p class="text-[10px] uppercase tracking-wider text-[var(--th-text-500)] font-semibold mb-1">Template Folder</p>
-        <p class="text-xs text-[var(--th-text-500)] mb-2">Path to a folder containing additional script templates organized by category subdirectories (lua, khonsu, anubis, constellations).</p>
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-            placeholder="Select a template folder..."
-            value={projectSettingsStore.loaded ? (projectSettingsStore.getEffective("templateFoldersPath") || "") : settingsStore.templateFoldersPath}
-            onblur={(e) => { const v = (e.target as HTMLInputElement).value; if (projectSettingsStore.loaded) { projectSettingsStore.set("templateFoldersPath", v); } else if (v !== settingsStore.templateFoldersPath) { settingsStore.templateFoldersPath = v; settingsStore.persist(); } }}
-          />
-          <button
-            class="px-3 py-1.5 text-xs rounded bg-[var(--th-bg-700)] hover:bg-[var(--th-bg-600)] text-[var(--th-text-300)] transition-colors"
-            onclick={browseTemplateFolder}
-          >{m.common_browse()}</button>
-        </div>
-        {#if settingsStore.templateFoldersPath}
-          <p class="text-[10px] text-[var(--th-text-600)] mt-1 truncate">{settingsStore.templateFoldersPath}</p>
-        {/if}
-      </div>
-    </div>
   {:else if uiStore.settingsSection === "git"}
     {#each configurationRegistry.getSections().filter(s => s.title === "Git") as section (section.title)}
       <h3 class="settings-section-title">{section.title}</h3>
@@ -477,8 +222,6 @@
       <hr class="border-[var(--th-border-700)]" />
       <ModioSettingsSection />
     </div>
-  {:else if uiStore.settingsSection === "editor"}
-    <EditorSettings />
   {:else}
     <div class="flex flex-col items-center justify-center h-full text-center">
       <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>

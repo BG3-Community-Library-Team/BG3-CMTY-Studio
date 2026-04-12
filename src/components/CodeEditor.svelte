@@ -13,6 +13,7 @@
   import { completionRegistry } from "../lib/plugins/index.js";
   import { extractPrefix } from "../lib/utils/luaCompletions.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
+  import { showMinimap } from "@replit/codemirror-minimap";
   import type { ScriptLanguage } from "../lib/editor/types.js";
 
   interface Props {
@@ -52,6 +53,21 @@
   const lineNumCompartment = new Compartment();
   const bracketCompartment = new Compartment();
   const activeLineCompartment = new Compartment();
+  const minimapCompartment = new Compartment();
+
+  /** Build the minimap extension based on current settings. */
+  function buildMinimapExtension(): Extension {
+    if (!settingsStore.editorMinimap) return [];
+    return showMinimap.of({
+      create: () => {
+        const dom = document.createElement("div");
+        dom.style.cssText = "width:60px;";
+        return { dom };
+      },
+      displayText: "blocks",
+      showOverlay: "always",
+    });
+  }
 
   /** Bridge CMTY CompletionRegistry into CM6 autocompletion. */
   function cmtyCompletionSource(ctx: CM6CompletionContext): CompletionResult | null {
@@ -124,6 +140,7 @@
       languageCompartment.of(getLanguageExtension(language)),
       readonlyCompartment.of(EditorState.readOnly.of(readonly)),
       extraCompartment.of(extraExtensions),
+      minimapCompartment.of(buildMinimapExtension()),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onchange?.(update.state.doc.toString());
@@ -218,6 +235,12 @@
     const show = settingsStore.editorActiveLineHighlight;
     if (!view) return;
     view.dispatch({ effects: activeLineCompartment.reconfigure(show ? highlightActiveLine() : []) });
+  });
+
+  $effect(() => {
+    const _enabled = settingsStore.editorMinimap;
+    if (!view) return;
+    view.dispatch({ effects: minimapCompartment.reconfigure(buildMinimapExtension()) });
   });
 
   /** Public API: get the current document text. */

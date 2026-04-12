@@ -17,10 +17,11 @@ import { osiris } from "./lang-osiris/index.js";
 import { stats } from "./lang-stats/index.js";
 import { khonsu } from "./lang-khonsu/index.js";
 import { anubisLua, constellationsLua } from "./lang-anubis/index.js";
+import { luaFoldService } from "./luaFoldService.js";
 
 /** Lazy-initialized language extensions keyed by ScriptLanguage. */
 const languageMap: Record<string, () => Extension> = {
-  lua: () => StreamLanguage.define(lua),
+  lua: () => [StreamLanguage.define(lua), luaFoldService],
   json: () => json(),
   xml: () => xml(),
   yaml: () => yaml(),

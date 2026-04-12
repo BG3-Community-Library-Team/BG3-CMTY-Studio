@@ -3,6 +3,9 @@
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { revealPath } from "../../lib/utils/tauri.js";
+  import { scriptRead } from "../../lib/tauri/scripts.js";
+  import { readTextFile } from "../../lib/tauri/readme.js";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { m } from "../../paraglide/messages.js";
   import {
     type FileTreeNode,
@@ -42,6 +45,7 @@
   import Search from "@lucide/svelte/icons/search";
   import Pin from "@lucide/svelte/icons/pin";
   import PinOff from "@lucide/svelte/icons/pin-off";
+  import ArrowLeftRight from "@lucide/svelte/icons/arrow-left-right";
 
   interface InlineCreateState {
     parent: string | null;
@@ -215,6 +219,43 @@
     fileCtxNode = null;
     fileCtxSectionKey = null;
     fileCtxIsTopLevel = false;
+  }
+
+  async function compareWithFile(node: FileTreeNode): Promise<void> {
+    hideContextMenu();
+    const basePath = modStore.projectPath || modStore.selectedModPath;
+    if (!basePath) return;
+    const selected = await open({
+      title: m.editor_compare_with?.() ?? "Compare With…",
+      multiple: false,
+      directory: false,
+    });
+    if (selected == null) return;
+    const otherPath = Array.isArray(selected) ? selected[0] : String(selected);
+    if (!otherPath) return;
+    try {
+      const fullRelPath = `${modsFilePrefix}${node.relPath}`;
+      const leftContent = await scriptRead(basePath, fullRelPath) ?? await readTextFile(`${basePath}/${fullRelPath}`);
+      const rightContent = await readTextFile(otherPath);
+      if (leftContent == null || rightContent == null) {
+        toastStore.error("Compare", "Could not read one of the files");
+        return;
+      }
+      const leftLabel = node.name;
+      const rightLabel = otherPath.split(/[\\/]/).pop() ?? otherPath;
+      uiStore.openTab({
+        id: `file-diff:${fullRelPath}:${Date.now()}`,
+        label: `${leftLabel} ↔ ${rightLabel}`,
+        type: "file-diff",
+        leftContent,
+        rightContent,
+        leftLabel,
+        rightLabel,
+        icon: "📝",
+      });
+    } catch (err) {
+      toastStore.error("Compare", String(err));
+    }
   }
 
   // ── Clipboard paste ──
@@ -561,6 +602,12 @@
       <Pencil size={12} class="shrink-0" />
       {m.file_explorer_rename()}
     </button>
+    {#if fileCtxNode.isFile}
+      <button class="ctx-item" onclick={() => { if (fileCtxNode) compareWithFile(fileCtxNode); }} role="menuitem">
+        <ArrowLeftRight size={12} class="shrink-0" />
+        {m.editor_compare_with?.() ?? "Compare With…"}
+      </button>
+    {/if}
     {#if !fileCtxNode.isFile}
       <button class="ctx-item" onclick={() => { startInlineCreate(fileCtxNode!.relPath, 'file'); hideContextMenu(); }} role="menuitem">
         <FilePlus2 size={12} class="shrink-0" />

@@ -194,9 +194,10 @@
   let activeTab = $derived(uiStore.activeTab);
   let sections = $derived(modStore.scanResult?.sections ?? []);
 
-  /** Whether the active tab supports splitting (script-editor or file-preview). */
+  /** Whether the active tab supports splitting (script-editor, file-preview, or lsx-file in raw mode). */
   let canSplit = $derived(
-    activeTab?.type === "script-editor" || activeTab?.type === "file-preview"
+    activeTab?.type === "script-editor" || activeTab?.type === "file-preview" ||
+    (activeTab?.type === "lsx-file" && activeTab?.filePath && getLsxTabViewMode(activeTab.id) === "raw")
   );
 
   // Close split when active tab changes
@@ -795,7 +796,23 @@
 
         <div class="lsx-file-content">
           {#if lsxViewMode === 'raw' && activeTab.filePath}
-            <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
+            <div class="split-container" class:split-active={splitActive}>
+              <div class="split-pane split-primary">
+                <ScriptEditorPanel filePath={activeTab.filePath} language={"xml"} readonly={false} hideHeader tabId={activeTab.id} bind:this={lsxRawEditorRef} />
+              </div>
+              {#if splitActive && splitFilePath}
+                <div class="split-divider"></div>
+                <div class="split-pane split-secondary">
+                  <div class="split-header">
+                    <span class="split-header-label">{splitFilePath.split("/").pop() ?? splitFilePath.split("\\").pop() ?? splitFilePath}</span>
+                    <button class="split-close-btn" onclick={closeSplit} title={m.editor_close_split()} aria-label={m.editor_close_split()}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <ScriptEditorPanel filePath={splitFilePath} language={"xml"} readonly={false} hideHeader />
+                </div>
+              {/if}
+            </div>
           {:else if lsxGroupSections.length > 1}
             <div class="section-tab-content">
               {#each lsxGroupSections as sectionName (sectionName)}

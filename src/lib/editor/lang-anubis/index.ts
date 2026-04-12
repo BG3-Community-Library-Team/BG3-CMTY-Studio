@@ -4,8 +4,8 @@
  * constructors (Config, State, Action, etc.), game.* namespaces, and
  * Constellations-specific EParamType.
  */
-import { StreamLanguage } from "@codemirror/language";
-import { LanguageSupport } from "@codemirror/language";
+import { StreamLanguage, LanguageSupport } from "@codemirror/language";
+import { luaFoldService } from "../luaFoldService.js";
 import {
   ViewPlugin,
   Decoration,
@@ -146,6 +146,7 @@ export function anubisLua(): LanguageSupport {
   return new LanguageSupport(anubisLuaBase, [
     frameworkHighlighter(false),
     frameworkTheme,
+    luaFoldService,
   ]);
 }
 
@@ -153,5 +154,6 @@ export function constellationsLua(): LanguageSupport {
   return new LanguageSupport(anubisLuaBase, [
     frameworkHighlighter(true),
     frameworkTheme,
+    luaFoldService,
   ]);
 }

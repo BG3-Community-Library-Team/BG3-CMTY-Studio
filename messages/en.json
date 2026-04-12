@@ -1198,6 +1198,10 @@
   "settings_scripts_ide_helpers_desc": "Select a folder containing Lua helper definition files to supplement intellisense. All .lua files in the folder are parsed for function signatures, global variables, and table fields.",
   "settings_scripts_ide_helpers_placeholder": "Path to IDE helpers folder",
   "settings_scripts_ide_helpers_browse_title": "Select IDE Helpers Folder",
+  "settings_scripts_template_folder_heading": "Template Folder",
+  "settings_scripts_template_folder_desc": "Path to a folder containing additional script templates organized by category subdirectories (lua, khonsu, anubis, constellations).",
+  "settings_scripts_template_folder_placeholder": "Select a template folder…",
+  "settings_scripts_template_folder_browse_title": "Select Template Folder",
 
   "settings_project_scope": "Project",
   "settings_global_scope": "Global",
@@ -1426,6 +1430,7 @@
 
   "editor_split_right": "Split Right",
   "editor_close_split": "Close Split",
+  "editor_compare_with": "Compare With…",
 
   "settings_editor_title": "Editor",
   "settings_editor_font_size": "Font Size",
@@ -1438,6 +1443,8 @@
   "settings_editor_lint_delay": "Lint Delay (ms)",
   "settings_editor_minimap": "Minimap",
   "settings_editor_reset": "Reset to Defaults",
+  "settings_editor_view_panel_title": "View Options",
+  "settings_editor_script_tools_title": "Script Tools",
 
   "readme_editor_cm6_label": "Markdown Editor"
 }

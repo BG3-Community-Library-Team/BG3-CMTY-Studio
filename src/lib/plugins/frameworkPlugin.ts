@@ -38,6 +38,54 @@ const EPARAM_TYPE: CompletionItem[] = [
   { label: 'EParamType.Array', insertText: 'EParamType.Array', detail: 'Param type', kind: 'variable' },
 ];
 
+const CONDITION_FUNCTIONS: CompletionItem[] = [
+  { label: 'ConditionResult', insertText: 'ConditionResult()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasPassive', insertText: 'HasPassive()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasStatus', insertText: 'HasStatus()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasAppliedStatus', insertText: 'HasAppliedStatus()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasSpell', insertText: 'HasSpell()', detail: 'Condition function', kind: 'function' },
+  { label: 'IsClass', insertText: 'IsClass()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasFlag', insertText: 'HasFlag()', detail: 'Condition function', kind: 'function' },
+  { label: 'Tagged', insertText: 'Tagged()', detail: 'Condition function', kind: 'function' },
+  { label: 'GetDistanceTo', insertText: 'GetDistanceTo()', detail: 'Condition function', kind: 'function' },
+  { label: 'WieldingWeapon', insertText: 'WieldingWeapon()', detail: 'Condition function', kind: 'function' },
+  { label: 'SpellId', insertText: 'SpellId()', detail: 'Condition function', kind: 'function' },
+  { label: 'IsSpellOfSchool', insertText: 'IsSpellOfSchool()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasSpellFlag', insertText: 'HasSpellFlag()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasUseCosts', insertText: 'HasUseCosts()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasFunctor', insertText: 'HasFunctor()', detail: 'Condition function', kind: 'function' },
+  { label: 'Distance', insertText: 'Distance()', detail: 'Condition function', kind: 'function' },
+  { label: 'Self', insertText: 'Self()', detail: 'Condition function', kind: 'function' },
+  { label: 'Ally', insertText: 'Ally()', detail: 'Condition function', kind: 'function' },
+  { label: 'Enemy', insertText: 'Enemy()', detail: 'Condition function', kind: 'function' },
+  { label: 'Character', insertText: 'Character()', detail: 'Condition function', kind: 'function' },
+  { label: 'Item', insertText: 'Item()', detail: 'Condition function', kind: 'function' },
+  { label: 'Dead', insertText: 'Dead()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasActionResource', insertText: 'HasActionResource()', detail: 'Condition function', kind: 'function' },
+  { label: 'GetLevel', insertText: 'GetLevel()', detail: 'Condition function', kind: 'function' },
+  { label: 'GetBaseAbility', insertText: 'GetBaseAbility()', detail: 'Condition function', kind: 'function' },
+  { label: 'StatusGetDescriptionParam', insertText: 'StatusGetDescriptionParam()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasProficiency', insertText: 'HasProficiency()', detail: 'Condition function', kind: 'function' },
+  { label: 'GetAbilityModifier', insertText: 'GetAbilityModifier()', detail: 'Condition function', kind: 'function' },
+  { label: 'GetProficiencyBonus', insertText: 'GetProficiencyBonus()', detail: 'Condition function', kind: 'function' },
+  { label: 'IsInCombat', insertText: 'IsInCombat()', detail: 'Condition function', kind: 'function' },
+  { label: 'HasAnyStatus', insertText: 'HasAnyStatus()', detail: 'Condition function', kind: 'function' },
+];
+
+const CONTEXT_ACCESSORS: CompletionItem[] = [
+  { label: 'context.Source', insertText: 'context.Source', detail: 'Context', kind: 'property' },
+  { label: 'context.Target', insertText: 'context.Target', detail: 'Context', kind: 'property' },
+  { label: 'context.HitDescription', insertText: 'context.HitDescription', detail: 'Context', kind: 'property' },
+];
+
+const HIT_DESCRIPTION_FIELDS: CompletionItem[] = [
+  { label: 'IsCriticalHit', insertText: 'IsCriticalHit', detail: 'HitDescription', kind: 'property' },
+  { label: 'DamageType', insertText: 'DamageType', detail: 'HitDescription', kind: 'property' },
+  { label: 'TotalDamage', insertText: 'TotalDamage', detail: 'HitDescription', kind: 'property' },
+  { label: 'AttackType', insertText: 'AttackType', detail: 'HitDescription', kind: 'property' },
+  { label: 'DeathType', insertText: 'DeathType', detail: 'HitDescription', kind: 'property' },
+];
+
 const LUA_KEYWORDS: CompletionItem[] = [
   { label: 'local', insertText: 'local ', detail: 'Local variable', kind: 'keyword', sortOrder: 200 },
   { label: 'function', insertText: 'function', detail: 'Function declaration', kind: 'keyword', sortOrder: 200 },
@@ -62,7 +110,7 @@ const LUA_KEYWORDS: CompletionItem[] = [
   { label: 'in', insertText: 'in', detail: 'In iterator', kind: 'keyword', sortOrder: 200 },
 ];
 
-const ALL_ITEMS = [...FRAMEWORK_CONSTRUCTORS, ...GAME_NAMESPACE, ...EVENTS, ...LUA_KEYWORDS];
+const ALL_ITEMS = [...FRAMEWORK_CONSTRUCTORS, ...GAME_NAMESPACE, ...EVENTS, ...CONDITION_FUNCTIONS, ...CONTEXT_ACCESSORS, ...LUA_KEYWORDS];
 
 function filterByPrefix(items: CompletionItem[], prefix: string): CompletionItem[] {
   const lower = prefix.toLowerCase();
@@ -83,6 +131,20 @@ export const frameworkPlugin: CompletionPlugin = {
       if (ctx.language !== 'constellations') return [];
       const sub = prefix.slice('EParamType.'.length);
       return sub.length === 0 ? EPARAM_TYPE : filterByPrefix(EPARAM_TYPE, prefix);
+    }
+
+    // HitDescription. fields (context-sensitive)
+    if (prefix.startsWith('context.HitDescription.') || prefix.startsWith('HitDescription.')) {
+      const sub = prefix.includes('HitDescription.')
+        ? prefix.slice(prefix.indexOf('HitDescription.') + 'HitDescription.'.length)
+        : '';
+      return sub.length === 0 ? HIT_DESCRIPTION_FIELDS : filterByPrefix(HIT_DESCRIPTION_FIELDS, sub);
+    }
+
+    // context. accessors (context-sensitive)
+    if (prefix.startsWith('context.')) {
+      const sub = prefix.slice('context.'.length);
+      return sub.length === 0 ? CONTEXT_ACCESSORS : filterByPrefix(CONTEXT_ACCESSORS, 'context.' + sub);
     }
 
     // game. namespace

@@ -5,6 +5,8 @@
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
   import { revealPath, listModFiles } from "../../lib/utils/tauri.js";
   import { touchFile, createModDirectory, deleteModPath, moveModFile, scriptRead } from "../../lib/tauri/scripts.js";
+  import { readTextFile } from "../../lib/tauri/readme.js";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { inferAllSectionsFromLsxContent } from "../../lib/utils/lsxRegionParser.js";
   import { buildFileTree, isScriptFile, getComputedZoom } from "./explorerShared.js";
   import type { FileTreeNode } from "./explorerShared.js";
@@ -198,6 +200,7 @@
     return [
       { label: m.file_explorer_rename?.() ?? "Rename", shortcut: "F2", action: () => startRename(node) },
       { label: m.file_explorer_delete?.() ?? "Delete", action: () => confirmDelete(node), separator: "after" },
+      { label: m.editor_compare_with?.() ?? "Compare With…", action: () => compareWith(node), separator: "after" },
       { label: m.file_explorer_copy_path(), action: () => copyAbsolutePath(node) },
       { label: m.file_explorer_copy_relative_path?.() ?? "Copy Relative Path", action: () => copyRelativePath(node) },
       { label: m.explorer_context_menu_reveal_in_file_explorer(), action: () => revealInFileManager(node) },
@@ -232,6 +235,42 @@
     try { await revealPath(fullPath); }
     catch (err) { console.warn("Failed to reveal path:", err); }
     hideContextMenu();
+  }
+
+  async function compareWith(node: FileTreeNode): Promise<void> {
+    hideContextMenu();
+    const modPath = treeBasePath;
+    if (!modPath) return;
+    const selected = await open({
+      title: m.editor_compare_with?.() ?? "Compare With…",
+      multiple: false,
+      directory: false,
+    });
+    if (selected == null) return;
+    const otherPath = Array.isArray(selected) ? selected[0] : String(selected);
+    if (!otherPath) return;
+    try {
+      const leftContent = await scriptRead(modPath, node.relPath) ?? await readTextFile(`${modPath}/${node.relPath}`);
+      const rightContent = await readTextFile(otherPath);
+      if (leftContent == null || rightContent == null) {
+        toastStore.error("Compare", "Could not read one of the files");
+        return;
+      }
+      const leftLabel = node.relPath.split("/").pop() ?? node.relPath;
+      const rightLabel = otherPath.split(/[\\/]/).pop() ?? otherPath;
+      uiStore.openTab({
+        id: `file-diff:${node.relPath}:${Date.now()}`,
+        label: `${leftLabel} ↔ ${rightLabel}`,
+        type: "file-diff",
+        leftContent,
+        rightContent,
+        leftLabel,
+        rightLabel,
+        icon: "📝",
+      });
+    } catch (err) {
+      toastStore.error("Compare", String(err));
+    }
   }
 
   // ── Tree refresh ──
