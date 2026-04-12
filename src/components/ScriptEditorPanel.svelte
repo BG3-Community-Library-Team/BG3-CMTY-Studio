@@ -283,6 +283,7 @@
         {language}
         {readonly}
         {filePath}
+        projectPath={modStore.projectPath || modStore.selectedModPath || undefined}
         onchange={handleChange}
         onsave={save}
       />

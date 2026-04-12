@@ -4,7 +4,7 @@
   import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection, dropCursor, highlightActiveLine } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { foldGutter, foldKeymap, indentOnInput, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-  import { closeBrackets, closeBracketsKeymap, autocompletion, type CompletionContext as CM6CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+  import { closeBrackets, closeBracketsKeymap, autocompletion, snippet, type CompletionContext as CM6CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
   import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
   import { lintGutter } from "@codemirror/lint";
   import { cmtyTheme } from "../lib/editor/cmtyTheme.js";
@@ -18,6 +18,7 @@
     content: string;
     language: ScriptLanguage | string;
     filePath?: string;
+    projectPath?: string;
     readonly?: boolean;
     onchange?: (content: string) => void;
     onsave?: () => void;
@@ -29,6 +30,7 @@
     content,
     language,
     filePath,
+    projectPath,
     readonly = false,
     onchange,
     onsave,
@@ -69,7 +71,7 @@
       from,
       options: items.map((item) => ({
         label: item.label,
-        apply: item.insertText,
+        apply: item.kind === 'snippet' ? snippet(item.insertText) : item.insertText,
         detail: item.detail,
         type: item.kind,
         boost: item.sortOrder != null ? 100 - item.sortOrder : 0,
@@ -93,7 +95,7 @@
       highlightSelectionMatches(),
       autocompletion({ override: [cmtyCompletionSource] }),
       lintGutter(),
-      lintCompartment.of(filePath ? bg3Linter(filePath, language) : []),
+      lintCompartment.of(filePath ? bg3Linter(filePath, language, projectPath) : []),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -160,9 +162,10 @@
   $effect(() => {
     const fp = filePath;
     const lang = language;
+    const pp = projectPath;
     if (!view) return;
     view.dispatch({
-      effects: lintCompartment.reconfigure(fp ? bg3Linter(fp, lang) : []),
+      effects: lintCompartment.reconfigure(fp ? bg3Linter(fp, lang, pp) : []),
     });
   });
 

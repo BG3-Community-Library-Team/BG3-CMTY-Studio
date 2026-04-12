@@ -165,7 +165,7 @@ describe("lintBridge", () => {
       };
 
       await ext.__linterCallback(mockView);
-      expect(mockValidate).toHaveBeenCalledWith("my/file.txt", "stats", "content here");
+      expect(mockValidate).toHaveBeenCalledWith("my/file.txt", "stats", "content here", undefined);
     });
   });
 });

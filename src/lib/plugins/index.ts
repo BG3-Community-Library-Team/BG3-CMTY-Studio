@@ -13,6 +13,8 @@ import { statsPlugin } from './statsPlugin.js';
 import { khonsuPlugin } from './khonsuPlugin.js';
 import { frameworkPlugin } from './frameworkPlugin.js';
 import { jsonSchemaPlugin } from './jsonSchemaPlugin.js';
+import { snippetPlugin } from '../editor/snippets.js';
+import { customSnippetPlugin } from '../editor/customSnippets.js';
 
 // Register built-in plugins
 completionRegistry.register(seApiPlugin);
@@ -24,3 +26,5 @@ completionRegistry.register(statsPlugin);
 completionRegistry.register(khonsuPlugin);
 completionRegistry.register(frameworkPlugin);
 completionRegistry.register(jsonSchemaPlugin);
+completionRegistry.register(snippetPlugin);
+completionRegistry.register(customSnippetPlugin);

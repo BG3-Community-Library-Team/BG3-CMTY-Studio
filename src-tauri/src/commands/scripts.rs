@@ -579,6 +579,8 @@ pub struct ScriptDiagnostic {
     pub line: usize,
     pub message: String,
     pub severity: ScriptDiagnosticSeverity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -599,12 +601,13 @@ pub enum ScriptDiagnosticSeverity {
 /// - `"lua"` → empty (no Lua validator yet)
 #[tauri::command]
 pub async fn cmd_validate_script(
+    project_path: Option<String>,
     file_path: String,
     language: String,
     content: String,
 ) -> Result<Vec<ScriptDiagnostic>, AppError> {
     blocking(move || {
-        let diags = match language.as_str() {
+        let mut diags = match language.as_str() {
             "json" => {
                 if file_path.contains("MCM_blueprint") {
                     let mcm_diags =
@@ -625,6 +628,7 @@ pub async fn cmd_validate_script(
                                     ScriptDiagnosticSeverity::Info
                                 }
                             },
+                            source: None,
                         })
                         .collect()
                 } else {
@@ -652,13 +656,64 @@ pub async fn cmd_validate_script(
                                 ScriptDiagnosticSeverity::Info
                             }
                         },
+                        source: None,
                     })
                     .collect()
             }
             "lua" => Vec::new(),
             _ => Vec::new(),
         };
+
+        // Apply custom linters if a project path is provided
+        if let Some(ref proj) = project_path {
+            let linters = crate::validation::custom_linters::load_custom_linters(proj);
+            if !linters.is_empty() {
+                let config = crate::validation::custom_linters::load_lint_config(proj);
+                let custom_diags = crate::validation::custom_linters::apply_custom_linters(
+                    &content, &language, &file_path, &linters, &config,
+                );
+                for cd in custom_diags {
+                    diags.push(ScriptDiagnostic {
+                        line: cd.line,
+                        message: cd.message,
+                        severity: match cd.severity {
+                            crate::validation::custom_linters::DiagnosticSeverity::Error => {
+                                ScriptDiagnosticSeverity::Error
+                            }
+                            crate::validation::custom_linters::DiagnosticSeverity::Warning => {
+                                ScriptDiagnosticSeverity::Warning
+                            }
+                            crate::validation::custom_linters::DiagnosticSeverity::Info => {
+                                ScriptDiagnosticSeverity::Info
+                            }
+                        },
+                        source: Some(cd.source),
+                    });
+                }
+            }
+        }
+
         Ok(diags)
+    })
+    .await
+}
+
+/// List loaded custom linter modules for a project.
+#[tauri::command]
+pub async fn cmd_list_custom_linters(
+    project_path: String,
+) -> Result<Vec<crate::validation::custom_linters::LinterModuleInfo>, AppError> {
+    blocking(move || {
+        let modules = crate::validation::custom_linters::load_custom_linters(&project_path);
+        Ok(modules
+            .into_iter()
+            .map(|m| crate::validation::custom_linters::LinterModuleInfo {
+                filename: m.filename,
+                name: m.name,
+                languages: m.languages,
+                rule_count: m.rules.len(),
+            })
+            .collect())
     })
     .await
 }
@@ -672,6 +727,7 @@ fn validate_json_parse(content: &str) -> Vec<ScriptDiagnostic> {
                 line: e.line(),
                 message: format!("Invalid JSON: {e}"),
                 severity: ScriptDiagnosticSeverity::Error,
+                source: None,
             }]
         }
     }
@@ -686,6 +742,7 @@ fn validate_yaml_parse(content: &str) -> Vec<ScriptDiagnostic> {
                 line: 1,
                 message: format!("Invalid YAML: {e}"),
                 severity: ScriptDiagnosticSeverity::Error,
+                source: None,
             }]
         }
     }
@@ -709,6 +766,7 @@ fn validate_xml_parse(content: &str) -> Vec<ScriptDiagnostic> {
                     line,
                     message: format!("Invalid XML: {e}"),
                     severity: ScriptDiagnosticSeverity::Error,
+                    source: None,
                 }];
             }
         }

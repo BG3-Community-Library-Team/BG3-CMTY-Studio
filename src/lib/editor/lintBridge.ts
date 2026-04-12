@@ -4,11 +4,11 @@ import type { ScriptLanguage } from "./types.js";
 import type { Extension } from "@codemirror/state";
 
 /** CM6 linter that calls the Rust validateScript IPC and maps results to inline diagnostics. */
-export function bg3Linter(filePath: string, language: ScriptLanguage | string): Extension {
+export function bg3Linter(filePath: string, language: ScriptLanguage | string, projectPath?: string): Extension {
   return linter(async (view): Promise<Diagnostic[]> => {
     try {
       const content = view.state.doc.toString();
-      const results = await validateScript(filePath, language, content);
+      const results = await validateScript(filePath, language, content, projectPath);
       const diagnostics: Diagnostic[] = [];
 
       for (const d of results) {
@@ -19,7 +19,7 @@ export function bg3Linter(filePath: string, language: ScriptLanguage | string): 
           to: line.to,
           severity: d.severity.toLowerCase() as "error" | "warning" | "info",
           message: d.message,
-          source: "bg3-lint",
+          source: d.source || "bg3-lint",
         });
       }
 

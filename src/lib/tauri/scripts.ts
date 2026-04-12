@@ -183,12 +183,25 @@ export interface ScriptDiagnostic {
   line: number;
   message: string;
   severity: "Error" | "Warning" | "Info";
+  source?: string;
 }
 
 export async function validateScript(
   filePath: string,
   language: string,
   content: string,
+  projectPath?: string,
 ): Promise<ScriptDiagnostic[]> {
-  return invoke("cmd_validate_script", { filePath, language, content });
+  return invoke("cmd_validate_script", { filePath, language, content, projectPath: projectPath ?? null });
+}
+
+export interface LinterModuleInfo {
+  filename: string;
+  name: string;
+  languages: string[];
+  rule_count: number;
+}
+
+export async function listCustomLinters(projectPath: string): Promise<LinterModuleInfo[]> {
+  return invoke("cmd_list_custom_linters", { projectPath });
 }

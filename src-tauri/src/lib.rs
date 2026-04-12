@@ -2206,6 +2206,7 @@ pub fn run() {
             commands::scripts::cmd_create_from_external_template,
             commands::scripts::cmd_validate_mcm_blueprint,
             commands::scripts::cmd_validate_script,
+            commands::scripts::cmd_list_custom_linters,
             commands::scan::cmd_import_se_scripts,
             commands::scan::cmd_import_osiris_goals,
             commands::scan::cmd_import_khonsu_scripts,
