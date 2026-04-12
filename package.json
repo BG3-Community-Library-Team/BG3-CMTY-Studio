@@ -23,7 +23,8 @@
     "tauri:build": "tauri build",
     "generate:types": "cd src-tauri && set TS_RS_EXPORT_DIR=../src/lib/types/generated && cargo test export_bindings",
     "audit:licenses": "npx license-checker --excludePrivatePackages --summary",
-    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && node -e \"require('fs').writeFileSync('src/paraglide/messages.d.ts','/* eslint-disable */\\ntype MessageFn = (params?: Record<string, any>) => string;\\nexport declare const m: Record<string, MessageFn>;\\n')\""
+    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && node -e \"require('fs').writeFileSync('src/paraglide/messages.d.ts','/* eslint-disable */\\ntype MessageFn = (params?: Record<string, any>) => string;\\nexport declare const m: Record<string, MessageFn>;\\n')\"",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
@@ -33,6 +34,7 @@
     "@testing-library/svelte": "^5.3.1",
     "@vitest/coverage-v8": "^4.1.0",
     "fast-check": "^4.5.3",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.2",
     "rollup-plugin-visualizer": "^7.0.1",
     "svelte": "^5.55.3",

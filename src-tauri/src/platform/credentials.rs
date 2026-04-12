@@ -60,8 +60,36 @@ mod tests {
     // They use a unique username to avoid collisions.
     const TEST_USERNAME: &str = "cmty-studio-test-credential";
 
+    /// Returns `true` when the OS keyring backend is available.
+    /// On Linux CI there is typically no `org.freedesktop.secrets` provider,
+    /// so we skip tests gracefully instead of failing.
+    fn keyring_available() -> bool {
+        match Entry::new(SERVICE_NAME, "cmty-studio-probe") {
+            Ok(entry) => {
+                // Attempt a read — NoEntry is fine, any platform error means
+                // the backend is not wired up.
+                match entry.get_password() {
+                    Ok(_) | Err(keyring::Error::NoEntry) => true,
+                    Err(_) => false,
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
+    macro_rules! skip_without_keyring {
+        () => {
+            if !keyring_available() {
+                eprintln!("SKIPPED: OS keyring backend not available (e.g. no org.freedesktop.secrets on Linux CI)");
+                return;
+            }
+        };
+    }
+
     #[test]
     fn round_trip_store_get_delete() {
+        skip_without_keyring!();
+
         let service = "platform-test";
         let secret = "test-api-key-12345";
 
@@ -83,6 +111,8 @@ mod tests {
 
     #[test]
     fn get_nonexistent_returns_none() {
+        skip_without_keyring!();
+
         let result =
             get_credential("platform-test", "nonexistent-key-xyz").expect("should not error");
         assert_eq!(result, None);
@@ -90,6 +120,8 @@ mod tests {
 
     #[test]
     fn delete_nonexistent_succeeds() {
+        skip_without_keyring!();
+
         delete_credential("platform-test", "nonexistent-key-xyz")
             .expect("delete nonexistent should succeed");
     }
