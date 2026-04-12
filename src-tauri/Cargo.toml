@@ -32,7 +32,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 keyring = { version = "3", features = ["sync-secret-service", "windows-native", "apple-native"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
 git2 = { version = "0.20", features = ["vendored-libgit2"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }

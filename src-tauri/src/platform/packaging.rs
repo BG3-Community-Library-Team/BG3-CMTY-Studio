@@ -106,7 +106,7 @@ pub fn create_upload_zip(
 
         if entry.file_type().is_dir() {
             // Add directory entry (trailing /)
-            let dir_name = format!("{}/", rel_str);
+            let dir_name = format!("{rel_str}/");
             zip.add_directory(&dir_name, options).map_err(|e| {
                 PlatformError::PackagingError(format!("Failed to add directory to ZIP: {e}"))
             })?;
@@ -116,12 +116,12 @@ pub fn create_upload_zip(
             })?;
 
             let mut src = File::open(abs_path).map_err(|e| {
-                PlatformError::PackagingError(format!("Failed to open {}: {e}", rel_str))
+                PlatformError::PackagingError(format!("Failed to open {rel_str}: {e}"))
             })?;
 
             loop {
                 let n = src.read(&mut read_buf).map_err(|e| {
-                    PlatformError::PackagingError(format!("Failed to read {}: {e}", rel_str))
+                    PlatformError::PackagingError(format!("Failed to read {rel_str}: {e}"))
                 })?;
                 if n == 0 {
                     break;
@@ -177,32 +177,32 @@ mod tests {
 
     #[test]
     fn exclude_git_dir() {
-        assert!(should_exclude(".git/config", &DEFAULT_EXCLUDES));
-        assert!(should_exclude("subdir/.git/HEAD", &DEFAULT_EXCLUDES));
+        assert!(should_exclude(".git/config", DEFAULT_EXCLUDES));
+        assert!(should_exclude("subdir/.git/HEAD", DEFAULT_EXCLUDES));
     }
 
     #[test]
     fn exclude_pycache() {
-        assert!(should_exclude("__pycache__/module.pyc", &DEFAULT_EXCLUDES));
+        assert!(should_exclude("__pycache__/module.pyc", DEFAULT_EXCLUDES));
     }
 
     #[test]
     fn exclude_log_files() {
-        assert!(should_exclude("output.log", &DEFAULT_EXCLUDES));
-        assert!(should_exclude("subdir/debug.log", &DEFAULT_EXCLUDES));
+        assert!(should_exclude("output.log", DEFAULT_EXCLUDES));
+        assert!(should_exclude("subdir/debug.log", DEFAULT_EXCLUDES));
     }
 
     #[test]
     fn exclude_os_files() {
-        assert!(should_exclude(".DS_Store", &DEFAULT_EXCLUDES));
-        assert!(should_exclude("Thumbs.db", &DEFAULT_EXCLUDES));
+        assert!(should_exclude(".DS_Store", DEFAULT_EXCLUDES));
+        assert!(should_exclude("Thumbs.db", DEFAULT_EXCLUDES));
     }
 
     #[test]
     fn normal_files_not_excluded() {
-        assert!(!should_exclude("README.md", &DEFAULT_EXCLUDES));
-        assert!(!should_exclude("src/main.rs", &DEFAULT_EXCLUDES));
-        assert!(!should_exclude("Mods/MyMod/meta.lsx", &DEFAULT_EXCLUDES));
+        assert!(!should_exclude("README.md", DEFAULT_EXCLUDES));
+        assert!(!should_exclude("src/main.rs", DEFAULT_EXCLUDES));
+        assert!(!should_exclude("Mods/MyMod/meta.lsx", DEFAULT_EXCLUDES));
     }
 
     #[test]

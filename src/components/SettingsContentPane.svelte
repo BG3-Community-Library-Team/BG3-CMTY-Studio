@@ -9,6 +9,8 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
   import { projectSettingsStore, type ProjectSettings } from "../lib/stores/projectSettingsStore.svelte.js";
+  import NexusSettingsSection from "./platform/nexus/NexusSettingsSection.svelte";
+  import ModioSettingsSection from "./platform/modio/ModioSettingsSection.svelte";
 
   /** Map of configurationRegistry keys → projectSettingsStore keys for project-level persistence. */
   const CONFIG_TO_PROJECT: Record<string, keyof ProjectSettings> = {
@@ -467,6 +469,13 @@
         {/each}
       </div>
     {/each}
+  {:else if uiStore.settingsSection === "publishing"}
+    <h3 class="settings-section-title">{m.publishingSection()}</h3>
+    <div class="space-y-6">
+      <NexusSettingsSection />
+      <hr class="border-[var(--th-border-700)]" />
+      <ModioSettingsSection />
+    </div>
   {:else}
     <div class="flex flex-col items-center justify-center h-full text-center">
       <p class="text-sm text-[var(--th-text-400)]">{m.settings_empty_state()}</p>

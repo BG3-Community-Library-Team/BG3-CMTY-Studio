@@ -249,6 +249,27 @@ class SettingsStore {
   /** Git commit author email (falls back to ~/.gitconfig if empty) */
   gitUserEmail: string = $state(this.#initial.gitUserEmail);
 
+  /** Nexus Mods numeric mod ID */
+  nexusModId: string = $state(this.#initial.nexusModId);
+  /** Nexus Mods mod UUID */
+  nexusModUuid: string = $state(this.#initial.nexusModUuid);
+  /** Nexus Mods mod display name */
+  nexusModName: string = $state(this.#initial.nexusModName);
+  /** Default Nexus file group */
+  nexusDefaultFileGroup: string = $state(this.#initial.nexusDefaultFileGroup);
+  /** Default Nexus file category */
+  nexusDefaultCategory: string = $state(this.#initial.nexusDefaultCategory);
+  /** Nexus game domain slug */
+  nexusGameDomain: string = $state(this.#initial.nexusGameDomain);
+  /** mod.io numeric user ID */
+  modioUserId: string = $state(this.#initial.modioUserId);
+  /** mod.io username */
+  modioUserName: string = $state(this.#initial.modioUserName);
+  /** mod.io game ID */
+  modioGameId: string = $state(this.#initial.modioGameId);
+  /** mod.io OAuth token expiry (ISO 8601) */
+  modioTokenExpiry: string = $state(this.#initial.modioTokenExpiry);
+
   /** Custom theme values — editable in the settings panel */
   customTheme: CustomThemeValues = $state(this.#initialCustom);
 

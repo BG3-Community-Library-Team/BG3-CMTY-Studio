@@ -2078,11 +2078,30 @@ async fn cmd_get_dds_dimensions(path: String, project_dir: String) -> Result<(u3
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
     logging::init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(platform::nexus::commands::NexusState {
+            client: std::sync::Mutex::new(None),
+        })
+        .manage(platform::modio::commands::ModioState {
+            client: std::sync::Mutex::new(None),
+        })
+        .setup(|app| {
+            // Auto-initialise the Nexus client from stored keyring credential.
+            let nexus_state = app.state::<platform::nexus::commands::NexusState>();
+            platform::nexus::commands::try_auto_init(nexus_state.inner());
+
+            // Auto-initialise the mod.io client from stored keyring credentials.
+            let modio_state = app.state::<platform::modio::commands::ModioState>();
+            if let Err(e) = platform::modio::commands::try_restore_client(modio_state.inner()) {
+                tracing::warn!("Failed to auto-initialise mod.io client: {e}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             cmd_scan_mod,
             cmd_list_available_sections,
@@ -2249,6 +2268,24 @@ pub fn run() {
             // DDS texture conversion
             cmd_convert_dds_to_png,
             cmd_get_dds_dimensions,
+            // Nexus Mods
+            platform::nexus::commands::cmd_nexus_set_api_key,
+            platform::nexus::commands::cmd_nexus_clear_api_key,
+            platform::nexus::commands::cmd_nexus_has_api_key,
+            platform::nexus::commands::cmd_nexus_validate_api_key,
+            platform::nexus::commands::cmd_nexus_resolve_mod,
+            platform::nexus::commands::cmd_nexus_get_file_groups,
+            platform::nexus::commands::cmd_nexus_upload_file,
+            platform::nexus::commands::cmd_nexus_create_mod_file,
+            // mod.io
+            platform::modio::commands::cmd_modio_set_api_key,
+            platform::modio::commands::cmd_modio_connect,
+            platform::modio::commands::cmd_modio_verify_code,
+            platform::modio::commands::cmd_modio_disconnect,
+            platform::modio::commands::cmd_modio_get_user,
+            platform::modio::commands::cmd_modio_has_api_key,
+            platform::modio::commands::cmd_modio_get_my_mods,
+            platform::modio::commands::cmd_modio_upload_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

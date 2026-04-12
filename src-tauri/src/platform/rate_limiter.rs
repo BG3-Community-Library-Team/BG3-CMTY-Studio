@@ -44,13 +44,13 @@ impl TokenBucket {
         if authenticated {
             Self::new(120, 120.0 / 60.0)
         } else {
-            Self::new(60, 60.0 / 60.0)
+            Self::new(60, 1.0)
         }
     }
 
     /// mod.io write endpoints: 60 req/min.
     pub fn new_modio_write() -> Self {
-        Self::new(60, 60.0 / 60.0)
+        Self::new(60, 1.0)
     }
 
     /// Wait until a token is available, then consume it.
