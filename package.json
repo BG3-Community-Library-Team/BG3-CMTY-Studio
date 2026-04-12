@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "test:suite": "vitest run && vite build && cd src-tauri && cargo test",
     "build:schema": "cd src-tauri && cargo run --release --bin generate_schema",
+    "build:grammars": "node scripts/build-grammars.mjs",
     "test:schema": "cd src-tauri && cargo test --test test_reference_db create_all_empty_schema_dbs -- --ignored --nocapture",
     "test:db": "cd src-tauri && cargo test --test test_reference_db populate_all_schema_dbs -- --ignored --nocapture",
     "tauri": "tauri",
@@ -27,6 +28,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@lezer/generator": "^1.8.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tauri-apps/api": "^2.10.1",

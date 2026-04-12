@@ -1,0 +1,18 @@
+@top StatsFile { StatsEntry* }
+
+StatsEntry { kw<"new"> (kw<"entry"> | kw<"equipment">) String TypeDecl? UsingDecl? DataLine* }
+
+TypeDecl { kw<"type"> String }
+UsingDecl { kw<"using"> String }
+DataLine { kw<"data"> String String }
+
+kw<term> { @specialize[@name={term}]<word, term> }
+
+@skip { space | LineComment }
+
+@tokens {
+  LineComment { "//" ![\n]* }
+  String { '"' (!["\\] | "\\" _)* '"' }
+  space { ($[ \t\n\r])+ }
+  word { $[a-zA-Z_] $[a-zA-Z0-9_]* }
+}

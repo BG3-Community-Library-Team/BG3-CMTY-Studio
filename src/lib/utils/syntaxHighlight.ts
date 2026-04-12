@@ -10,7 +10,7 @@
 export type HlType = 'key' | 'string' | 'comment' | 'bool' | 'num' | 'punct' | 'keyword' | 'attr' | 'text';
 
 /** @deprecated Import from '../editor/types.js' instead. */
-export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "json" | "yaml" | "xml" | "markdown" | "plaintext";
+export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "stats" | "json" | "yaml" | "xml" | "markdown" | "plaintext";
 
 /** Escape HTML entities for safe rendering. */
 export function esc(s: string): string {

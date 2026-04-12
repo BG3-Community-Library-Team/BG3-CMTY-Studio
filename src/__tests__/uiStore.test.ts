@@ -516,6 +516,10 @@ describe("UiStore", () => {
       expect(uiStore.detectScriptLanguage("Story/RawFiles/Goals/MyGoal.txt")).toBe("osiris");
     });
 
+    it("detects stats data .txt files", () => {
+      expect(uiStore.detectScriptLanguage("Public/MyMod/Stats/Generated/Data/Weapon.txt")).toBe("stats");
+    });
+
     it("detects khn files", () => {
       expect(uiStore.detectScriptLanguage("scripts/test.khn")).toBe("khn");
     });

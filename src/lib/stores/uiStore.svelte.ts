@@ -281,6 +281,8 @@ class UiStore {
     const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
     // Osiris goal files: .txt in Story/RawFiles/Goals/
     if (ext === "txt" && filePath.includes("Story/RawFiles/Goals/")) return "osiris";
+    // Stats data files: .txt under Stats/Generated/Data/
+    if (ext === "txt" && filePath.includes("Stats/Generated/Data/")) return "stats";
     switch (ext) {
       case "lua": return "lua";
       case "khn": return "khn";

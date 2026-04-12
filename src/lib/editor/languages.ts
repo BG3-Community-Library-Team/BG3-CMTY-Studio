@@ -1,8 +1,9 @@
 /**
  * Language extension registry — maps ScriptLanguage identifiers to CM6
  * LanguageSupport extensions. Drop-in languages use official CM6 packages;
- * Lua uses the legacy StreamLanguage adapter. Custom grammars (Osiris, Stats,
- * Khonsu, Anubis, Constellations) will be added in Phase 2.
+ * custom Lezer grammars provide Osiris and Stats; Lua-family languages
+ * (Khonsu, Anubis, Constellations) extend the Lua tokenizer with
+ * framework-specific keyword highlights.
  */
 import { json } from "@codemirror/lang-json";
 import { xml } from "@codemirror/lang-xml";
@@ -12,6 +13,10 @@ import { StreamLanguage } from "@codemirror/language";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import type { Extension } from "@codemirror/state";
 import type { ScriptLanguage } from "./types.js";
+import { osiris } from "./lang-osiris/index.js";
+import { stats } from "./lang-stats/index.js";
+import { khonsu } from "./lang-khonsu/index.js";
+import { anubisLua, constellationsLua } from "./lang-anubis/index.js";
 
 /** Lazy-initialized language extensions keyed by ScriptLanguage. */
 const languageMap: Record<string, () => Extension> = {
@@ -20,11 +25,11 @@ const languageMap: Record<string, () => Extension> = {
   xml: () => xml(),
   yaml: () => yaml(),
   markdown: () => markdown(),
-  // Lua-family languages reuse Lua tokenizer until Phase 2 custom grammars
-  khn: () => StreamLanguage.define(lua),
-  osiris: () => StreamLanguage.define(lua),
-  anubis: () => StreamLanguage.define(lua),
-  constellations: () => StreamLanguage.define(lua),
+  osiris: () => osiris(),
+  stats: () => stats(),
+  khn: () => khonsu(),
+  anubis: () => anubisLua(),
+  constellations: () => constellationsLua(),
 };
 
 /**
