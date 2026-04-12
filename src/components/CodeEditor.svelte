@@ -11,7 +11,7 @@
   import { getLanguageExtension } from "../lib/editor/languages.js";
   import { completionRegistry } from "../lib/plugins/index.js";
   import { extractPrefix } from "../lib/utils/luaCompletions.js";
-  import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
+  import type { ScriptLanguage } from "../lib/editor/types.js";
 
   interface Props {
     content: string;

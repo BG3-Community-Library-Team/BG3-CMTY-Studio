@@ -1,8 +1,16 @@
-/** Shared syntax highlighting utilities for file preview and editor views. */
+/**
+ * Legacy syntax highlighting utilities — line-by-line regex tokenizers.
+ * Runtime editor surfaces now use CodeMirror 6 (see src/lib/editor/).
+ * These functions are retained for non-CM6 contexts (search result previews, etc.)
+ * and remain tested via syntaxHighlight.test.ts.
+ *
+ * @deprecated Import ScriptLanguage from '../editor/types.js' for new code.
+ */
 
 export type HlType = 'key' | 'string' | 'comment' | 'bool' | 'num' | 'punct' | 'keyword' | 'attr' | 'text';
 
-export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "json" | "yaml" | "xml" | "plaintext";
+/** @deprecated Import from '../editor/types.js' instead. */
+export type ScriptLanguage = "lua" | "osiris" | "khn" | "anubis" | "constellations" | "json" | "yaml" | "xml" | "markdown" | "plaintext";
 
 /** Escape HTML entities for safe rendering. */
 export function esc(s: string): string {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
+  import type { ScriptLanguage } from "../lib/editor/types.js";
   import { scriptRead, scriptWrite } from "../lib/tauri/scripts.js";
   import { inferAllSectionsFromLsxContent } from "../lib/utils/lsxRegionParser.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";

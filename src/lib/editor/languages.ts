@@ -11,7 +11,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { StreamLanguage } from "@codemirror/language";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import type { Extension } from "@codemirror/state";
-import type { ScriptLanguage } from "../utils/syntaxHighlight.js";
+import type { ScriptLanguage } from "./types.js";
 
 /** Lazy-initialized language extensions keyed by ScriptLanguage. */
 const languageMap: Record<string, () => Extension> = {

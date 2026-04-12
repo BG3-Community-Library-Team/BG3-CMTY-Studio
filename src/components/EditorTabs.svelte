@@ -3,7 +3,7 @@
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { projectStore, sectionToTable, sectionHasNewEntries } from "../lib/stores/projectStore.svelte.js";
   import type { SectionResult, Section, DiffEntry } from "../lib/types/index.js";
-  import type { ScriptLanguage } from "../lib/utils/syntaxHighlight.js";
+  import type { ScriptLanguage } from "../lib/editor/types.js";
   import { SECTIONS_ORDERED } from "../lib/types/index.js";
   import { BG3_CORE_FOLDERS, type FolderNode } from "../lib/data/bg3FolderStructure.js";
   import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
@@ -946,12 +946,6 @@
     text-align: right;
     min-width: 2.5em;
   }
-  :global(.hl-key) { color: #7dcfff; }
-  :global(.hl-string) { color: #a9dc76; }
-  :global(.hl-comment) { color: #6a6a7a; font-style: italic; }
-  :global(.hl-bool) { color: #ff9e64; }
-  :global(.hl-num) { color: #ff9e64; }
-  :global(.hl-punct) { color: #89929b; }
 
   .lsx-file-tab {
     display: flex;
