@@ -64,6 +64,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("node_modules/@codemirror") || id.includes("node_modules/@lezer")) return "codemirror";
           if (id.includes("node_modules/@lucide/svelte")) return "icons";
           if (id.includes("node_modules/yaml")) return "yaml";
           if (
