@@ -1,8 +1,8 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { readModFile } from "../lib/utils/tauri.js";
-  import { highlightLine } from "../lib/utils/syntaxHighlight.js";
-  import VirtualList from "./VirtualList.svelte";
+  import { uiStore } from "../lib/stores/uiStore.svelte.js";
+  import CodeEditor from "./CodeEditor.svelte";
   import FileCode from "@lucide/svelte/icons/file-code";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
@@ -22,11 +22,7 @@
 
   let extension = $derived(filePath.split(".").pop()?.toLowerCase() ?? "");
   let fileName = $derived(filePath.split("/").pop() ?? filePath);
-  let lines = $derived.by(() => {
-    if (content == null) return [] as string[];
-    return content.split("\n");
-  });
-  let lineNumWidth = $derived(Math.max(3, String(lines.length).length));
+  let detectedLanguage = $derived(uiStore.detectScriptLanguage(filePath));
 
   let copied = $state(false);
   async function copyAll() {
@@ -92,12 +88,12 @@
       <p class="text-[10px] text-[var(--th-text-600)] mt-1 max-w-[300px]">{error}</p>
     </div>
   {:else if content != null}
-    <div class="file-preview-content" data-selectable="true">
-      <VirtualList items={lines} itemHeight={16} threshold={200} role="none">
-        {#snippet children({ item: line, index: i })}
-          <div class="preview-line"><span class="line-number">{String(i + 1).padStart(lineNumWidth, " ")}</span>  {@html highlightLine(line, extension)}</div>
-        {/snippet}
-      </VirtualList>
+    <div class="file-preview-content">
+      <CodeEditor
+        content={content}
+        language={detectedLanguage}
+        readonly={true}
+      />
     </div>
   {/if}
 </div>
@@ -133,42 +129,6 @@
   .file-preview-content {
     flex: 1;
     overflow: hidden;
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
-    font-size: 12px;
-    line-height: 16px;
-    color: var(--th-text-300);
-    tab-size: 2;
-    white-space: pre;
-    padding: 0.75rem 1rem;
+    min-height: 0;
   }
-
-  .file-preview-content :global(.preview-line) {
-    height: 16px;
-    overflow: hidden;
-  }
-
-  .file-preview-content :global(.line-number) {
-    display: inline-block;
-    color: var(--th-text-700, #444);
-    user-select: none;
-    text-align: right;
-    min-width: 2.5em;
-  }
-
-  /* Syntax highlighting tokens — reuse same classes as EditorTabs */
-  .file-preview-content :global(.hl-key) { color: #7dcfff; }
-  .file-preview-content :global(.hl-string) { color: #a9dc76; }
-  .file-preview-content :global(.hl-comment) { color: #6a6a7a; font-style: italic; }
-  .file-preview-content :global(.hl-bool) { color: #ff9e64; }
-  .file-preview-content :global(.hl-num) { color: #ff9e64; }
-  .file-preview-content :global(.hl-punct) { color: #89929b; }
-  .file-preview-content :global(.hl-keyword) { color: #bb9af7; }
-  .file-preview-content :global(.hl-attr) { color: #7dcfff; }
-
-  /* Markdown-specific */
-  .file-preview-content :global(.hl-md-heading) { color: #7dcfff; font-weight: 600; }
-  .file-preview-content :global(.hl-md-bold) { color: var(--th-text-100); font-weight: 600; }
-  .file-preview-content :global(.hl-md-italic) { color: var(--th-text-200); font-style: italic; }
-  .file-preview-content :global(.hl-md-code) { color: #a9dc76; background: rgba(255,255,255,0.04); padding: 1px 3px; border-radius: 2px; }
-  .file-preview-content :global(.hl-md-link) { color: #7aa2f7; text-decoration: underline; }
 </style>

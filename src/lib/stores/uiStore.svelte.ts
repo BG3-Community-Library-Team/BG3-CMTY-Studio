@@ -288,8 +288,10 @@ class UiStore {
       case "clc": case "cln": case "clm": return "constellations";
       case "json": return "json";
       case "yaml": case "yml": return "yaml";
+      case "xml": case "lsx": case "lsefx": return "xml";
+      case "md": case "markdown": return "markdown";
       case "txt": return "plaintext";
-      default: return "lua";
+      default: return "plaintext";
     }
   }
 
