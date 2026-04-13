@@ -4,6 +4,7 @@ pub mod converters;
 pub mod db_manager;
 pub mod error;
 pub mod export;
+#[cfg(feature = "git-integration")]
 pub mod git;
 pub mod logging;
 pub mod models;
@@ -2052,16 +2053,30 @@ r#"<?xml version="1.0" encoding="utf-8"?>
     .await
 }
 
-// ── Secure storage commands (OS keychain) ────────────────────────────
+// ── Secure storage commands (OS keychain via platform::credentials) ───
 
 #[tauri::command]
 async fn cmd_get_secure_setting(key: String) -> Result<String, AppError> {
-    blocking(move || commands::secure_storage::get_secure_setting(&key)).await
+    blocking(move || {
+        match platform::credentials::get_credential("settings", &key) {
+            Ok(Some(val)) => Ok(val),
+            Ok(None) => Ok(String::new()),
+            Err(e) => Err(e.to_string()),
+        }
+    }).await
 }
 
 #[tauri::command]
 async fn cmd_set_secure_setting(key: String, value: String) -> Result<(), AppError> {
-    blocking(move || commands::secure_storage::set_secure_setting(&key, &value)).await
+    blocking(move || {
+        if value.is_empty() {
+            platform::credentials::delete_credential("settings", &key)
+                .map_err(|e| e.to_string())
+        } else {
+            platform::credentials::store_credential("settings", &key, &value)
+                .map_err(|e| e.to_string())
+        }
+    }).await
 }
 
 // ── DDS texture conversion commands ──────────────────────────────────
@@ -2076,30 +2091,74 @@ async fn cmd_get_dds_dimensions(path: String, project_dir: String) -> Result<(u3
     blocking(move || commands::texture::get_dds_dimensions(&path, &project_dir)).await
 }
 
+/// One-time migration from legacy keyring service ("cmtystudio") to the new
+/// unified platform service ("bg3-cmty-studio").
+fn migrate_legacy_keyring() {
+    // Settings keys stored by the old secure_storage module
+    let settings_keys = ["vanillaPath", "gameDataPath", "lastProjectPath"];
+    for key in &settings_keys {
+        if let Ok(Some(value)) = platform::credentials::get_legacy_credential(key) {
+            if platform::credentials::store_credential("settings", key, &value).is_ok() {
+                let _ = platform::credentials::delete_legacy_credential(key);
+            }
+        }
+    }
+
+    // Forge tokens stored by the old forge_api/secure_storage (format: "forge_token:{host}")
+    let common_hosts = ["github.com", "gitlab.com", "codeberg.org"];
+    for host in &common_hosts {
+        let old_key = format!("forge_token:{host}");
+        if let Ok(Some(token)) = platform::credentials::get_legacy_credential(&old_key) {
+            if platform::credentials::store_credential("forge_token", host, &token).is_ok() {
+                let _ = platform::credentials::delete_legacy_credential(&old_key);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[allow(unused_imports)]
     use tauri::Manager;
     logging::init();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
-        .manage(platform::nexus::commands::NexusState {
-            client: std::sync::Mutex::new(None),
-        })
-        .manage(platform::modio::commands::ModioState {
-            client: std::sync::Mutex::new(None),
-        })
-        .setup(|app| {
-            // Auto-initialise the Nexus client from stored keyring credential.
-            let nexus_state = app.state::<platform::nexus::commands::NexusState>();
-            platform::nexus::commands::try_auto_init(nexus_state.inner());
+        .plugin(tauri_plugin_shell::init());
 
-            // Auto-initialise the mod.io client from stored keyring credentials.
-            let modio_state = app.state::<platform::modio::commands::ModioState>();
-            if let Err(e) = platform::modio::commands::try_restore_client(modio_state.inner()) {
-                tracing::warn!("Failed to auto-initialise mod.io client: {e}");
+    #[cfg(feature = "nexus-integration")]
+    let builder = builder.manage(platform::nexus::commands::NexusState {
+        client: std::sync::Mutex::new(None),
+    });
+
+    #[cfg(feature = "modio-integration")]
+    let builder = builder.manage(platform::modio::commands::ModioState {
+        client: std::sync::Mutex::new(None),
+    });
+
+    builder
+        .setup(|app| {
+            // Migrate credentials from legacy keyring service name
+            migrate_legacy_keyring();
+            // Suppress unused-variable warning when all platform features are disabled.
+            let _ = &app;
+
+            #[cfg(feature = "nexus-integration")]
+            {
+                // Auto-initialise the Nexus client from stored keyring credential.
+                let nexus_state = app.state::<platform::nexus::commands::NexusState>();
+                platform::nexus::commands::try_auto_init(nexus_state.inner());
             }
+
+            #[cfg(feature = "modio-integration")]
+            {
+                // Auto-initialise the mod.io client from stored keyring credentials.
+                let modio_state = app.state::<platform::modio::commands::ModioState>();
+                if let Err(e) = platform::modio::commands::try_restore_client(modio_state.inner()) {
+                    tracing::warn!("Failed to auto-initialise mod.io client: {e}");
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2219,49 +2278,88 @@ pub fn run() {
             commands::filesystem::cmd_copy_mod_file,
             commands::filesystem::cmd_delete_mod_path,
             commands::http::cmd_fetch_remote_schema,
+            // Git integration
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_init,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_clone,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_repo_info,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_open,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_status,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stage,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stage_all,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_unstage,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_discard,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_diff_file,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_commit,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_amend,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_log,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_show,
+            #[cfg(feature = "git-integration")]
             commands::git_branch::cmd_git_branches,
+            #[cfg(feature = "git-integration")]
             commands::git_branch::cmd_git_checkout,
+            #[cfg(feature = "git-integration")]
             commands::git_branch::cmd_git_create_branch,
+            #[cfg(feature = "git-integration")]
             commands::git_branch::cmd_git_delete_branch,
+            #[cfg(feature = "git-integration")]
             commands::git_branch::cmd_git_merge,
-            // Git remote
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_remotes,
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_add_remote,
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_remove_remote,
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_fetch,
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_pull,
+            #[cfg(feature = "git-integration")]
             commands::git_remote::cmd_git_push,
-            // Git stash
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stash,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stash_list,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stash_apply,
+            #[cfg(feature = "git-integration")]
             commands::git_core::cmd_git_stash_drop,
-            // Forge API
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_detect,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_auth_status,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_set_token,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_clear_token,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_list_repos,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_create_repo,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_list_prs,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_create_pr,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_list_issues,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_create_issue,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_get_issue,
+            #[cfg(feature = "git-integration")]
             commands::forge_api::cmd_forge_assign_issue,
             commands::project_settings::cmd_ensure_cmtystudio_dir,
             commands::project_settings::cmd_read_project_file,
@@ -2270,45 +2368,84 @@ pub fn run() {
             cmd_convert_dds_to_png,
             cmd_get_dds_dimensions,
             // Nexus Mods
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_set_api_key,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_clear_api_key,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_has_api_key,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_validate_api_key,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_resolve_mod,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_get_file_groups,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_upload_file,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_create_mod_file,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_package_and_upload,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_get_file_dependencies,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_set_file_dependencies,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_rename_file_group,
             // mod.io
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_set_api_key,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_set_oauth_token,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_has_oauth_token,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_clear_api_key,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_connect,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_verify_code,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_disconnect,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_user,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_has_api_key,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_my_mods,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_upload_file,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_create_mod,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_edit_mod,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_add_media,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_delete_media,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_list_files,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_edit_file,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_delete_file,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_dependencies,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_add_dependencies,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_remove_dependencies,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_game_tags,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_add_tags,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_remove_tags,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_metadata,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_add_metadata,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_remove_metadata,
             // Dependency suggestions
             platform::deps_suggest::cmd_suggest_dependencies,

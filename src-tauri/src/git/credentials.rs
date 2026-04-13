@@ -1,8 +1,6 @@
 //! Git credential handling: HTTPS credential callback and commit identity resolution.
 
-use keyring::Entry;
-
-const SERVICE_NAME: &str = "cmtystudio";
+use crate::platform::credentials;
 
 /// Extract hostname from a URL by splitting on `://` and `/`.
 fn extract_host(url: &str) -> Option<String> {
@@ -36,13 +34,11 @@ pub fn https_credentials_callback(
         git2::Error::from_str(&format!("Could not parse hostname from URL: {url}"))
     })?;
 
-    let key = format!("forge_token:{host}");
-    let entry = Entry::new(SERVICE_NAME, &key)
-        .map_err(|e| git2::Error::from_str(&format!("Keyring init error: {e}")))?;
-
-    match entry.get_password() {
-        Ok(token) if !token.is_empty() => git2::Cred::userpass_plaintext("token", &token),
-        Ok(_) | Err(keyring::Error::NoEntry) => Err(git2::Error::from_str(
+    match credentials::get_credential("forge_token", &host) {
+        Ok(Some(token)) if !token.is_empty() => {
+            git2::Cred::userpass_plaintext("token", &token)
+        }
+        Ok(_) => Err(git2::Error::from_str(
             "No credentials stored for this host. \
              Please add a Personal Access Token in Settings > Git > Remote Accounts.",
         )),

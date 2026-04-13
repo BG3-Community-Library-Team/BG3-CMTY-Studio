@@ -5,3 +5,4 @@ pub mod forge;
 pub mod forge_github;
 pub mod forge_gitlab;
 pub mod forge_gitea;
+pub mod rate_limits;

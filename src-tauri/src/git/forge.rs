@@ -1,5 +1,6 @@
 //! Forge detection and API abstraction (GitHub, GitLab, Gitea/Codeberg).
 
+use crate::platform::errors::PlatformError;
 use super::types::{CreatePrParams, ForgeInfo, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
 // ---------------------------------------------------------------------------
@@ -14,36 +15,36 @@ pub trait ForgeAdapter: Send + Sync {
     /// "Pull Request" (GitHub/Gitea) or "Merge Request" (GitLab).
     fn pr_label(&self) -> &str;
 
-    async fn validate_token(&self, token: &str) -> Result<ForgeUser, String>;
-    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, String>;
+    async fn validate_token(&self, token: &str) -> Result<ForgeUser, PlatformError>;
+    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, PlatformError>;
     async fn create_repo(
         &self,
         token: &str,
         name: &str,
         description: &str,
         private: bool,
-    ) -> Result<ForgeRepo, String>;
+    ) -> Result<ForgeRepo, PlatformError>;
     async fn list_prs(
         &self,
         token: &str,
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgePR>, String>;
+    ) -> Result<Vec<ForgePR>, PlatformError>;
     async fn create_pr(
         &self,
         token: &str,
         owner: &str,
         repo: &str,
         params: &CreatePrParams,
-    ) -> Result<ForgePR, String>;
+    ) -> Result<ForgePR, PlatformError>;
     async fn list_issues(
         &self,
         token: &str,
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgeIssue>, String>;
+    ) -> Result<Vec<ForgeIssue>, PlatformError>;
     async fn create_issue(
         &self,
         token: &str,
@@ -51,14 +52,14 @@ pub trait ForgeAdapter: Send + Sync {
         repo: &str,
         title: &str,
         body: &str,
-    ) -> Result<ForgeIssue, String>;
+    ) -> Result<ForgeIssue, PlatformError>;
     async fn get_issue(
         &self,
         token: &str,
         owner: &str,
         repo: &str,
         number: u32,
-    ) -> Result<ForgeIssueDetail, String>;
+    ) -> Result<ForgeIssueDetail, PlatformError>;
     async fn assign_issue(
         &self,
         token: &str,
@@ -66,7 +67,7 @@ pub trait ForgeAdapter: Send + Sync {
         repo: &str,
         number: u32,
         assignee: &str,
-    ) -> Result<(), String>;
+    ) -> Result<(), PlatformError>;
 }
 
 // ---------------------------------------------------------------------------

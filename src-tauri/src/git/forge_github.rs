@@ -3,6 +3,9 @@
 use reqwest::Client;
 use serde::Deserialize;
 
+use crate::platform::errors::PlatformError;
+use crate::platform::http::build_client;
+use crate::platform::rate_limiter::TokenBucket;
 use super::forge::ForgeAdapter;
 use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
@@ -13,6 +16,7 @@ use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeR
 pub struct GitHubAdapter {
     client: Client,
     api_base: String,
+    rate_limiter: TokenBucket,
 }
 
 impl GitHubAdapter {
@@ -22,15 +26,13 @@ impl GitHubAdapter {
 
     /// Create a `GitHubAdapter` with a custom API base URL (for testing or GitHub Enterprise).
     pub fn with_api_base(api_base: &str) -> Self {
-        let client = Client::builder()
-            .user_agent("CMTY-Studio")
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("failed to build reqwest client");
+        let client = build_client("CMTY-Studio", 30)
+            .expect("failed to build HTTP client");
 
         Self {
             client,
             api_base: api_base.to_string(),
+            rate_limiter: crate::git::rate_limits::github_rate_limiter(),
         }
     }
 }
@@ -62,7 +64,8 @@ impl ForgeAdapter for GitHubAdapter {
         "Pull Request"
     }
 
-    async fn validate_token(&self, token: &str) -> Result<ForgeUser, String> {
+    async fn validate_token(&self, token: &str) -> Result<ForgeUser, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/user", self.api_base);
         let resp = self
             .client
@@ -70,13 +73,13 @@ impl ForgeAdapter for GitHubAdapter {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let user: GhUser = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let user: GhUser = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
 
         Ok(ForgeUser {
             login: user.login,
@@ -86,7 +89,8 @@ impl ForgeAdapter for GitHubAdapter {
         })
     }
 
-    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, String> {
+    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/user/repos?page={}&per_page=30&sort=updated",
             self.api_base, page
@@ -97,13 +101,13 @@ impl ForgeAdapter for GitHubAdapter {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let repos: Vec<GhRepo> = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let repos: Vec<GhRepo> = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
 
         Ok(repos.into_iter().map(|r| r.into()).collect())
     }
@@ -114,7 +118,8 @@ impl ForgeAdapter for GitHubAdapter {
         name: &str,
         description: &str,
         private: bool,
-    ) -> Result<ForgeRepo, String> {
+    ) -> Result<ForgeRepo, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/user/repos", self.api_base);
         let body = serde_json::json!({
             "name": name,
@@ -129,13 +134,13 @@ impl ForgeAdapter for GitHubAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let repo: GhRepo = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let repo: GhRepo = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
         Ok(repo.into())
     }
 
@@ -145,7 +150,8 @@ impl ForgeAdapter for GitHubAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgePR>, String> {
+    ) -> Result<Vec<ForgePR>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/pulls?state={}&per_page=30",
             self.api_base, owner, repo, state
@@ -156,13 +162,13 @@ impl ForgeAdapter for GitHubAdapter {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let prs: Vec<GhPR> = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let prs: Vec<GhPR> = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
 
         Ok(prs.into_iter().map(|p| p.into()).collect())
     }
@@ -173,7 +179,8 @@ impl ForgeAdapter for GitHubAdapter {
         owner: &str,
         repo: &str,
         params: &CreatePrParams,
-    ) -> Result<ForgePR, String> {
+    ) -> Result<ForgePR, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/repos/{}/{}/pulls", self.api_base, owner, repo);
         let payload = serde_json::json!({
             "title": params.title,
@@ -189,13 +196,13 @@ impl ForgeAdapter for GitHubAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let pr: GhPR = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let pr: GhPR = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
         Ok(pr.into())
     }
 
@@ -205,7 +212,8 @@ impl ForgeAdapter for GitHubAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgeIssue>, String> {
+    ) -> Result<Vec<ForgeIssue>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/issues?state={}&per_page=30",
             self.api_base, owner, repo, state
@@ -216,14 +224,14 @@ impl ForgeAdapter for GitHubAdapter {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
         let issues: Vec<GhIssue> =
-            resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+            resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
 
         // GitHub's issues endpoint also returns PRs — filter them out
         Ok(issues
@@ -240,7 +248,8 @@ impl ForgeAdapter for GitHubAdapter {
         repo: &str,
         title: &str,
         body: &str,
-    ) -> Result<ForgeIssue, String> {
+    ) -> Result<ForgeIssue, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/repos/{}/{}/issues", self.api_base, owner, repo);
         let payload = serde_json::json!({
             "title": title,
@@ -254,13 +263,13 @@ impl ForgeAdapter for GitHubAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
-        let issue: GhIssue = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        let issue: GhIssue = resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
         Ok(issue.into())
     }
 
@@ -270,7 +279,8 @@ impl ForgeAdapter for GitHubAdapter {
         owner: &str,
         repo: &str,
         number: u32,
-    ) -> Result<ForgeIssueDetail, String> {
+    ) -> Result<ForgeIssueDetail, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/issues/{}",
             self.api_base, owner, repo, number
@@ -281,14 +291,14 @@ impl ForgeAdapter for GitHubAdapter {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
         }
 
         let detail: GhIssueDetail =
-            resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+            resp.json().await.map_err(|e| PlatformError::HttpError(format!("Parse error: {e}")))?;
         Ok(detail.into())
     }
 
@@ -299,7 +309,8 @@ impl ForgeAdapter for GitHubAdapter {
         repo: &str,
         number: u32,
         assignee: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/issues/{}/assignees",
             self.api_base, owner, repo, number
@@ -312,7 +323,7 @@ impl ForgeAdapter for GitHubAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(map_error_response(resp).await);
@@ -325,8 +336,19 @@ impl ForgeAdapter for GitHubAdapter {
 // Error handling
 // ---------------------------------------------------------------------------
 
-async fn map_error_response(resp: reqwest::Response) -> String {
+async fn map_error_response(resp: reqwest::Response) -> PlatformError {
     let status = resp.status().as_u16();
+
+    // Check for rate limiting before consuming the body
+    if status == 429 {
+        let retry_after = resp.headers()
+            .get("retry-after")
+            .and_then(|h| h.to_str().ok())
+            .and_then(TokenBucket::parse_retry_after)
+            .unwrap_or(60);
+        return PlatformError::RateLimited { retry_after_secs: retry_after };
+    }
+
     let gh_err: Option<GhError> = resp.json().await.ok();
     let message = gh_err
         .as_ref()
@@ -334,17 +356,17 @@ async fn map_error_response(resp: reqwest::Response) -> String {
         .unwrap_or("unknown error");
 
     match status {
-        401 => "Authentication failed — invalid or expired token".to_string(),
+        401 => PlatformError::ApiError { status: 401, message: "Authentication failed — verify your token has the correct scopes".into() },
         403 => {
             if message.to_lowercase().contains("rate limit") {
-                "Rate limit exceeded — try again later".to_string()
+                PlatformError::RateLimited { retry_after_secs: 60 }
             } else {
-                "Access denied — insufficient token permissions".to_string()
+                PlatformError::ApiError { status: 403, message: "Access denied — check token permissions".into() }
             }
         }
-        404 => "Repository not found or not accessible".to_string(),
-        422 => format!("Validation error: {message}"),
-        _ => format!("GitHub API error ({status}): {message}"),
+        404 => PlatformError::ApiError { status: 404, message: "Not found".into() },
+        422 => PlatformError::ApiError { status: 422, message: format!("Validation error: {message}") },
+        _ => PlatformError::ApiError { status, message: format!("GitHub API error ({status}): {message}") },
     }
 }
 

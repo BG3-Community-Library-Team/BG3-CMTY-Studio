@@ -52,6 +52,35 @@ pub fn delete_credential(service: &str, username: &str) -> Result<(), PlatformEr
     }
 }
 
+/// Read a credential from the legacy "cmtystudio" keyring service.
+/// Used during one-time migration only.
+pub fn get_legacy_credential(key: &str) -> Result<Option<String>, PlatformError> {
+    const LEGACY_SERVICE: &str = "cmtystudio";
+    let entry = Entry::new(LEGACY_SERVICE, key)
+        .map_err(|e| PlatformError::KeyringError(format!("Legacy keyring init error: {e}")))?;
+    match entry.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(PlatformError::KeyringError(format!(
+            "Failed to read legacy credential: {e}"
+        ))),
+    }
+}
+
+/// Delete a credential from the legacy "cmtystudio" keyring service.
+/// Used during one-time migration only.
+pub fn delete_legacy_credential(key: &str) -> Result<(), PlatformError> {
+    const LEGACY_SERVICE: &str = "cmtystudio";
+    let entry = Entry::new(LEGACY_SERVICE, key)
+        .map_err(|e| PlatformError::KeyringError(format!("Legacy keyring init error: {e}")))?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(PlatformError::KeyringError(format!(
+            "Failed to delete legacy credential: {e}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

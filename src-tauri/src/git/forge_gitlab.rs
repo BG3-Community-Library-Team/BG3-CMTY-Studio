@@ -2,8 +2,10 @@
 
 use reqwest::Client;
 use serde::Deserialize;
-use std::time::Duration;
 
+use crate::platform::errors::PlatformError;
+use crate::platform::http::build_client;
+use crate::platform::rate_limiter::TokenBucket;
 use super::forge::ForgeAdapter;
 use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
 
@@ -106,12 +108,23 @@ fn normalize_state(gitlab_state: &str) -> String {
     }
 }
 
-async fn extract_error(resp: reqwest::Response) -> String {
+async fn extract_error(resp: reqwest::Response) -> PlatformError {
     let status = resp.status();
-    match status.as_u16() {
-        401 => "Authentication failed — invalid or expired token".to_string(),
-        403 => "Access denied — insufficient token permissions".to_string(),
-        404 => "Project not found or not accessible".to_string(),
+    let code = status.as_u16();
+
+    if code == 429 {
+        let retry_after = resp.headers()
+            .get("retry-after")
+            .and_then(|h| h.to_str().ok())
+            .and_then(TokenBucket::parse_retry_after)
+            .unwrap_or(60);
+        return PlatformError::RateLimited { retry_after_secs: retry_after };
+    }
+
+    match code {
+        401 => PlatformError::ApiError { status: 401, message: "Authentication failed — verify your token has the correct scopes".into() },
+        403 => PlatformError::ApiError { status: 403, message: "Access denied — check token permissions".into() },
+        404 => PlatformError::ApiError { status: 404, message: "Not found".into() },
         _ => {
             let body = resp
                 .json::<GlError>()
@@ -119,7 +132,7 @@ async fn extract_error(resp: reqwest::Response) -> String {
                 .ok()
                 .and_then(|e| e.message.or(e.error));
             let detail = body.unwrap_or_else(|| status.to_string());
-            format!("GitLab API error ({}): {}", status.as_u16(), detail)
+            PlatformError::ApiError { status: code, message: format!("GitLab API error ({code}): {detail}") }
         }
     }
 }
@@ -132,6 +145,7 @@ pub struct GitLabAdapter {
     client: Client,
     api_base: String,
     host: String,
+    rate_limiter: TokenBucket,
 }
 
 impl GitLabAdapter {
@@ -146,15 +160,13 @@ impl GitLabAdapter {
     }
 
     fn with_api_base_and_host(api_base: &str, host: &str) -> Self {
-        let client = Client::builder()
-            .user_agent("CMTY-Studio")
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("failed to build reqwest client");
+        let client = build_client("CMTY-Studio", 30)
+            .expect("failed to build HTTP client");
         Self {
             client,
             api_base: api_base.to_string(),
             host: host.to_string(),
+            rate_limiter: crate::git::rate_limits::gitlab_rate_limiter(),
         }
     }
 }
@@ -179,7 +191,8 @@ impl ForgeAdapter for GitLabAdapter {
         "Merge Request"
     }
 
-    async fn validate_token(&self, token: &str) -> Result<ForgeUser, String> {
+    async fn validate_token(&self, token: &str) -> Result<ForgeUser, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/user", self.api_base);
         let resp = self
             .client
@@ -187,7 +200,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -196,7 +209,7 @@ impl ForgeAdapter for GitLabAdapter {
         let user: GlUser = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse user response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse user response: {e}")))?;
 
         Ok(ForgeUser {
             login: user.username,
@@ -206,7 +219,8 @@ impl ForgeAdapter for GitLabAdapter {
         })
     }
 
-    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, String> {
+    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/projects?membership=true&page={}&per_page=30&order_by=updated_at",
             self.api_base, page
@@ -217,7 +231,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -226,7 +240,7 @@ impl ForgeAdapter for GitLabAdapter {
         let projects: Vec<GlProject> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse projects response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse projects response: {e}")))?;
 
         Ok(projects
             .into_iter()
@@ -247,7 +261,8 @@ impl ForgeAdapter for GitLabAdapter {
         name: &str,
         description: &str,
         private: bool,
-    ) -> Result<ForgeRepo, String> {
+    ) -> Result<ForgeRepo, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/projects", self.api_base);
         let visibility = if private { "private" } else { "public" };
 
@@ -264,7 +279,7 @@ impl ForgeAdapter for GitLabAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -273,7 +288,7 @@ impl ForgeAdapter for GitLabAdapter {
         let p: GlProject = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse project response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse project response: {e}")))?;
 
         Ok(ForgeRepo {
             full_name: p.path_with_namespace,
@@ -291,7 +306,8 @@ impl ForgeAdapter for GitLabAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgePR>, String> {
+    ) -> Result<Vec<ForgePR>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/merge_requests?state={}&scope=all&per_page=30",
@@ -304,7 +320,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -313,7 +329,7 @@ impl ForgeAdapter for GitLabAdapter {
         let mrs: Vec<GlMR> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse merge requests response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse merge requests response: {e}")))?;
 
         Ok(mrs
             .into_iter()
@@ -337,7 +353,8 @@ impl ForgeAdapter for GitLabAdapter {
         owner: &str,
         repo: &str,
         params: &CreatePrParams,
-    ) -> Result<ForgePR, String> {
+    ) -> Result<ForgePR, PlatformError> {
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/merge_requests",
@@ -358,7 +375,7 @@ impl ForgeAdapter for GitLabAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -367,7 +384,7 @@ impl ForgeAdapter for GitLabAdapter {
         let mr: GlMR = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse merge request response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse merge request response: {e}")))?;
 
         Ok(ForgePR {
             number: mr.iid,
@@ -388,7 +405,8 @@ impl ForgeAdapter for GitLabAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgeIssue>, String> {
+    ) -> Result<Vec<ForgeIssue>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/issues?state={}&per_page=30",
@@ -401,7 +419,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -410,7 +428,7 @@ impl ForgeAdapter for GitLabAdapter {
         let issues: Vec<GlIssue> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issues response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issues response: {e}")))?;
 
         Ok(issues
             .into_iter()
@@ -434,7 +452,8 @@ impl ForgeAdapter for GitLabAdapter {
         repo: &str,
         title: &str,
         body: &str,
-    ) -> Result<ForgeIssue, String> {
+    ) -> Result<ForgeIssue, PlatformError> {
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/issues",
@@ -453,7 +472,7 @@ impl ForgeAdapter for GitLabAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -462,7 +481,7 @@ impl ForgeAdapter for GitLabAdapter {
         let issue: GlIssue = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issue response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issue response: {e}")))?;
 
         Ok(ForgeIssue {
             number: issue.iid,
@@ -482,7 +501,8 @@ impl ForgeAdapter for GitLabAdapter {
         owner: &str,
         repo: &str,
         number: u32,
-    ) -> Result<ForgeIssueDetail, String> {
+    ) -> Result<ForgeIssueDetail, PlatformError> {
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/issues/{}",
@@ -495,7 +515,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -504,7 +524,7 @@ impl ForgeAdapter for GitLabAdapter {
         let detail: GlIssueDetail = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issue detail response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issue detail response: {e}")))?;
 
         Ok(ForgeIssueDetail {
             number: detail.iid,
@@ -534,9 +554,10 @@ impl ForgeAdapter for GitLabAdapter {
         repo: &str,
         number: u32,
         assignee: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), PlatformError> {
         // GitLab needs the user's numeric ID for assignment.
         // Look up by username.
+        self.rate_limiter.acquire().await;
         let user_url = format!("{}/users?username={}", self.api_base, assignee);
         let user_resp = self
             .client
@@ -544,7 +565,7 @@ impl ForgeAdapter for GitLabAdapter {
             .header("PRIVATE-TOKEN", token)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !user_resp.status().is_success() {
             return Err(extract_error(user_resp).await);
@@ -553,13 +574,14 @@ impl ForgeAdapter for GitLabAdapter {
         let users: Vec<GlUserFull> = user_resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse user response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse user response: {e}")))?;
 
         let user_id = users
             .first()
-            .ok_or_else(|| format!("User '{assignee}' not found on GitLab"))?
+            .ok_or_else(|| PlatformError::ApiError { status: 404, message: format!("User '{assignee}' not found on GitLab") })?
             .id;
 
+        self.rate_limiter.acquire().await;
         let encoded = encode_project_path(owner, repo);
         let url = format!(
             "{}/projects/{}/issues/{}",
@@ -574,7 +596,7 @@ impl ForgeAdapter for GitLabAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);

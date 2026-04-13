@@ -2,10 +2,14 @@ pub mod db;
 pub mod diff;
 pub mod export;
 pub mod filesystem;
+#[cfg(feature = "git-integration")]
 pub mod forge_api;
 pub mod generate;
+#[cfg(feature = "git-integration")]
 pub mod git_branch;
+#[cfg(feature = "git-integration")]
 pub mod git_core;
+#[cfg(feature = "git-integration")]
 pub mod git_remote;
 pub mod http;
 pub mod mod_import;
@@ -15,5 +19,4 @@ pub mod project_settings;
 pub mod rediff;
 pub mod scan;
 pub mod scripts;
-pub mod secure_storage;
 pub mod texture;

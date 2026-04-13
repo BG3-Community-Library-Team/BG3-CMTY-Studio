@@ -5,9 +5,11 @@
 
 use super::forge::ForgeAdapter;
 use super::types::{CreatePrParams, ForgeIssue, ForgeIssueDetail, ForgePR, ForgeRepo, ForgeType, ForgeUser};
+use crate::platform::errors::PlatformError;
+use crate::platform::http::build_client;
+use crate::platform::rate_limiter::TokenBucket;
 use reqwest::Client;
 use serde::Deserialize;
-use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Gitea response deserialization structs (private)
@@ -110,20 +112,19 @@ pub struct GiteaAdapter {
     client: Client,
     api_base: String,
     host: String,
+    rate_limiter: TokenBucket,
 }
 
 impl GiteaAdapter {
     pub fn new(host: &str, api_base: &str) -> Self {
-        let client = Client::builder()
-            .user_agent("CMTY-Studio")
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("failed to build reqwest client");
+        let client = build_client("CMTY-Studio", 30)
+            .expect("failed to build HTTP client");
 
         Self {
             client,
             api_base: api_base.to_string(),
             host: host.to_string(),
+            rate_limiter: crate::git::rate_limits::gitea_rate_limiter(),
         }
     }
 }
@@ -133,10 +134,19 @@ fn auth_header(token: &str) -> String {
     format!("token {token}")
 }
 
-/// Extract a human-readable error from a Gitea API response.
-async fn extract_error(resp: reqwest::Response) -> String {
+/// Extract a structured error from a Gitea API response.
+async fn extract_error(resp: reqwest::Response) -> PlatformError {
     let status = resp.status();
     let code = status.as_u16();
+
+    if code == 429 {
+        let retry_after = resp.headers()
+            .get("retry-after")
+            .and_then(|h| h.to_str().ok())
+            .and_then(TokenBucket::parse_retry_after)
+            .unwrap_or(60);
+        return PlatformError::RateLimited { retry_after_secs: retry_after };
+    }
 
     // Try to parse Gitea's JSON error body
     let message = resp
@@ -147,21 +157,21 @@ async fn extract_error(resp: reqwest::Response) -> String {
         .unwrap_or_default();
 
     match code {
-        401 => "Authentication failed — invalid or expired token".to_string(),
-        403 => "Access denied — insufficient token permissions".to_string(),
-        404 => "Repository not found or not accessible".to_string(),
+        401 => PlatformError::ApiError { status: 401, message: "Authentication failed — verify your token has the correct scopes".into() },
+        403 => PlatformError::ApiError { status: 403, message: "Access denied — check token permissions".into() },
+        404 => PlatformError::ApiError { status: 404, message: "Not found".into() },
         422 => {
             if message.is_empty() {
-                "Validation error (422)".to_string()
+                PlatformError::ApiError { status: 422, message: "Validation error (422)".into() }
             } else {
-                format!("Validation error: {message}")
+                PlatformError::ApiError { status: 422, message: format!("Validation error: {message}") }
             }
         }
         _ => {
             if message.is_empty() {
-                format!("Gitea API error ({code})")
+                PlatformError::ApiError { status: code, message: format!("Gitea API error ({code})") }
             } else {
-                format!("Gitea API error ({code}): {message}")
+                PlatformError::ApiError { status: code, message: format!("Gitea API error ({code}): {message}") }
             }
         }
     }
@@ -184,7 +194,8 @@ impl ForgeAdapter for GiteaAdapter {
         "Pull Request"
     }
 
-    async fn validate_token(&self, token: &str) -> Result<ForgeUser, String> {
+    async fn validate_token(&self, token: &str) -> Result<ForgeUser, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/user", self.api_base);
         let resp = self
             .client
@@ -192,7 +203,7 @@ impl ForgeAdapter for GiteaAdapter {
             .header("Authorization", auth_header(token))
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -201,7 +212,7 @@ impl ForgeAdapter for GiteaAdapter {
         let user: GtUser = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse user response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse user response: {e}")))?;
 
         let name = user
             .full_name
@@ -216,7 +227,8 @@ impl ForgeAdapter for GiteaAdapter {
         })
     }
 
-    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, String> {
+    async fn list_repos(&self, token: &str, page: u32) -> Result<Vec<ForgeRepo>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/user/repos?page={}&limit=30&sort=updated",
             self.api_base, page
@@ -227,7 +239,7 @@ impl ForgeAdapter for GiteaAdapter {
             .header("Authorization", auth_header(token))
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -236,7 +248,7 @@ impl ForgeAdapter for GiteaAdapter {
         let repos: Vec<GtRepo> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse repos response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse repos response: {e}")))?;
 
         Ok(repos
             .into_iter()
@@ -257,7 +269,8 @@ impl ForgeAdapter for GiteaAdapter {
         name: &str,
         description: &str,
         private: bool,
-    ) -> Result<ForgeRepo, String> {
+    ) -> Result<ForgeRepo, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/user/repos", self.api_base);
         let body = serde_json::json!({
             "name": name,
@@ -272,7 +285,7 @@ impl ForgeAdapter for GiteaAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -281,7 +294,7 @@ impl ForgeAdapter for GiteaAdapter {
         let repo: GtRepo = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse repo response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse repo response: {e}")))?;
 
         Ok(ForgeRepo {
             full_name: repo.full_name,
@@ -299,7 +312,8 @@ impl ForgeAdapter for GiteaAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgePR>, String> {
+    ) -> Result<Vec<ForgePR>, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/pulls?state={}&limit=30",
             self.api_base, owner, repo, state
@@ -310,7 +324,7 @@ impl ForgeAdapter for GiteaAdapter {
             .header("Authorization", auth_header(token))
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -319,7 +333,7 @@ impl ForgeAdapter for GiteaAdapter {
         let prs: Vec<GtPR> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse PRs response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse PRs response: {e}")))?;
 
         Ok(prs
             .into_iter()
@@ -343,7 +357,8 @@ impl ForgeAdapter for GiteaAdapter {
         owner: &str,
         repo: &str,
         params: &CreatePrParams,
-    ) -> Result<ForgePR, String> {
+    ) -> Result<ForgePR, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/repos/{}/{}/pulls", self.api_base, owner, repo);
         let req_body = serde_json::json!({
             "title": params.title,
@@ -359,7 +374,7 @@ impl ForgeAdapter for GiteaAdapter {
             .json(&req_body)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -368,7 +383,7 @@ impl ForgeAdapter for GiteaAdapter {
         let pr: GtPR = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse PR response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse PR response: {e}")))?;
 
         Ok(ForgePR {
             number: pr.number,
@@ -389,7 +404,8 @@ impl ForgeAdapter for GiteaAdapter {
         owner: &str,
         repo: &str,
         state: &str,
-    ) -> Result<Vec<ForgeIssue>, String> {
+    ) -> Result<Vec<ForgeIssue>, PlatformError> {
+        self.rate_limiter.acquire().await;
         // `type=issues` excludes PRs from the results (Gitea returns PRs as issues by default)
         let url = format!(
             "{}/repos/{}/{}/issues?state={}&limit=30&type=issues",
@@ -401,7 +417,7 @@ impl ForgeAdapter for GiteaAdapter {
             .header("Authorization", auth_header(token))
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -410,7 +426,7 @@ impl ForgeAdapter for GiteaAdapter {
         let issues: Vec<GtIssue> = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issues response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issues response: {e}")))?;
 
         Ok(issues
             .into_iter()
@@ -439,7 +455,8 @@ impl ForgeAdapter for GiteaAdapter {
         repo: &str,
         title: &str,
         body: &str,
-    ) -> Result<ForgeIssue, String> {
+    ) -> Result<ForgeIssue, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!("{}/repos/{}/{}/issues", self.api_base, owner, repo);
         let req_body = serde_json::json!({
             "title": title,
@@ -453,7 +470,7 @@ impl ForgeAdapter for GiteaAdapter {
             .json(&req_body)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -462,7 +479,7 @@ impl ForgeAdapter for GiteaAdapter {
         let issue: GtIssue = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issue response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issue response: {e}")))?;
 
         Ok(ForgeIssue {
             number: issue.number,
@@ -487,7 +504,8 @@ impl ForgeAdapter for GiteaAdapter {
         owner: &str,
         repo: &str,
         number: u32,
-    ) -> Result<ForgeIssueDetail, String> {
+    ) -> Result<ForgeIssueDetail, PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/issues/{}",
             self.api_base, owner, repo, number
@@ -498,7 +516,7 @@ impl ForgeAdapter for GiteaAdapter {
             .header("Authorization", auth_header(token))
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);
@@ -507,7 +525,7 @@ impl ForgeAdapter for GiteaAdapter {
         let detail: GtIssueDetail = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse issue detail response: {e}"))?;
+            .map_err(|e| PlatformError::HttpError(format!("Failed to parse issue detail response: {e}")))?;
 
         Ok(ForgeIssueDetail {
             number: detail.number,
@@ -542,7 +560,8 @@ impl ForgeAdapter for GiteaAdapter {
         repo: &str,
         number: u32,
         assignee: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), PlatformError> {
+        self.rate_limiter.acquire().await;
         let url = format!(
             "{}/repos/{}/{}/issues/{}/assignees",
             self.api_base, owner, repo, number
@@ -555,7 +574,7 @@ impl ForgeAdapter for GiteaAdapter {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Network error: {e}"))?;
+            .map_err(|e| if e.is_timeout() { PlatformError::Timeout } else { PlatformError::HttpError(e.to_string()) })?;
 
         if !resp.status().is_success() {
             return Err(extract_error(resp).await);

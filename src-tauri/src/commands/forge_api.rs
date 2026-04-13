@@ -1,11 +1,13 @@
 //! Tauri commands for forge operations (GitHub, GitLab, Gitea/Codeberg).
 
-use crate::commands::secure_storage::{get_secure_setting, set_secure_setting};
+use crate::error::AppError;
 use crate::git::forge::{detect_forge, ForgeAdapter};
 use crate::git::forge_gitea::GiteaAdapter;
 use crate::git::forge_github::GitHubAdapter;
 use crate::git::forge_gitlab::GitLabAdapter;
 use crate::git::types::*;
+use crate::platform::credentials;
+use crate::platform::errors::PlatformError;
 
 /// Enum dispatcher — avoids dyn-incompatible async trait methods.
 enum Adapter {
@@ -14,14 +16,14 @@ enum Adapter {
     Gitea(GiteaAdapter),
 }
 
-fn get_adapter(forge_type: &ForgeType, host: &str, api_base: &str) -> Result<Adapter, String> {
+fn get_adapter(forge_type: &ForgeType, host: &str, api_base: &str) -> Result<Adapter, PlatformError> {
     match forge_type {
         ForgeType::GitHub => Ok(Adapter::GitHub(GitHubAdapter::new())),
         ForgeType::GitLab => Ok(Adapter::GitLab(GitLabAdapter::new(host))),
         ForgeType::Gitea => Ok(Adapter::Gitea(GiteaAdapter::new(host, api_base))),
-        ForgeType::Unknown => Err(
+        ForgeType::Unknown => Err(PlatformError::ValidationError(
             "Unknown forge type — forge features are not available for this remote".to_string(),
-        ),
+        )),
     }
 }
 
@@ -36,9 +38,30 @@ macro_rules! dispatch {
     };
 }
 
-/// Token keyring key: `forge_token:{host}` — e.g. `forge_token:github.com`
-fn token_key(host: &str) -> String {
-    format!("forge_token:{host}")
+/// Get the forge token for a host from the platform keyring.
+fn get_forge_token(host: &str) -> Result<Option<String>, PlatformError> {
+    credentials::get_credential("forge_token", host)
+}
+
+/// Store a forge token for a host in the platform keyring.
+fn store_forge_token(host: &str, token: &str) -> Result<(), PlatformError> {
+    credentials::store_credential("forge_token", host, token)
+}
+
+/// Delete the forge token for a host from the platform keyring.
+fn delete_forge_token(host: &str) -> Result<(), PlatformError> {
+    credentials::delete_credential("forge_token", host)
+}
+
+/// Require an authenticated token, returning an error if not found.
+fn require_token(host: &str) -> Result<String, PlatformError> {
+    match get_forge_token(host)? {
+        Some(t) if !t.is_empty() => Ok(t),
+        _ => Err(PlatformError::ApiError {
+            status: 401,
+            message: "Not authenticated — add a Personal Access Token in Settings > Git > Remote Accounts".into(),
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -46,7 +69,7 @@ fn token_key(host: &str) -> String {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn cmd_forge_detect(remote_url: String) -> Result<ForgeInfo, String> {
+pub fn cmd_forge_detect(remote_url: String) -> Result<ForgeInfo, AppError> {
     Ok(detect_forge(&remote_url))
 }
 
@@ -55,11 +78,11 @@ pub async fn cmd_forge_auth_status(
     host: String,
     forge_type: ForgeType,
     api_base: String,
-) -> Result<Option<ForgeUser>, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Ok(None);
-    }
+) -> Result<Option<ForgeUser>, AppError> {
+    let token = match get_forge_token(&host)? {
+        Some(t) if !t.is_empty() => t,
+        _ => return Ok(None),
+    };
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
     match dispatch!(adapter, validate_token(&token)) {
         Ok(user) => Ok(Some(user)),
@@ -73,17 +96,17 @@ pub async fn cmd_forge_set_token(
     forge_type: ForgeType,
     api_base: String,
     token: String,
-) -> Result<ForgeUser, String> {
+) -> Result<ForgeUser, AppError> {
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    let user = dispatch!(adapter, validate_token(&token))
-        .map_err(|e| format!("Token validation failed: {e}"))?;
-    set_secure_setting(&token_key(&host), &token)?;
+    let user = dispatch!(adapter, validate_token(&token))?;
+    store_forge_token(&host, &token)?;
     Ok(user)
 }
 
 #[tauri::command]
-pub fn cmd_forge_clear_token(host: String) -> Result<(), String> {
-    set_secure_setting(&token_key(&host), "")
+pub fn cmd_forge_clear_token(host: String) -> Result<(), AppError> {
+    delete_forge_token(&host)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -92,13 +115,10 @@ pub async fn cmd_forge_list_repos(
     forge_type: ForgeType,
     api_base: String,
     page: u32,
-) -> Result<Vec<ForgeRepo>, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<Vec<ForgeRepo>, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, list_repos(&token, page))
+    Ok(dispatch!(adapter, list_repos(&token, page))?)
 }
 
 #[tauri::command]
@@ -109,13 +129,10 @@ pub async fn cmd_forge_create_repo(
     name: String,
     description: String,
     private: bool,
-) -> Result<ForgeRepo, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<ForgeRepo, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, create_repo(&token, &name, &description, private))
+    Ok(dispatch!(adapter, create_repo(&token, &name, &description, private))?)
 }
 
 #[tauri::command]
@@ -126,13 +143,10 @@ pub async fn cmd_forge_list_prs(
     owner: String,
     repo: String,
     state: String,
-) -> Result<Vec<ForgePR>, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<Vec<ForgePR>, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, list_prs(&token, &owner, &repo, &state))
+    Ok(dispatch!(adapter, list_prs(&token, &owner, &repo, &state))?)
 }
 
 #[tauri::command]
@@ -143,13 +157,10 @@ pub async fn cmd_forge_create_pr(
     owner: String,
     repo: String,
     params: CreatePrParams,
-) -> Result<ForgePR, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<ForgePR, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, create_pr(&token, &owner, &repo, &params))
+    Ok(dispatch!(adapter, create_pr(&token, &owner, &repo, &params))?)
 }
 
 #[tauri::command]
@@ -160,13 +171,10 @@ pub async fn cmd_forge_list_issues(
     owner: String,
     repo: String,
     state: String,
-) -> Result<Vec<ForgeIssue>, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<Vec<ForgeIssue>, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, list_issues(&token, &owner, &repo, &state))
+    Ok(dispatch!(adapter, list_issues(&token, &owner, &repo, &state))?)
 }
 
 #[tauri::command]
@@ -178,13 +186,10 @@ pub async fn cmd_forge_create_issue(
     repo: String,
     title: String,
     body: String,
-) -> Result<ForgeIssue, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<ForgeIssue, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, create_issue(&token, &owner, &repo, &title, &body))
+    Ok(dispatch!(adapter, create_issue(&token, &owner, &repo, &title, &body))?)
 }
 
 #[tauri::command]
@@ -195,13 +200,10 @@ pub async fn cmd_forge_get_issue(
     owner: String,
     repo: String,
     number: u32,
-) -> Result<ForgeIssueDetail, String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<ForgeIssueDetail, AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, get_issue(&token, &owner, &repo, number))
+    Ok(dispatch!(adapter, get_issue(&token, &owner, &repo, number))?)
 }
 
 #[tauri::command]
@@ -213,11 +215,8 @@ pub async fn cmd_forge_assign_issue(
     repo: String,
     number: u32,
     assignee: String,
-) -> Result<(), String> {
-    let token = get_secure_setting(&token_key(&host))?;
-    if token.is_empty() {
-        return Err("Not authenticated".to_string());
-    }
+) -> Result<(), AppError> {
+    let token = require_token(&host)?;
     let adapter = get_adapter(&forge_type, &host, &api_base)?;
-    dispatch!(adapter, assign_issue(&token, &owner, &repo, number, &assignee))
+    Ok(dispatch!(adapter, assign_issue(&token, &owner, &repo, number, &assignee))?)
 }

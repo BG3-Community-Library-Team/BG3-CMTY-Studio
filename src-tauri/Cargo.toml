@@ -6,6 +6,13 @@ edition = "2021"
 rust-version = "1.80"
 license = "MIT"
 
+[features]
+default = ["git-integration", "nexus-integration", "modio-integration"]
+git-integration = ["dep:git2"]
+nexus-integration = []
+modio-integration = []
+platform-api = ["nexus-integration", "modio-integration"]
+
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
@@ -33,7 +40,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 keyring = { version = "3", features = ["sync-secret-service", "windows-native", "apple-native"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
-git2 = { version = "0.20", features = ["vendored-libgit2"] }
+git2 = { version = "0.20", features = ["vendored-libgit2"], optional = true }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 image_dds = { version = "0.7", default-features = false, features = ["ddsfile", "image"] }

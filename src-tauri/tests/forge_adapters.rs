@@ -8,6 +8,7 @@ use bg3_cmty_studio_lib::git::forge::ForgeAdapter;
 use bg3_cmty_studio_lib::git::forge_gitea::GiteaAdapter;
 use bg3_cmty_studio_lib::git::forge_github::GitHubAdapter;
 use bg3_cmty_studio_lib::git::forge_gitlab::GitLabAdapter;
+use bg3_cmty_studio_lib::platform::errors::PlatformError;
 use mockito::Matcher;
 
 const TOKEN: &str = "test-token-abc123";
@@ -708,10 +709,16 @@ mod error_cases {
             .await;
 
         let err = adapter.validate_token("bad-token").await.unwrap_err();
-        assert!(
-            err.contains("Authentication failed"),
-            "Expected auth error, got: {err}"
-        );
+        match err {
+            PlatformError::ApiError { status, message } => {
+                assert_eq!(status, 401);
+                assert!(
+                    message.contains("Authentication failed") || message.contains("authentication"),
+                    "Expected auth error message, got: {message}"
+                );
+            }
+            other => panic!("Expected ApiError with status 401, got: {other:?}"),
+        }
         mock.assert_async().await;
     }
 
@@ -731,10 +738,16 @@ mod error_cases {
             .list_prs(TOKEN, "owner", "repo", "open")
             .await
             .unwrap_err();
-        assert!(
-            err.contains("Access denied"),
-            "Expected permission error, got: {err}"
-        );
+        match err {
+            PlatformError::ApiError { status, message } => {
+                assert_eq!(status, 403);
+                assert!(
+                    message.contains("Access denied") || message.contains("permission"),
+                    "Expected permission error message, got: {message}"
+                );
+            }
+            other => panic!("Expected ApiError with status 403, got: {other:?}"),
+        }
         mock.assert_async().await;
     }
 
@@ -753,10 +766,16 @@ mod error_cases {
             .get_issue(TOKEN, "owner", "nonexistent", 999)
             .await
             .unwrap_err();
-        assert!(
-            err.to_lowercase().contains("not found"),
-            "Expected not-found error, got: {err}"
-        );
+        match err {
+            PlatformError::ApiError { status, message } => {
+                assert_eq!(status, 404);
+                assert!(
+                    message.to_lowercase().contains("not found"),
+                    "Expected not-found error message, got: {message}"
+                );
+            }
+            other => panic!("Expected ApiError with status 404, got: {other:?}"),
+        }
         mock.assert_async().await;
     }
 
@@ -775,10 +794,16 @@ mod error_cases {
             .create_issue(TOKEN, "owner", "repo", "", "")
             .await
             .unwrap_err();
-        assert!(
-            err.contains("Validation error"),
-            "Expected validation error, got: {err}"
-        );
+        match err {
+            PlatformError::ApiError { status, message } => {
+                assert_eq!(status, 422);
+                assert!(
+                    message.contains("Validation error") || message.contains("Validation Failed"),
+                    "Expected validation error message, got: {message}"
+                );
+            }
+            other => panic!("Expected ApiError with status 422, got: {other:?}"),
+        }
         mock.assert_async().await;
     }
 
@@ -795,7 +820,16 @@ mod error_cases {
             .await;
 
         let err = adapter.list_repos(TOKEN, 1).await.unwrap_err();
-        assert!(err.contains("500"), "Expected 500 error, got: {err}");
+        match err {
+            PlatformError::ApiError { status, message } => {
+                assert_eq!(status, 500);
+                assert!(
+                    message.contains("500"),
+                    "Expected 500 in error message, got: {message}"
+                );
+            }
+            other => panic!("Expected ApiError with status 500, got: {other:?}"),
+        }
         mock.assert_async().await;
     }
 }

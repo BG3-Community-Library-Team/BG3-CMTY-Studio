@@ -59,6 +59,34 @@ jobs:
         run: bash scripts/ci/lint-rust.sh
         shell: bash
 
+  feature-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - ""  # --no-default-features
+          - "git-integration"
+          - "nexus-integration"
+          - "modio-integration"
+          - "git-integration,nexus-integration"
+          - "git-integration,modio-integration"
+          - "nexus-integration,modio-integration"
+          - "git-integration,nexus-integration,modio-integration"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri-deps
+      - name: Check feature combination
+        run: |
+          if [ -z "${{ matrix.features }}" ]; then
+            cd src-tauri && cargo check --no-default-features
+          else
+            cd src-tauri && cargo check --no-default-features --features "${{ matrix.features }}"
+          fi
+        shell: bash
+
   cargo-deny:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -97,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     if: always()
-    needs: [frontend-test, frontend-build, rust-test, rust-clippy, cargo-deny, security-audit, secret-scan]
+    needs: [frontend-test, frontend-build, rust-test, rust-clippy, cargo-deny, security-audit, secret-scan, feature-matrix]
     steps:
       - name: Check job results
         run: |
@@ -107,7 +135,8 @@ jobs:
              [[ "${{ needs.rust-clippy.result }}" != "success" ]] ||
              [[ "${{ needs.cargo-deny.result }}" != "success" ]] ||
              [[ "${{ needs.security-audit.result }}" != "success" ]] ||
-             [[ "${{ needs.secret-scan.result }}" != "success" && "${{ needs.secret-scan.result }}" != "skipped" ]]; then
+             [[ "${{ needs.secret-scan.result }}" != "success" && "${{ needs.secret-scan.result }}" != "skipped" ]] ||
+             [[ "${{ needs.feature-matrix.result }}" != "success" ]]; then
             echo "One or more CI jobs failed"
             exit 1
           fi
