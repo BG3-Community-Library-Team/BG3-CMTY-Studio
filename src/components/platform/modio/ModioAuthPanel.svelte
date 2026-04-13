@@ -5,7 +5,7 @@
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
   import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
-  import { invoke } from "@tauri-apps/api/core";
+  import { modioHasOauthToken, modioGetUser, modioSetOauthToken, modioDisconnect } from "../../../lib/tauri/modio.js";
   import Check from "@lucide/svelte/icons/check";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -46,16 +46,16 @@
 
   async function checkInitialState() {
     try {
-      const hasToken = await invoke<boolean>("cmd_modio_has_oauth_token");
+      const hasToken = await modioHasOauthToken();
       if (!hasToken) {
         authState = "disconnected";
         return;
       }
       try {
-        const user = await invoke<{ id: number; username: string; avatar: string }>("cmd_modio_get_user");
-        userName = user.username;
-        avatarUrl = user.avatar;
-        settingsStore.modioUserName = user.username;
+        const user = await modioGetUser();
+        userName = user.name;
+        avatarUrl = user.avatar_url;
+        settingsStore.modioUserName = user.name;
         settingsStore.modioUserId = String(user.id);
         settingsStore.persist();
         authState = tokenExpired ? "expired" : "connected";
@@ -73,10 +73,7 @@
     errorMsg = "";
     loading = true;
     try {
-      const user = await invoke<{ id: number; name: string; avatar_url: string }>(
-        "cmd_modio_set_oauth_token",
-        { token: tokenInput.trim() },
-      );
+      const user = await modioSetOauthToken(tokenInput.trim());
       userName = user.name;
       avatarUrl = user.avatar_url;
       settingsStore.modioUserName = user.name;
@@ -93,7 +90,7 @@
 
   async function disconnect() {
     try {
-      await invoke("cmd_modio_disconnect");
+      await modioDisconnect();
     } catch { /* best-effort */ }
     authState = "disconnected";
     userName = "";

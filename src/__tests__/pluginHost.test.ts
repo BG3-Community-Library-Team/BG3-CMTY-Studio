@@ -104,10 +104,24 @@ describe("PluginHost", () => {
     expect(sections.some((s) => s.title === "Test Config")).toBe(true);
   });
 
-  it("does not crash when a plugin throws in activate", async () => {
+  it("rolls back contributions when a plugin throws in activate", async () => {
     const spy = mockConsoleError();
     const plugin = makeTestPlugin({
-      manifest: { id: "test.throw1" },
+      manifest: {
+        id: "test.throw1",
+        contributes: {
+          configuration: {
+            title: "Throw Config",
+            properties: {
+              "test.throw1.val": {
+                type: "boolean",
+                default: true,
+                description: "Will be rolled back",
+              },
+            },
+          },
+        },
+      },
       activate: () => {
         throw new Error("boom");
       },
@@ -115,11 +129,86 @@ describe("PluginHost", () => {
     pluginHost.register(plugin);
     registeredIds.push("test.throw1");
 
-    // Should not throw
-    await expect(pluginHost.activate("test.throw1")).resolves.toBeUndefined();
-    // Plugin is still considered activated (contributions are valid)
-    expect(pluginHost.isActivated("test.throw1")).toBe(true);
+    // Should re-throw the error
+    await expect(pluginHost.activate("test.throw1")).rejects.toThrow("boom");
+    // Plugin must NOT be in activated set
+    expect(pluginHost.isActivated("test.throw1")).toBe(false);
+    // Configuration contributions must be rolled back
+    expect(configurationRegistry.getSections().some((s) => s.title === "Throw Config")).toBe(false);
     expectConsoleCalled(spy, "Failed to activate plugin");
+    spy.mockRestore();
+  });
+
+  it("rolls back subscriptions registered during activate on failure", async () => {
+    const spy = mockConsoleError();
+    const disposeFn = vi.fn();
+    const plugin = makeTestPlugin({
+      manifest: { id: "test.throw.sub" },
+      activate: (ctx) => {
+        ctx.subscriptions.push({ dispose: disposeFn });
+        throw new Error("boom after subscribe");
+      },
+    });
+    pluginHost.register(plugin);
+    registeredIds.push("test.throw.sub");
+
+    await expect(pluginHost.activate("test.throw.sub")).rejects.toThrow("boom after subscribe");
+    expect(disposeFn).toHaveBeenCalledOnce();
+    expect(pluginHost.isActivated("test.throw.sub")).toBe(false);
+    spy.mockRestore();
+  });
+
+  it("double activate is a no-op", async () => {
+    const activateFn = vi.fn();
+    const plugin = makeTestPlugin({
+      manifest: { id: "test.double.act" },
+      activate: activateFn,
+    });
+    pluginHost.register(plugin);
+    registeredIds.push("test.double.act");
+
+    await pluginHost.activate("test.double.act");
+    await pluginHost.activate("test.double.act");
+
+    expect(activateFn).toHaveBeenCalledOnce();
+    expect(pluginHost.isActivated("test.double.act")).toBe(true);
+  });
+
+  it("activate after failed activate succeeds", async () => {
+    const spy = mockConsoleError();
+    let shouldThrow = true;
+    const plugin = makeTestPlugin({
+      manifest: {
+        id: "test.retry",
+        contributes: {
+          configuration: {
+            title: "Retry Config",
+            properties: {
+              "test.retry.val": {
+                type: "string",
+                default: "ok",
+                description: "Retry test",
+              },
+            },
+          },
+        },
+      },
+      activate: () => {
+        if (shouldThrow) throw new Error("first attempt fails");
+      },
+    });
+    pluginHost.register(plugin);
+    registeredIds.push("test.retry");
+
+    // First attempt fails
+    await expect(pluginHost.activate("test.retry")).rejects.toThrow("first attempt fails");
+    expect(pluginHost.isActivated("test.retry")).toBe(false);
+
+    // Second attempt succeeds
+    shouldThrow = false;
+    await pluginHost.activate("test.retry");
+    expect(pluginHost.isActivated("test.retry")).toBe(true);
+    expect(configurationRegistry.getSections().some((s) => s.title === "Retry Config")).toBe(true);
     spy.mockRestore();
   });
 
@@ -139,6 +228,23 @@ describe("PluginHost", () => {
 
     expect(deactivateFn).toHaveBeenCalledOnce();
     expect(pluginHost.isActivated("test.deact1")).toBe(false);
+  });
+
+  it("double deactivate is a no-op", async () => {
+    const deactivateFn = vi.fn();
+    const plugin = makeTestPlugin({
+      manifest: { id: "test.double.deact" },
+      deactivate: deactivateFn,
+    });
+    pluginHost.register(plugin);
+    registeredIds.push("test.double.deact");
+
+    await pluginHost.activate("test.double.deact");
+    await pluginHost.deactivate("test.double.deact");
+    await pluginHost.deactivate("test.double.deact");
+
+    expect(deactivateFn).toHaveBeenCalledOnce();
+    expect(pluginHost.isActivated("test.double.deact")).toBe(false);
   });
 
   it("removes configuration contributions on deactivate", async () => {

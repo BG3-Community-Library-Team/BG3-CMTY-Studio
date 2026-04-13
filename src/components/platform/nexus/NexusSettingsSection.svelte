@@ -5,7 +5,15 @@
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
   import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
-  import { invoke } from "@tauri-apps/api/core";
+  import {
+    nexusHasApiKey,
+    nexusSetApiKey,
+    nexusValidateApiKey,
+    nexusClearApiKey,
+    nexusResolveMod,
+    nexusGetFileGroups,
+  } from "../../../lib/tauri/nexus.js";
+  import type { NexusFileGroup } from "../../../lib/tauri/nexus.js";
   import Check from "@lucide/svelte/icons/check";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -21,7 +29,7 @@
   let modUrlInput = $state("");
   let resolving = $state(false);
   let resolveError = $state("");
-  let fileGroups: Array<{ id: string; name: string; version_count: number; last_upload: string }> = $state([]);
+  let fileGroups: NexusFileGroup[] = $state([]);
   let loadingGroups = $state(false);
 
   // Check initial key status on mount
@@ -31,7 +39,7 @@
 
   async function checkKeyStatus() {
     try {
-      const hasKey = await invoke<boolean>("cmd_nexus_has_api_key");
+      const hasKey = await nexusHasApiKey();
       if (hasKey) {
         keyStatus = "saved";
       } else {
@@ -45,7 +53,7 @@
   async function saveApiKey() {
     if (!apiKeyInput.trim()) return;
     try {
-      await invoke("cmd_nexus_set_api_key", { apiKey: apiKeyInput.trim() });
+      await nexusSetApiKey(apiKeyInput.trim());
       keyStatus = "saved";
       apiKeyInput = "";
     } catch {
@@ -56,7 +64,7 @@
   async function testApiKey() {
     keyStatus = "testing";
     try {
-      const valid = await invoke<boolean>("cmd_nexus_validate_api_key");
+      const valid = await nexusValidateApiKey();
       keyStatus = valid ? "valid" : "invalid";
     } catch {
       keyStatus = "invalid";
@@ -65,7 +73,7 @@
 
   async function clearApiKey() {
     try {
-      await invoke("cmd_nexus_clear_api_key");
+      await nexusClearApiKey();
       keyStatus = "none";
       apiKeyInput = "";
     } catch { /* ignore */ }
@@ -76,12 +84,9 @@
     resolving = true;
     resolveError = "";
     try {
-      const result = await invoke<{ game_scoped_id: number; uuid: string; name: string }>(
-        "cmd_nexus_resolve_mod",
-        { urlOrId: modUrlInput.trim() },
-      );
+      const result = await nexusResolveMod(modUrlInput.trim());
       settingsStore.nexusModId = String(result.game_scoped_id);
-      settingsStore.nexusModUuid = result.uuid;
+      settingsStore.nexusModUuid = result.id;
       settingsStore.nexusModName = result.name;
       settingsStore.persist();
     } catch {
@@ -95,10 +100,7 @@
     if (!settingsStore.nexusModUuid) return;
     loadingGroups = true;
     try {
-      fileGroups = await invoke<typeof fileGroups>(
-        "cmd_nexus_get_file_groups",
-        { modUuid: settingsStore.nexusModUuid },
-      );
+      fileGroups = await nexusGetFileGroups(settingsStore.nexusModUuid);
     } catch {
       fileGroups = [];
     } finally {

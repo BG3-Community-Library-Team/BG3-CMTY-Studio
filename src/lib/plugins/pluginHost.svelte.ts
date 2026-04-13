@@ -88,16 +88,39 @@ class PluginHost {
       );
     }
 
-    // Store disposables before calling activate (in case activate throws)
-    this.disposables.set(pluginId, pluginDisposables);
-    this.activated.set(pluginId, ctx);
-
     // Call plugin's activate()
     try {
       await plugin.activate(ctx);
+      // Only mark as activated after successful activation
+      this.disposables.set(pluginId, pluginDisposables);
+      this.activated.set(pluginId, ctx);
     } catch (e) {
+      // Rollback: dispose subscriptions registered during activate()
+      for (const sub of ctx.subscriptions) {
+        try { sub.dispose(); } catch { /* swallow cleanup errors */ }
+      }
+      // Rollback: dispose manifest contribution disposables
+      for (const d of pluginDisposables) {
+        try { d.dispose(); } catch { /* swallow cleanup errors */ }
+      }
+      // Rollback: clean up registries by plugin ID
+      this.disposePluginContributions(pluginId);
       console.error(`[PluginHost] Failed to activate plugin "${pluginId}":`, e);
-      // Don't deactivate on error — contributions are still valid
+      throw e;
+    }
+  }
+
+  /** Clean up all registry entries for a plugin by ID */
+  private disposePluginContributions(pluginId: PluginId): void {
+    viewRegistry.disposePlugin(pluginId);
+    statusBarRegistry.disposePlugin(pluginId);
+    menuRegistry.disposePlugin(pluginId);
+
+    // Remove all commands registered by the plugin (convention: "shortName." prefix)
+    const shortName = pluginId.split(".").pop();
+    if (shortName) {
+      commandRegistry.unregisterPrefix(`${shortName}:`);
+      commandRegistry.unregisterPrefix(`${shortName}.`);
     }
   }
 
@@ -126,16 +149,7 @@ class PluginHost {
     }
 
     // Clean up registries by pluginId
-    viewRegistry.disposePlugin(pluginId);
-    statusBarRegistry.disposePlugin(pluginId);
-    menuRegistry.disposePlugin(pluginId);
-
-    // Remove all commands registered by the plugin (convention: "shortName." prefix)
-    const shortName = pluginId.split(".").pop();
-    if (shortName) {
-      commandRegistry.unregisterPrefix(`${shortName}:`);
-      commandRegistry.unregisterPrefix(`${shortName}.`);
-    }
+    this.disposePluginContributions(pluginId);
 
     this.activated.delete(pluginId);
     this.disposables.delete(pluginId);
@@ -154,13 +168,21 @@ class PluginHost {
     // First activate "*" (always-active) plugins
     const starPlugins = this.activationIndex.get("*") ?? [];
     for (const id of starPlugins) {
-      await this.activate(id);
+      try {
+        await this.activate(id);
+      } catch {
+        // Individual plugin failure must not prevent other plugins from activating
+      }
     }
 
     // Then activate plugins listening for this specific event
     const eventPlugins = this.activationIndex.get(event) ?? [];
     for (const id of eventPlugins) {
-      await this.activate(id);
+      try {
+        await this.activate(id);
+      } catch {
+        // Individual plugin failure must not prevent other plugins from activating
+      }
     }
   }
 

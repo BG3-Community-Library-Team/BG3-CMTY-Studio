@@ -367,10 +367,10 @@ describe("Plugin System Integration", () => {
     pluginHost.register(badPlugin);
     pluginHost.register(goodPlugin);
 
-    // Activating the bad plugin should not throw
-    await expect(pluginHost.activate(badId)).resolves.toBeUndefined();
-    // Bad plugin is still marked as activated (contributions are valid)
-    expect(pluginHost.isActivated(badId)).toBe(true);
+    // Activating the bad plugin should throw (rollback behavior)
+    await expect(pluginHost.activate(badId)).rejects.toThrow("Plugin activation bomb");
+    // Bad plugin is NOT activated — contributions are rolled back
+    expect(pluginHost.isActivated(badId)).toBe(false);
 
     // Good plugin can still activate
     await pluginHost.activate(goodId);

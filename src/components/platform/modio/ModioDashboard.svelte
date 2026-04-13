@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
-  import { invoke } from "@tauri-apps/api/core";
+  import { modioGetMyMods, type ModioModSummary } from "../../../lib/tauri/modio.js";
   import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
   import Search from "@lucide/svelte/icons/search";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -13,14 +13,7 @@
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
 
-  interface ModSummary {
-    id: number;
-    name: string;
-    logo_url: string;
-    status: number;
-    visible: number;
-    date_updated: number;
-    stats: { downloads_total: number; subscribers_total: number };
+  interface ModSummary extends ModioModSummary {
     profile_url: string;
   }
 
@@ -57,8 +50,8 @@
     loading = true;
     error = "";
     try {
-      const gameId = settingsStore.modioGameId || "629";
-      mods = await invoke<ModSummary[]>("cmd_modio_get_my_mods", { gameId });
+      const gameId = Number(settingsStore.modioGameId || "629");
+      mods = await modioGetMyMods(gameId) as ModSummary[];
     } catch (e: unknown) {
       error = String(e);
       mods = [];
