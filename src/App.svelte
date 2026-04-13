@@ -85,6 +85,11 @@
         if (detected) settingsStore.setGameDataPath(detected);
       } catch { /* ignore */ }
     }
+
+    // PF-034: Register static commands + activate plugins (one-time, NOT reactive)
+    // CRITICAL: This must NOT be in $effect() — registry methods read+write $state
+    // arrays (e.g. commandRegistry.commands), which causes effect_update_depth_exceeded.
+    initCommandsAndPlugins();
   });
 
   // Core context keys
@@ -134,7 +139,7 @@
   });
 
   // PF-034: Register static commands
-  $effect(() => {
+  function initCommandsAndPlugins() {
     commandRegistry.registerMany([
       {
         id: "action.copyPreview",
@@ -492,9 +497,7 @@
     pluginHost.register(nexusPlugin);
     pluginHost.register(modioPlugin);
     pluginHost.fireActivationEvent("onStartupFinished");
-    // Run once
-    return undefined;
-  });
+  }
 
   let sidebarWidth = $state(settingsStore.sidebarWidth);
   let appContainer: HTMLDivElement | undefined = $state(undefined);
