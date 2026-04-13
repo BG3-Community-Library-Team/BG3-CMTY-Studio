@@ -8,8 +8,7 @@
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
   import { configurationRegistry } from "../lib/plugins/configurationRegistry.svelte.js";
   import { projectSettingsStore, type ProjectSettings } from "../lib/stores/projectSettingsStore.svelte.js";
-  import NexusSettingsSection from "./platform/nexus/NexusSettingsSection.svelte";
-  import ModioSettingsSection from "./platform/modio/ModioSettingsSection.svelte";
+  import { viewRegistry } from "../lib/plugins/viewRegistry.svelte.js";
   import EditorSettings from "./settings/EditorSettings.svelte";
   import DisplaySettings from "./settings/DisplaySettings.svelte";
   import ModIntegrationSettings from "./settings/ModIntegrationSettings.svelte";
@@ -219,9 +218,15 @@
     {:else if uiStore.settingsSection === "publishing"}
       <h3 class="settings-section-title">{m.publishingSection()}</h3>
       <div class="space-y-6">
-        <NexusSettingsSection />
-        <hr class="border-[var(--th-border-700)]" />
-        <ModioSettingsSection />
+        {#each viewRegistry.getViews("cmty-publishing").filter(v => v.id.endsWith(".settings")) as view, i (view.id)}
+          {#if i > 0}
+            <hr class="border-[var(--th-border-700)]" />
+          {/if}
+          {@const SettingsComponent = viewRegistry.getViewComponent(view.id)}
+          {#if SettingsComponent}
+            <SettingsComponent />
+          {/if}
+        {/each}
       </div>
     {:else}
       <div class="flex flex-col items-center justify-center h-full text-center">

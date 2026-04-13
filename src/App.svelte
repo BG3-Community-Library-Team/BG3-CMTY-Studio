@@ -52,7 +52,9 @@
   import { nexusPlugin } from "./lib/plugins/builtins/nexusPlugin.svelte.js";
   import { modioPlugin } from "./lib/plugins/builtins/modioPlugin.svelte.js";
   import { contextKeys } from "./lib/plugins/contextKeyService.svelte.js";
+  import { viewRegistry } from "./lib/plugins/viewRegistry.svelte.js";
   import ContextMenu from "./components/ContextMenu.svelte";
+  import ContextProvider from "./components/ContextProvider.svelte";
   import type { ContextMenuItemDef } from "./lib/types/contextMenu.js";
 
   const MIN_SIDEBAR = 280;
@@ -916,9 +918,23 @@
       <!-- Main content area -->
       <div bind:this={contentColumnEl} class="flex flex-1 min-h-0">
         <!-- Side panel: contextual view based on active activity -->
-        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git")}
+        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git" || viewRegistry.getViewComponent(uiStore.activeView))}
           <div class="side-panel" style="width: {leftPanelWidth}px; zoom: {settingsStore.zoomLevel / 100};">
-            {#if uiStore.activeView === "search"}
+            {#if viewRegistry.getViewComponent(uiStore.activeView)}
+              {@const DynamicComponent = viewRegistry.getViewComponent(uiStore.activeView)}
+              {@const ctx = viewRegistry.getViewContext(uiStore.activeView)}
+              {#if ctx}
+                <ErrorBoundary name={uiStore.activeView}>
+                  <ContextProvider context={ctx}>
+                    <DynamicComponent />
+                  </ContextProvider>
+                </ErrorBoundary>
+              {:else}
+                <ErrorBoundary name={uiStore.activeView}>
+                  <DynamicComponent />
+                </ErrorBoundary>
+              {/if}
+            {:else if uiStore.activeView === "search"}
               <ErrorBoundary name="Search Panel">
                 <SearchPanel />
               </ErrorBoundary>
@@ -975,7 +991,7 @@
               <p class="mt-3 text-xs text-[var(--th-text-400)]">{m.app_comparing_mod()}</p>
             </div>
           {/if}
-          {#if uiStore.activeView === "editor" || uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git"}
+          {#if uiStore.activeView === "editor" || uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git" || viewRegistry.getViewComponent(uiStore.activeView)}
             <ErrorBoundary name="Editor">
               <EditorTabs />
             </ErrorBoundary>

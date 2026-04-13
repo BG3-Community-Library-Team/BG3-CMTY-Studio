@@ -30,6 +30,7 @@ interface RegisteredViewContainer {
 class ViewRegistry {
   private containers: RegisteredViewContainer[] = $state([]);
   private views: RegisteredView[] = $state([]);
+  private viewContexts = new Map<string, Record<string, unknown>>();
 
   /** Register a view container from a plugin manifest */
   registerViewContainer(pluginId: string, container: ViewContainerContribution): Disposable {
@@ -68,14 +69,35 @@ class ViewRegistry {
   }
 
   /** Set the runtime component for a view (called during plugin activate()) */
-  setViewComponent(viewId: string, component: Component): void {
+  setViewComponent(viewId: string, component: Component, context?: Record<string, unknown>): void {
     this.views = this.views.map(v =>
       v.id === viewId ? { ...v, component } : v
     );
+    if (context) {
+      this.viewContexts.set(viewId, context);
+    }
+  }
+
+  /** Get the runtime component for a view */
+  getViewComponent(viewId: string): Component | undefined {
+    const view = this.views.find(v => v.id === viewId);
+    return view?.component ?? undefined;
+  }
+
+  /** @internal — used by rendering pipeline only; not for cross-plugin access */
+  getViewContext(viewId: string): Record<string, unknown> | undefined {
+    return this.viewContexts.get(viewId);
   }
 
   /** Get visible views for a container, evaluating when clauses */
   getVisibleViews(containerId: string): RegisteredView[] {
+    return this.views.filter(
+      v => v.containerId === containerId && contextKeys.evaluate(v.when)
+    );
+  }
+
+  /** Get all registered views for a container (with when-clause filtering) */
+  getViews(containerId: string): RegisteredView[] {
     return this.views.filter(
       v => v.containerId === containerId && contextKeys.evaluate(v.when)
     );
@@ -89,6 +111,10 @@ class ViewRegistry {
 
   /** Dispose all views and containers for a plugin */
   disposePlugin(pluginId: string): void {
+    // Clean up contexts for views belonging to this plugin
+    for (const view of this.views.filter(v => v.pluginId === pluginId)) {
+      this.viewContexts.delete(view.id);
+    }
     this.views = this.views.filter(v => v.pluginId !== pluginId);
     this.containers = this.containers.filter(c => c.pluginId !== pluginId);
   }

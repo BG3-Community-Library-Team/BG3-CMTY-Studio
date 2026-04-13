@@ -2,6 +2,7 @@
   import { m } from "../paraglide/messages.js";
   import { uiStore, type ActivityView } from "../lib/stores/uiStore.svelte.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
+  import { viewRegistry } from "../lib/plugins/viewRegistry.svelte.js";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Search from "@lucide/svelte/icons/search";
   import Settings from "@lucide/svelte/icons/settings";
@@ -9,6 +10,7 @@
   import HelpCircle from "@lucide/svelte/icons/help-circle";
   import FileBox from "@lucide/svelte/icons/file-box";
   import GitBranch from "@lucide/svelte/icons/git-branch";
+  import Puzzle from "@lucide/svelte/icons/puzzle";
 
   const VIEW_REGISTRY: Record<string, { label: () => string; icon: typeof FolderOpen }> = {
     project: { label: () => m.activity_bar_project(), icon: FileBox },
@@ -22,14 +24,30 @@
 
   let modReady = $derived(!!modStore.scanResult && !modStore.isScanning);
 
-  let views = $derived(
-    uiStore.activityBarOrder
+  let pluginContainers = $derived(
+    viewRegistry.getContainers("sidebar")
+  );
+
+  let views = $derived.by(() => {
+    const pluginLookup = new Map(
+      pluginContainers.map(c => [c.id, c])
+    );
+    const allKnownIds = new Set([...Object.keys(VIEW_REGISTRY), ...pluginLookup.keys()]);
+
+    return uiStore.activityBarOrder
+      .filter(id => allKnownIds.has(id))
       .filter(id => id !== "search" || modReady)
       .filter(id => id !== "project" || modReady)
       .filter(id => id !== "git" || modReady)
-      .filter(id => id in VIEW_REGISTRY)
-      .map(id => ({ id, label: VIEW_REGISTRY[id].label(), icon: VIEW_REGISTRY[id].icon }))
-  );
+      .map(id => {
+        const core = VIEW_REGISTRY[id];
+        if (core) {
+          return { id, label: core.label(), icon: core.icon };
+        }
+        const plugin = pluginLookup.get(id)!;
+        return { id, label: plugin.title, icon: Puzzle };
+      });
+  });
 
   // ── Drag-and-drop state ──
   const DEAD_ZONE = 4;

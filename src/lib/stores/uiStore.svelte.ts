@@ -4,7 +4,7 @@
  */
 import { m } from "../../paraglide/messages.js";
 
-export type ActivityView = "project" | "explorer" | "editor" | "search" | "git" | "settings" | "loaded-data" | "help";
+export type ActivityView = string;
 export type ExplorerDrawerId = "data" | "scripts" | "localization";
 
 const ACTIVITY_BAR_STORAGE_KEY = "bg3-cmty-activity-bar-order";
@@ -132,18 +132,25 @@ class UiStore {
   /** Persisted activity bar icon order */
   activityBarOrder: ActivityView[] = $state(UiStore.#loadActivityBarOrder());
 
-  static #loadActivityBarOrder(): ActivityView[] {
+  static #loadActivityBarOrder(): string[] {
     try {
       const raw = localStorage.getItem(ACTIVITY_BAR_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as string[];
-        const known = new Set<string>(DEFAULT_ACTIVITY_BAR_ORDER);
-        const valid = parsed.filter(id => known.has(id)) as ActivityView[];
-        const missing = DEFAULT_ACTIVITY_BAR_ORDER.filter(id => !valid.includes(id));
-        // Prepend newly added views (like "project") so they appear first
-        const prepend = missing.filter(id => DEFAULT_ACTIVITY_BAR_ORDER.indexOf(id) === 0);
-        const append = missing.filter(id => DEFAULT_ACTIVITY_BAR_ORDER.indexOf(id) !== 0);
-        return [...prepend, ...valid, ...append];
+        // Keep ALL persisted IDs (including plugin-contributed ones)
+        const result = [...parsed];
+        // Append any core IDs that are missing from the persisted list
+        for (const id of DEFAULT_ACTIVITY_BAR_ORDER) {
+          if (!result.includes(id)) {
+            // Prepend if it's the first core ID (e.g., "project" added later)
+            if (DEFAULT_ACTIVITY_BAR_ORDER.indexOf(id) === 0) {
+              result.unshift(id);
+            } else {
+              result.push(id);
+            }
+          }
+        }
+        return result;
       }
     } catch { /* fallback to defaults */ }
     return [...DEFAULT_ACTIVITY_BAR_ORDER];
@@ -652,6 +659,22 @@ class UiStore {
   openCommandPalette(query = ""): void {
     this.commandPaletteInitialQuery = query;
     this.commandPaletteOpen = true;
+  }
+
+  // ── Plugin Disable Fallbacks ──────────────────────────────────
+
+  /** If the current view is no longer valid, fall back to explorer */
+  fallbackIfInvalid(validViewIds: Set<string>): void {
+    if (!validViewIds.has(this.activeView)) {
+      this.activeView = "explorer";
+    }
+  }
+
+  /** If the current settings section is no longer valid, fall back to theme */
+  fallbackSettingsSection(validSections: Set<string>): void {
+    if (this.settingsSection && !validSections.has(this.settingsSection)) {
+      this.settingsSection = "theme";
+    }
   }
 }
 

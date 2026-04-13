@@ -5,6 +5,7 @@
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
   import { uiStore, type SettingsSection } from "../lib/stores/uiStore.svelte.js";
+  import { viewRegistry } from "../lib/plugins/viewRegistry.svelte.js";
 
   const navSections: { id: SettingsSection; label: () => string }[] = [
     { id: "theme", label: () => m.settings_nav_theme() },
@@ -12,7 +13,6 @@
     { id: "editor", label: () => m.settings_editor_title() },
     { id: "modConfig", label: () => m.settings_nav_mod_config() },
     { id: "git", label: () => m.settings_nav_git() },
-    { id: "publishing", label: () => m.settings_nav_publishing() },
   ];
   function selectSection(id: SettingsSection) {
     uiStore.settingsSection = id;
@@ -32,6 +32,14 @@
         aria-current={uiStore.settingsSection === s.id ? "page" : undefined}
       >{s.label()}</button>
     {/each}
+    {#if viewRegistry.getViews("cmty-publishing").filter(v => v.id.endsWith(".settings")).length > 0}
+      <button
+        class="settings-node"
+        class:active={uiStore.settingsSection === "publishing"}
+        onclick={() => selectSection("publishing")}
+        aria-current={uiStore.settingsSection === "publishing" ? "page" : undefined}
+      >{m.settings_nav_publishing()}</button>
+    {/if}
   </nav>
 </div>
 
