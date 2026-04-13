@@ -55,26 +55,6 @@ interface StoredSettings {
   gitUserName: string;
   /** Git commit author email (falls back to ~/.gitconfig if empty) */
   gitUserEmail: string;
-  /** Nexus Mods numeric mod ID */
-  nexusModId: string;
-  /** Nexus Mods mod UUID */
-  nexusModUuid: string;
-  /** Nexus Mods mod display name */
-  nexusModName: string;
-  /** Default Nexus file group (main/optional/etc.) */
-  nexusDefaultFileGroup: string;
-  /** Default Nexus file category */
-  nexusDefaultCategory: string;
-  /** Nexus game domain slug (e.g. "baldursgate3") */
-  nexusGameDomain: string;
-  /** mod.io numeric user ID */
-  modioUserId: string;
-  /** mod.io username */
-  modioUserName: string;
-  /** mod.io game ID */
-  modioGameId: string;
-  /** mod.io OAuth token expiry (ISO 8601) */
-  modioTokenExpiry: string;
   /** Editor font size in pixels */
   editorFontSize: number;
   /** Editor font family */
@@ -125,16 +105,6 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   mcmSchemaUrl: "https://raw.githubusercontent.com/AtilioA/BG3-MCM/refs/heads/main/.vscode/schema.json",
   gitUserName: "",
   gitUserEmail: "",
-  nexusModId: "",
-  nexusModUuid: "",
-  nexusModName: "",
-  nexusDefaultFileGroup: "",
-  nexusDefaultCategory: "",
-  nexusGameDomain: "baldursgate3",
-  modioUserId: "",
-  modioUserName: "",
-  modioGameId: "",
-  modioTokenExpiry: "",
   editorFontSize: 12,
   editorFontFamily: "Cascadia Code, Fira Code, JetBrains Mono, monospace",
   editorTabSize: 2,
@@ -275,27 +245,6 @@ class SettingsStore {
 
   /** Git commit author email (falls back to ~/.gitconfig if empty) */
   gitUserEmail: string = $state(this.#initial.gitUserEmail);
-
-  /** Nexus Mods numeric mod ID */
-  nexusModId: string = $state(this.#initial.nexusModId);
-  /** Nexus Mods mod UUID */
-  nexusModUuid: string = $state(this.#initial.nexusModUuid);
-  /** Nexus Mods mod display name */
-  nexusModName: string = $state(this.#initial.nexusModName);
-  /** Default Nexus file group */
-  nexusDefaultFileGroup: string = $state(this.#initial.nexusDefaultFileGroup);
-  /** Default Nexus file category */
-  nexusDefaultCategory: string = $state(this.#initial.nexusDefaultCategory);
-  /** Nexus game domain slug */
-  nexusGameDomain: string = $state(this.#initial.nexusGameDomain);
-  /** mod.io numeric user ID */
-  modioUserId: string = $state(this.#initial.modioUserId);
-  /** mod.io username */
-  modioUserName: string = $state(this.#initial.modioUserName);
-  /** mod.io game ID */
-  modioGameId: string = $state(this.#initial.modioGameId);
-  /** mod.io OAuth token expiry (ISO 8601) */
-  modioTokenExpiry: string = $state(this.#initial.modioTokenExpiry);
 
   /** Editor font size in pixels */
   editorFontSize: number = $state(this.#initial.editorFontSize);

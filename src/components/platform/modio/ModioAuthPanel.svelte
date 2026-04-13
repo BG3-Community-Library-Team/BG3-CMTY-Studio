@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
-  import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
+  import { modioStore } from "../../../lib/stores/modioStore.svelte.js";
   import { modioHasOauthToken, modioGetUser, modioSetOauthToken, modioDisconnect } from "../../../lib/tauri/modio.js";
   import Check from "@lucide/svelte/icons/check";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
@@ -23,14 +23,14 @@
   let userName = $state("");
 
   let daysUntilExpiry = $derived.by(() => {
-    if (!settingsStore.modioTokenExpiry) return -1;
-    const expiry = new Date(settingsStore.modioTokenExpiry);
+    if (!modioStore.tokenExpiry) return -1;
+    const expiry = new Date(modioStore.tokenExpiry);
     const now = new Date();
     return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   });
 
   let tokenWarning = $derived(daysUntilExpiry > 0 && daysUntilExpiry <= 30);
-  let tokenExpired = $derived(daysUntilExpiry <= 0 && settingsStore.modioTokenExpiry !== "");
+  let tokenExpired = $derived(daysUntilExpiry <= 0 && modioStore.tokenExpiry !== "");
 
   const STEP_LABELS = [
     () => m.modio_step_access_token(),
@@ -55,9 +55,8 @@
         const user = await modioGetUser();
         userName = user.name;
         avatarUrl = user.avatar_url;
-        settingsStore.modioUserName = user.name;
-        settingsStore.modioUserId = String(user.id);
-        settingsStore.persist();
+        modioStore.userName = user.name;
+        modioStore.userId = String(user.id);
         authState = tokenExpired ? "expired" : "connected";
       } catch {
         // Token stored but invalid/expired — show as disconnected so user can re-enter
@@ -76,9 +75,8 @@
       const user = await modioSetOauthToken(tokenInput.trim());
       userName = user.name;
       avatarUrl = user.avatar_url;
-      settingsStore.modioUserName = user.name;
-      settingsStore.modioUserId = String(user.id);
-      settingsStore.persist();
+      modioStore.userName = user.name;
+      modioStore.userId = String(user.id);
       authState = "connected";
       tokenInput = "";
     } catch (e: unknown) {
@@ -95,10 +93,9 @@
     authState = "disconnected";
     userName = "";
     avatarUrl = "";
-    settingsStore.modioUserName = "";
-    settingsStore.modioUserId = "";
-    settingsStore.modioTokenExpiry = "";
-    settingsStore.persist();
+    modioStore.userName = "";
+    modioStore.userId = "";
+    modioStore.tokenExpiry = "";
     showDisconnectConfirm = false;
   }
 </script>

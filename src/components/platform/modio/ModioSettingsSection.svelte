@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
-  import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
+  import { modioStore } from "../../../lib/stores/modioStore.svelte.js";
   import ModioAuthPanel from "./ModioAuthPanel.svelte";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -13,18 +13,18 @@
   let showAuthPanel = $state(false);
 
   let connectionStatus = $derived.by(() => {
-    if (settingsStore.modioTokenExpiry) {
-      const expiry = new Date(settingsStore.modioTokenExpiry);
+    if (modioStore.tokenExpiry) {
+      const expiry = new Date(modioStore.tokenExpiry);
       if (expiry.getTime() <= Date.now()) return "expired";
     }
-    if (settingsStore.modioUserName) return "connected";
+    if (modioStore.userName) return "connected";
     return "disconnected";
   });
 
   function statusLabel(): string {
     switch (connectionStatus) {
       case "disconnected": return m.modio_status_disconnected();
-      case "connected": return m.modio_connected_as({ name: settingsStore.modioUserName });
+      case "connected": return m.modio_connected_as({ name: modioStore.userName });
       case "expired": return m.modio_status_expired();
       default: return "";
     }
@@ -92,12 +92,11 @@
           id="modio-game-id"
           type="text"
           class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          value={settingsStore.modioGameId || "629"}
+          value={modioStore.gameId || "629"}
           onblur={(e) => {
             const v = (e.target as HTMLInputElement).value.trim();
-            if (v !== settingsStore.modioGameId) {
-              settingsStore.modioGameId = v;
-              settingsStore.persist();
+            if (v !== modioStore.gameId) {
+              modioStore.gameId = v;
             }
           }}
         />

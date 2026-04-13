@@ -4,7 +4,7 @@
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
   import { modioGetMyMods, type ModioModSummary } from "../../../lib/tauri/modio.js";
-  import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
+  import { modioStore } from "../../../lib/stores/modioStore.svelte.js";
   import Search from "@lucide/svelte/icons/search";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Upload from "@lucide/svelte/icons/upload";
@@ -50,7 +50,7 @@
     loading = true;
     error = "";
     try {
-      const gameId = Number(settingsStore.modioGameId || "629");
+      const gameId = Number(modioStore.gameId || "629");
       mods = await modioGetMyMods(gameId) as ModSummary[];
     } catch (e: unknown) {
       error = String(e);

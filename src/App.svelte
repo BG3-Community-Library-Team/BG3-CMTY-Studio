@@ -49,6 +49,8 @@
   import { loadIdeHelpers } from "./lib/plugins/index.js";
   import { pluginHost } from "./lib/plugins/pluginHost.svelte.js";
   import { gitPlugin } from "./lib/plugins/builtins/gitPlugin.svelte.js";
+  import { nexusPlugin } from "./lib/plugins/builtins/nexusPlugin.svelte.js";
+  import { modioPlugin } from "./lib/plugins/builtins/modioPlugin.svelte.js";
   import { contextKeys } from "./lib/plugins/contextKeyService.svelte.js";
   import ContextMenu from "./components/ContextMenu.svelte";
   import type { ContextMenuItemDef } from "./lib/types/contextMenu.js";
@@ -485,6 +487,8 @@
     ]);
     // Register and activate plugins
     pluginHost.register(gitPlugin);
+    pluginHost.register(nexusPlugin);
+    pluginHost.register(modioPlugin);
     pluginHost.fireActivationEvent("onStartupFinished");
     // Run once
     return undefined;

@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
-  import { settingsStore } from "../../../lib/stores/settingsStore.svelte.js";
+  import { nexusStore } from "../../../lib/stores/nexusStore.svelte.js";
   import {
     nexusHasApiKey,
     nexusSetApiKey,
@@ -85,10 +85,9 @@
     resolveError = "";
     try {
       const result = await nexusResolveMod(modUrlInput.trim());
-      settingsStore.nexusModId = String(result.game_scoped_id);
-      settingsStore.nexusModUuid = result.id;
-      settingsStore.nexusModName = result.name;
-      settingsStore.persist();
+      nexusStore.modId = String(result.game_scoped_id);
+      nexusStore.modUuid = result.id;
+      nexusStore.modName = result.name;
     } catch {
       resolveError = m.nexus_resolve_failed();
     } finally {
@@ -97,10 +96,10 @@
   }
 
   async function refreshFileGroups() {
-    if (!settingsStore.nexusModUuid) return;
+    if (!nexusStore.modUuid) return;
     loadingGroups = true;
     try {
-      fileGroups = await nexusGetFileGroups(settingsStore.nexusModUuid);
+      fileGroups = await nexusGetFileGroups(nexusStore.modUuid);
     } catch {
       fileGroups = [];
     } finally {
@@ -223,9 +222,9 @@
             onclick={resolveMod}
           >{resolving ? m.common_loading() : m.nexus_resolve_mod()}</button>
         </div>
-        {#if settingsStore.nexusModName}
+        {#if nexusStore.modName}
           <p class="text-[10px] text-emerald-400">
-            {m.nexus_resolved_mod({ name: settingsStore.nexusModName })}
+            {m.nexus_resolved_mod({ name: nexusStore.modName })}
           </p>
         {/if}
         {#if resolveError}
@@ -234,7 +233,7 @@
       </div>
 
       <!-- File Update Group -->
-      {#if settingsStore.nexusModUuid}
+      {#if nexusStore.modUuid}
         <div class="space-y-2">
           <div class="flex items-center gap-2">
             <label class="text-xs font-medium text-[var(--th-text-300)]" for="nexus-file-group">
@@ -252,10 +251,9 @@
           <select
             id="nexus-file-group"
             class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-            value={settingsStore.nexusDefaultFileGroup}
+            value={nexusStore.defaultFileGroup}
             onchange={(e) => {
-              settingsStore.nexusDefaultFileGroup = (e.target as HTMLSelectElement).value;
-              settingsStore.persist();
+              nexusStore.defaultFileGroup = (e.target as HTMLSelectElement).value;
             }}
           >
             <option value="">{m.nexus_file_group_placeholder()}</option>
@@ -276,10 +274,9 @@
         <select
           id="nexus-category"
           class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          value={settingsStore.nexusDefaultCategory}
+          value={nexusStore.category}
           onchange={(e) => {
-            settingsStore.nexusDefaultCategory = (e.target as HTMLSelectElement).value;
-            settingsStore.persist();
+            nexusStore.category = (e.target as HTMLSelectElement).value;
           }}
         >
           <option value="">Main</option>
@@ -299,12 +296,11 @@
           id="nexus-game-domain"
           type="text"
           class="w-full form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          value={settingsStore.nexusGameDomain}
+          value={nexusStore.gameDomain}
           onblur={(e) => {
             const v = (e.target as HTMLInputElement).value.trim();
-            if (v && v !== settingsStore.nexusGameDomain) {
-              settingsStore.nexusGameDomain = v;
-              settingsStore.persist();
+            if (v && v !== nexusStore.gameDomain) {
+              nexusStore.gameDomain = v;
             }
           }}
         />
