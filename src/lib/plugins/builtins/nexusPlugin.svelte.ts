@@ -37,7 +37,7 @@ export const nexusPlugin: PluginModule = {
       views: {
         "cmty-publishing": [
           { id: "nexus.panel", name: "Nexus Mods", when: "modLoaded" },
-          { id: "nexus.settings", name: "Nexus Settings", when: "modLoaded" },
+          { id: "nexus.settings", name: "Nexus Settings" },
         ],
       },
       statusBarItems: [

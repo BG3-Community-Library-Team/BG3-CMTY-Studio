@@ -7,8 +7,13 @@ import {
   nexusGetFileGroups,
   type NexusFileGroup,
 } from "../tauri/nexus.js";
+import { readProjectFile, writeProjectFile } from "../tauri/project-settings.js";
 
 export type { NexusFileGroup };
+
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 class NexusStore {
   // ── Connection state (app-scoped) ───────────────────────────────
@@ -25,10 +30,15 @@ class NexusStore {
   gameDomain: string = $state("baldursgate3");
   category: string | null = $state(null);
   defaultFileGroup: string = $state("");
+  modUrl: string | null = $state(null);
+  projectPath: string | null = $state(null);
+
+  #saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── API Key Methods ─────────────────────────────────────────────
 
   async checkApiKey(): Promise<void> {
+    if (this.isValidating) return;
     try {
       this.apiKeyValid = await nexusHasApiKey();
     } catch (e) {
@@ -91,15 +101,73 @@ class NexusStore {
     }
   }
 
+  // ── Config Persistence ──────────────────────────────────────────
+
+  async loadProjectConfig(projectPath: string): Promise<void> {
+    this.projectPath = projectPath;
+    if (!projectPath || !isTauri()) {
+      return;
+    }
+    try {
+      const content = await readProjectFile(projectPath, "nexus.json");
+      const parsed = JSON.parse(content);
+      // Validate shape — only load known keys
+      if (parsed && typeof parsed === "object") {
+        this.modId = typeof parsed.modId === "string" ? parsed.modId : null;
+        this.modUuid = typeof parsed.modUuid === "string" ? parsed.modUuid : null;
+        this.modName = typeof parsed.modName === "string" ? parsed.modName : null;
+        this.modUrl = typeof parsed.modUrl === "string" ? parsed.modUrl : null;
+        this.selectedFileGroupId = typeof parsed.selectedFileGroupId === "string" ? parsed.selectedFileGroupId : null;
+        this.category = typeof parsed.category === "string" ? parsed.category : null;
+        this.defaultFileGroup = typeof parsed.defaultFileGroup === "string" ? parsed.defaultFileGroup : "";
+      }
+    } catch (e) {
+      // Corrupted or missing JSON — use defaults, don't crash
+      console.warn("[nexusStore] Failed to load project config:", e);
+    }
+  }
+
+  saveProjectConfig(): void {
+    if (!this.projectPath || !isTauri()) return;
+    if (this.#saveTimer) clearTimeout(this.#saveTimer);
+    this.#saveTimer = setTimeout(() => {
+      this.#executeSave();
+    }, 500);
+  }
+
+  async #executeSave(): Promise<void> {
+    if (!this.projectPath) return;
+    const config: Record<string, unknown> = {};
+    if (this.modId != null) config.modId = this.modId;
+    if (this.modUuid != null) config.modUuid = this.modUuid;
+    if (this.modName != null) config.modName = this.modName;
+    if (this.modUrl != null) config.modUrl = this.modUrl;
+    if (this.selectedFileGroupId != null) config.selectedFileGroupId = this.selectedFileGroupId;
+    if (this.category != null) config.category = this.category;
+    if (this.defaultFileGroup) config.defaultFileGroup = this.defaultFileGroup;
+    try {
+      await writeProjectFile(this.projectPath, "nexus.json", JSON.stringify(config, null, 2));
+    } catch (e) {
+      console.warn("[nexusStore] Failed to save project config:", e);
+    }
+  }
+
   // ── Project Reset ───────────────────────────────────────────────
 
   resetProject(): void {
+    if (this.#saveTimer) {
+      clearTimeout(this.#saveTimer);
+      this.#saveTimer = null;
+    }
     this.modId = null;
     this.modName = null;
     this.modUuid = null;
+    this.modUrl = null;
     this.fileGroups = [];
     this.selectedFileGroupId = null;
     this.category = null;
+    this.defaultFileGroup = "";
+    this.projectPath = null;
   }
 }
 

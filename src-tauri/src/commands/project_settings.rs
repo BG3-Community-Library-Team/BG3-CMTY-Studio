@@ -8,7 +8,14 @@ const CMTYSTUDIO_DIR: &str = ".cmtystudio";
 const MAX_CONTENT_SIZE: usize = 1_048_576;
 
 /// Allowed filenames within the `.cmtystudio/` directory.
-const ALLOWED_FILENAMES: &[&str] = &["settings.json", "explorer.json", "workspace.json"];
+const ALLOWED_FILENAMES: &[&str] = &[
+    "settings.json",
+    "explorer.json",
+    "workspace.json",
+    "nexus.json",
+    "modio.json",
+    "dependencies.json",
+];
 
 /// Ensure `.cmtystudio/` directory exists within the given project path.
 #[tauri::command]
@@ -157,6 +164,9 @@ mod tests {
         assert!(validate_filename("settings.json").is_ok());
         assert!(validate_filename("explorer.json").is_ok());
         assert!(validate_filename("workspace.json").is_ok());
+        assert!(validate_filename("nexus.json").is_ok());
+        assert!(validate_filename("modio.json").is_ok());
+        assert!(validate_filename("dependencies.json").is_ok());
     }
 
     #[test]

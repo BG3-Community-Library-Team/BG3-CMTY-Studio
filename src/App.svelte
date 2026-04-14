@@ -50,6 +50,7 @@
   import { pluginHost } from "./lib/plugins/pluginHost.svelte.js";
   import { gitPlugin } from "./lib/plugins/builtins/gitPlugin.svelte.js";
   import { nexusPlugin } from "./lib/plugins/builtins/nexusPlugin.svelte.js";
+  import { nexusStore } from "./lib/stores/nexusStore.svelte.js";
   import { modioPlugin } from "./lib/plugins/builtins/modioPlugin.svelte.js";
   import { contextKeys } from "./lib/plugins/contextKeyService.svelte.js";
   import { viewRegistry } from "./lib/plugins/viewRegistry.svelte.js";
@@ -321,6 +322,7 @@
           projectStore.reset();
           modStore.reset();
           modStore.selectedModPath = "";
+          nexusStore.resetProject();
           toastStore.info(m.app_project_closed());
         },
       },

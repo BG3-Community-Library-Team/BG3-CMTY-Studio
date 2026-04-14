@@ -14,6 +14,7 @@ import { modSelectionService } from "./modSelectionService.svelte.js";
 import { detectModFolders } from "../tauri/scanning.js";
 import { ensureCmtystudioDir } from "../tauri/project-settings.js";
 import { projectSettingsStore } from "../stores/projectSettingsStore.svelte.js";
+import { nexusStore } from "../stores/nexusStore.svelte.js";
 import type { DetectedMod } from "../types/modSelection.js";
 
 /**
@@ -259,6 +260,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
         console.warn("[scanAndImport] Failed to create .cmtystudio dir:", e);
       }
       await projectSettingsStore.load(projectRoot);
+      await nexusStore.loadProjectConfig(projectRoot);
     }
 
     const result = await scanMod(modPath, extraScanPaths, true);
