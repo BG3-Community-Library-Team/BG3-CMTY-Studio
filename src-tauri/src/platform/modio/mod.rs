@@ -1,4 +1,4 @@
-//! mod.io API integration (Sprint 34+).
+//! mod.io API integration
 
 pub mod auth;
 pub mod client;

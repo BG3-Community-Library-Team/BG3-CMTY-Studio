@@ -10,6 +10,8 @@
   import Globe from "@lucide/svelte/icons/globe";
   import Settings from "@lucide/svelte/icons/settings";
   import { m } from "../paraglide/messages.js";
+  import ModioIcon from "./icons/modioIcon.svelte";
+  import NexusModsIcon from "./icons/NexusModsIcon.svelte";
 
   async function openLink(url: string): Promise<void> {
     try { await shellOpen(url); }
@@ -18,6 +20,8 @@
 
   const openDiscord = () => openLink("https://discord.bg3.community/");
   const openLslib = () => openLink("https://github.com/Norbyte/lslib");
+  const openModio = () => openLink("https://mod.io/g/baldursgate3");
+  const openNexus = () => openLink("https://www.nexusmods.com/games/baldursgate3");
   const openCMTYStudioRepo = () => openLink("https://github.com/BG3-Community-Library-Team/BG3-CMTY-Studio");
   const openCMTYWiki = () => openLink("https://wiki.bg3.community");
 </script>
@@ -56,6 +60,26 @@
       <span class="truncate">{m.help_lslib()}</span>
       <ExternalLink size={12} class="shrink-0 ml-auto opacity-50" />
     </button>
+
+
+    <button
+      class="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] rounded transition-colors text-left"
+      onclick={openNexus}
+    >
+      <NexusModsIcon class="w-4 h-4 shrink-0" />
+      <span class="truncate">{m.help_nexus()}</span>
+      <ExternalLink size={12} class="shrink-0 ml-auto opacity-50" />
+    </button>
+
+    <button
+      class="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] rounded transition-colors text-left"
+      onclick={openModio}
+    >
+      <ModioIcon class="w-4 h-4 shrink-0" />
+      <span class="truncate">{m.help_modio()}</span>
+      <ExternalLink size={12} class="shrink-0 ml-auto opacity-50" />
+    </button>
+    
 
     <button
       class="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--th-text-200)] hover:bg-[var(--th-bg-700)] rounded transition-colors text-left"

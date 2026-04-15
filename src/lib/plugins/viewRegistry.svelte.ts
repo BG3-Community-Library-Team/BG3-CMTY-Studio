@@ -23,6 +23,7 @@ interface RegisteredViewContainer {
   id: string;
   title: string;
   icon: string;
+  iconComponent?: import("svelte").Component;
   pluginId: string;
   location: "sidebar" | "panel";
 }
@@ -38,6 +39,7 @@ class ViewRegistry {
       id: container.id,
       title: container.title,
       icon: container.icon,
+      iconComponent: container.iconComponent,
       pluginId,
       location: container.location,
     };
@@ -107,6 +109,25 @@ class ViewRegistry {
   getContainers(location?: "sidebar" | "panel"): RegisteredViewContainer[] {
     if (!location) return this.containers;
     return this.containers.filter(c => c.location === location);
+  }
+
+  /**
+   * Resolve a container ID to its first visible non-settings view ID.
+   * Returns the view ID if the input is a known container, otherwise null.
+   * Used by ActivityBar to map container clicks to renderable views.
+   */
+  resolveContainerView(containerId: string): string | null {
+    const container = this.containers.find(c => c.id === containerId);
+    if (!container) return null;
+    const visible = this.getVisibleViews(containerId)
+      .filter(v => !v.id.endsWith(".settings") && v.component);
+    return visible.length > 0 ? visible[0].id : null;
+  }
+
+  /** Get the display name of a registered view by ID */
+  getViewName(viewId: string): string | null {
+    const view = this.views.find(v => v.id === viewId);
+    return view?.name ?? null;
   }
 
   /** Dispose all views and containers for a plugin */

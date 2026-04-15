@@ -71,7 +71,15 @@
     if (!resizeDragging) return;
     // Drag up (negative delta) → height increases. Drag down (positive delta) → height decreases.
     const delta = e.clientY - resizeStartY;
-    const newHeight = Math.max(minHeight, resizeStartHeight - delta);
+    let newHeight = Math.max(minHeight, resizeStartHeight - delta);
+    // Clamp to parent container so drawers never exceed the drawer layout bounds
+    const el = (e.target as HTMLElement).closest('.explorer-drawer') as HTMLElement | null;
+    const container = el?.parentElement?.parentElement as HTMLElement | null;
+    if (container) {
+      const siblingCount = Math.max(0, container.children.length - 1);
+      const maxHeight = container.clientHeight - siblingCount * 24;
+      newHeight = Math.min(newHeight, maxHeight);
+    }
     uiStore.setDrawerHeight(id, newHeight);
   }
 

@@ -7,6 +7,9 @@
 <script lang="ts">
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
+  import { nexusStore } from "../lib/stores/nexusStore.svelte.js";
+  import { modioStore } from "../lib/stores/modioStore.svelte.js";
+  import { dependencyStore, type ProjectDependency } from "../lib/stores/dependencyStore.svelte.js";
   import { saveConfig, renameDir } from "../lib/utils/tauri.js";
   import { copyFile, fileExists } from "../lib/tauri/mod-management.js";
   import { modImportService } from "../lib/services/modImportService.svelte.js";
@@ -391,6 +394,33 @@
     dependencies = dependencies.filter(d => d.uuid !== uuid);
   }
 
+  // ── Platform field helpers (6B-12) ──
+  function findDepStoreIndex(uuid: string): number {
+    return dependencyStore.dependencies.findIndex(d => d.metaUuid === uuid);
+  }
+
+  function getPlatformField(uuid: string, field: keyof ProjectDependency): string {
+    const idx = findDepStoreIndex(uuid);
+    if (idx === -1) return "";
+    const val = dependencyStore.dependencies[idx][field];
+    return val != null ? String(val) : "";
+  }
+
+  function handlePlatformFieldChange(uuid: string, depName: string, field: keyof ProjectDependency, value: string) {
+    const idx = findDepStoreIndex(uuid);
+    if (idx >= 0) {
+      dependencyStore.updateDependency(idx, { [field]: value || null });
+    } else {
+      dependencyStore.addDependency({
+        name: depName,
+        metaUuid: uuid,
+        nexusModId: field === "nexusModId" ? value || null : null,
+        modioModId: field === "modioModId" ? (value ? Number(value) : null) : null,
+        notes: null,
+      });
+    }
+  }
+
   /** Auto-fill dependency fields when selecting a known mod UUID */
   function onDepUuidChange(value: string) {
     newDepUuid = value;
@@ -586,6 +616,16 @@
               </select>
             </label>
           </div>
+
+          <!-- Nexus URL (not saved to LSX — stored in nexus config) -->
+          <label class="flex flex-col gap-1 text-xs">
+            <span class={labelClass}>{m.nexus_meta_lsx_nexus_url_label()}</span>
+            <input type="text" class={inputClass}
+                   placeholder={m.nexus_meta_lsx_nexus_url_placeholder()}
+                   value={nexusStore.modUrl ?? ""}
+                   oninput={(e) => { nexusStore.modUrl = (e.target as HTMLInputElement).value || null; }} />
+          </label>
+
           <label class="flex flex-col gap-1 text-xs">
             <span class={labelClass}>{m.meta_lsx_description()}</span>
             <textarea class="{inputClass} min-h-[60px] resize-y" bind:value={editDescription} rows="2" placeholder="Mod description"></textarea>
@@ -785,11 +825,30 @@
                     {#if dep.folder}
                       <div class="text-[10px] text-[var(--th-text-500)]">Folder: {dep.folder}</div>
                     {/if}
-                    <div class="flex items-center gap-1 mt-1">
+                    <div class="flex items-center gap-1 mt-1 flex-wrap">
                       <span class="text-[10px] text-[var(--th-text-500)]">Version:</span>
                       <input type="text" class="w-24 bg-[var(--th-bg-700)] border border-[var(--th-border-600)] rounded px-1 py-0.5 text-[10px] font-mono text-[var(--th-text-300)] focus:border-[var(--th-accent-500)]"
                              value={depVersionDisplay} oninput={(e) => updateDepVersion(depIdx, (e.target as HTMLInputElement).value)}
                              placeholder="1.0.0.0" />
+                      <!-- Platform fields inline with version (6B-12) -->
+                      {#if nexusStore.apiKeyValid}
+                        <span class="text-[10px] text-[var(--th-text-500)] shrink-0 ml-1">{m.nexus_platform_field_nexus_label()}</span>
+                        <input type="text"
+                          class="w-28 bg-[var(--th-bg-700)] border border-[var(--th-border-600)] rounded px-1 py-0.5 text-[10px] text-[var(--th-text-300)] focus:border-[var(--th-accent-500)]"
+                          value={getPlatformField(dep.uuid, "nexusModId")}
+                          onblur={(e) => handlePlatformFieldChange(dep.uuid, dep.name, "nexusModId", (e.target as HTMLInputElement).value)}
+                          placeholder="1933 or URL"
+                        />
+                      {/if}
+                      {#if modioStore.isAuthenticated}
+                        <span class="text-[10px] text-[var(--th-text-500)] shrink-0 ml-1">{m.nexus_platform_field_modio_label()}</span>
+                        <input type="text"
+                          class="w-28 bg-[var(--th-bg-700)] border border-[var(--th-border-600)] rounded px-1 py-0.5 text-[10px] text-[var(--th-text-300)] focus:border-[var(--th-accent-500)]"
+                          value={getPlatformField(dep.uuid, "modioModId")}
+                          onblur={(e) => handlePlatformFieldChange(dep.uuid, dep.name, "modioModId", (e.target as HTMLInputElement).value)}
+                          placeholder="12345"
+                        />
+                      {/if}
                     </div>
                   </div>
                   <button

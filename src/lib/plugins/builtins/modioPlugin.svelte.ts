@@ -13,6 +13,7 @@ import { statusBarRegistry } from "../statusBarRegistry.svelte.js";
 import { modioStore } from "../../stores/modioStore.svelte.js";
 import ModioPanel from "../../../components/platform/modio/ModioPanel.svelte";
 import ModioSettingsSubpanel from "../../../components/platform/modio/ModioSettingsSubpanel.svelte";
+import modioIcon from "../../../components/icons/modioIcon.svelte";
 
 export const modioPlugin: PluginModule = {
   manifest: {
@@ -34,10 +35,10 @@ export const modioPlugin: PluginModule = {
         properties: {},
       },
       viewsContainers: [
-        { id: "cmty-publishing", title: "Publishing", icon: "package", location: "sidebar" },
+        { id: "cmty-modio", title: "mod.io", icon: "modio", iconComponent: modioIcon, location: "sidebar" },
       ],
       views: {
-        "cmty-publishing": [
+        "cmty-modio": [
           { id: "modio.panel", name: "mod.io", when: "modLoaded" },
           { id: "modio.settings", name: "mod.io Settings", when: "modLoaded" },
         ],
@@ -68,7 +69,7 @@ export const modioPlugin: PluginModule = {
         when: "!modioConnected",
         enabled: () => !modioStore.isAuthenticated,
         execute: async () => {
-          // Placeholder — will open settings panel in Sprint 3
+          // Placeholder — will open settings panel
         },
       },
       {

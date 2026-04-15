@@ -13,6 +13,7 @@ use crate::platform::errors::PlatformError;
 use super::client::NexusClient;
 use super::dependencies::NexusDependency;
 use super::mod_files::FileUpdateGroup;
+use super::mod_files::FileVersion;
 use super::mods::NexusModDetails;
 use super::upload::NexusUploadParams;
 
@@ -88,17 +89,25 @@ pub async fn cmd_nexus_has_api_key() -> Result<bool, AppError> {
     .await
 }
 
+/// User profile data returned by the Nexus v1 validate endpoint.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NexusUserProfile {
+    pub user_id: u64,
+    pub name: String,
+    pub profile_url: Option<String>,
+}
+
 /// Validate the stored API key by making a lightweight API call.
 ///
 /// Uses the v1 endpoint (`/v1/users/validate.json`) because v3 has no
 /// equivalent validation route.
 ///
-/// Returns `true` if the key is valid, `false` if authentication fails.
+/// Returns the user profile if the key is valid, `None` if authentication fails.
 /// Other errors (network, timeout) propagate as `AppError`.
 #[tauri::command]
 pub async fn cmd_nexus_validate_api_key(
     state: State<'_, NexusState>,
-) -> Result<bool, AppError> {
+) -> Result<Option<NexusUserProfile>, AppError> {
     let client = get_client(&state)?;
 
     let resp = client
@@ -118,8 +127,19 @@ pub async fn cmd_nexus_validate_api_key(
         })?;
 
     match resp.status().as_u16() {
-        200 => Ok(true),
-        401 | 403 => Ok(false),
+        200 => {
+            let json: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| -> AppError {
+                    PlatformError::HttpError(format!("Failed to parse validate response: {e}")).into()
+                })?;
+            let user_id = json["user_id"].as_u64().unwrap_or(0);
+            let name = json["name"].as_str().unwrap_or("User").to_string();
+            let profile_url = json["profile_url"].as_str().map(String::from);
+            Ok(Some(NexusUserProfile { user_id, name, profile_url }))
+        }
+        401 | 403 => Ok(None),
         code => {
             let body = resp.text().await.unwrap_or_default();
             let err: AppError = PlatformError::ApiError {
@@ -156,6 +176,30 @@ pub async fn cmd_nexus_get_file_groups(
 ) -> Result<Vec<FileUpdateGroup>, AppError> {
     let client = get_client(&state)?;
     super::mod_files::get_file_groups(&client, &mod_uuid)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Fetch file versions for a file-update group.
+#[tauri::command]
+pub async fn cmd_nexus_get_file_versions(
+    state: State<'_, NexusState>,
+    group_id: String,
+) -> Result<Vec<FileVersion>, AppError> {
+    let client = get_client(&state)?;
+    super::mod_files::get_file_versions(&client, &group_id)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Fetch ALL files for a mod via the v1 API (no file groups required).
+#[tauri::command]
+pub async fn cmd_nexus_get_all_mod_files(
+    state: State<'_, NexusState>,
+    mod_id: u64,
+) -> Result<Vec<FileVersion>, AppError> {
+    let client = get_client(&state)?;
+    super::mod_files::get_all_mod_files(&client, mod_id)
         .await
         .map_err(AppError::from)
 }
@@ -263,7 +307,7 @@ pub fn try_auto_init(state: &NexusState) {
 pub struct NexusPackageUploadParams {
     pub source_dir: String,
     pub mod_uuid: String,
-    pub file_group_id: u64,
+    pub file_group_id: String,
     pub name: String,
     pub version: String,
     pub description: Option<String>,
@@ -333,14 +377,14 @@ fn sanitize_filename(name: &str) -> String {
 
 // ── File Dependencies (AJ2) ─────────────────────────────────────────
 
-/// Fetch dependencies for a Nexus mod file.
+/// Fetch mod-level requirements (aggregated from file-level deps via v3 API).
 #[tauri::command]
-pub async fn cmd_nexus_get_file_dependencies(
+pub async fn cmd_nexus_get_mod_requirements(
     state: State<'_, NexusState>,
-    file_id: String,
+    group_ids: Vec<String>,
 ) -> Result<Vec<NexusDependency>, AppError> {
     let client = get_client(&state)?;
-    super::dependencies::get_dependencies(&client, &file_id)
+    super::dependencies::get_mod_requirements(&client, &group_ids)
         .await
         .map_err(AppError::from)
 }
@@ -364,11 +408,11 @@ pub async fn cmd_nexus_set_file_dependencies(
 #[tauri::command]
 pub async fn cmd_nexus_rename_file_group(
     state: State<'_, NexusState>,
-    group_id: u64,
+    group_id: String,
     new_name: String,
 ) -> Result<(), AppError> {
     let client = get_client(&state)?;
-    super::mod_files::rename_file_group(&client, group_id, &new_name)
+    super::mod_files::rename_file_group(&client, &group_id, &new_name)
         .await
         .map_err(AppError::from)
 }

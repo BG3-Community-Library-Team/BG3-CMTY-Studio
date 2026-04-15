@@ -69,30 +69,18 @@ describe("NexusSettingsSubpanel", () => {
     expect(container.textContent).toContain("nexus_settings_header");
   });
 
-  // ── Project section hidden without modLoaded ───────────
+  // ── Connection-only subpanel (no project section) ───
 
-  it("shows 'open a project' message when modLoaded is not set", () => {
-    const { container } = render(NexusSettingsSubpanel);
-    expect(container.textContent).toContain("nexus_open_project_for_settings");
-  });
-
-  it("does not show the project section label when modLoaded is not set", () => {
+  it("does not render any project section", () => {
     const { container } = render(NexusSettingsSubpanel);
     expect(container.textContent).not.toContain("nexus_project_section_label");
-  });
-
-  // ── Project section visible with modLoaded ─────────────
-
-  it("shows the project section when modLoaded is true", () => {
-    contextKeys.set("modLoaded", true);
-    const { container } = render(NexusSettingsSubpanel);
-    expect(container.textContent).toContain("nexus_project_section_label");
-  });
-
-  it("hides the 'open a project' message when modLoaded is true", () => {
-    contextKeys.set("modLoaded", true);
-    const { container } = render(NexusSettingsSubpanel);
     expect(container.textContent).not.toContain("nexus_open_project_for_settings");
+  });
+
+  it("does not render project section even when modLoaded is true", () => {
+    contextKeys.set("modLoaded", true);
+    const { container } = render(NexusSettingsSubpanel);
+    expect(container.textContent).not.toContain("nexus_project_section_label");
   });
 
   // ── API key input ──────────────────────────────────────

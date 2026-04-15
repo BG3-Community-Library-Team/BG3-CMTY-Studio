@@ -25,6 +25,9 @@
   import { APP_VERSION } from "../lib/version.js";
   import NotificationHistory from "./NotificationHistory.svelte";
   import ValidationSummaryModal from "./ValidationSummaryModal.svelte";
+  import NexusModsIcon from "./icons/NexusModsIcon.svelte";
+  import { nexusStore } from "../lib/stores/nexusStore.svelte.js";
+  import { open as shellOpen } from "@tauri-apps/plugin-shell";
 
   /** Operation status message with auto-clear */
   let operationStatus = $state("");
@@ -195,6 +198,19 @@
           <span class="text-[var(--th-text-500)] ml-1">v{modVersion}</span>
         {/if}
       </span>
+      {#if nexusStore.modId && nexusStore.apiKeyValid}
+        <button
+          class="inline-flex items-center text-[var(--th-text-500)] hover:text-[var(--th-accent-400,#60a5fa)] transition-colors cursor-pointer"
+          title="Open on Nexus Mods"
+          type="button"
+          onclick={async () => {
+            const url = `https://www.nexusmods.com/baldursgate3/mods/${nexusStore.modId}`;
+            try { await shellOpen(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
+          }}
+        >
+          <NexusModsIcon size={12} />
+        </button>
+      {/if}
       <span class="text-[var(--th-border-600)]">│</span>
       <span>
         {m.status_bar_entries({ selected: selectedCount, total: totalEntries })}

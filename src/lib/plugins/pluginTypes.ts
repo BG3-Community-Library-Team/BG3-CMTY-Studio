@@ -68,6 +68,7 @@ export interface ViewContainerContribution {
   id: string;
   title: string;
   icon: string;
+  iconComponent?: import("svelte").Component;
   location: "sidebar" | "panel";
 }
 

@@ -17,7 +17,7 @@
   import SettingsView from "./components/SettingsView.svelte";
   import HelpSidebarPanel from "./components/HelpSidebarPanel.svelte";
   import ProjectPanel from "./components/ProjectPanel.svelte";
-  import GitPanel from "./components/git/GitPanel.svelte";
+  // GitPanel is now contributed by gitPlugin via viewRegistry
   import LoadedDataPanel from "./components/hamburger/LoadedDataPanel.svelte";
   import ErrorBoundary from "./components/ErrorBoundary.svelte";
   import EntrySummary from "./components/manual-entry/EntrySummary.svelte";
@@ -923,7 +923,7 @@
       <!-- Main content area -->
       <div bind:this={contentColumnEl} class="flex flex-1 min-h-0">
         <!-- Side panel: contextual view based on active activity -->
-        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || uiStore.activeView === "git" || viewRegistry.getViewComponent(uiStore.activeView))}
+        {#if uiStore.sidebarVisible && (uiStore.activeView === "project" || uiStore.activeView === "explorer" || uiStore.activeView === "search" || uiStore.activeView === "loaded-data" || uiStore.activeView === "help" || uiStore.activeView === "settings" || viewRegistry.getViewComponent(uiStore.activeView))}
           <div class="side-panel" style="width: {leftPanelWidth}px; zoom: {settingsStore.zoomLevel / 100};">
             {#if viewRegistry.getViewComponent(uiStore.activeView)}
               {@const DynamicComponent = viewRegistry.getViewComponent(uiStore.activeView)}
@@ -965,10 +965,7 @@
               <ErrorBoundary name="Settings">
                 <SettingsView />
               </ErrorBoundary>
-            {:else if uiStore.activeView === "git"}
-              <ErrorBoundary name="Git Panel">
-                <GitPanel />
-              </ErrorBoundary>
+
             {:else}
               <ErrorBoundary name="File Explorer">
                 <FileExplorer />
@@ -1166,6 +1163,7 @@
     flex-direction: column;
     flex-shrink: 0;
     transition: border-color 0.15s;
+    z-index: 2;
   }
   .side-panel:hover {
     border-right-color: var(--th-border-800, var(--th-bg-700));

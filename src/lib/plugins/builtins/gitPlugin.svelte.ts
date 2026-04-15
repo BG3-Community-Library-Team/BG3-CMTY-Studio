@@ -8,7 +8,6 @@
 import type { PluginModule, PluginContext } from "../pluginTypes.js";
 import { commandRegistry, type Command } from "../../utils/commandRegistry.svelte.js";
 import { contextKeys } from "../contextKeyService.svelte.js";
-import { viewRegistry } from "../viewRegistry.svelte.js";
 import { statusBarRegistry } from "../statusBarRegistry.svelte.js";
 import { configurationRegistry } from "../configurationRegistry.svelte.js";
 import { projectSettingsStore } from "../../stores/projectSettingsStore.svelte.js";
@@ -17,9 +16,9 @@ import { modStore } from "../../stores/modStore.svelte.js";
 import { uiStore } from "../../stores/uiStore.svelte.js";
 import { toastStore } from "../../stores/toastStore.svelte.js";
 import { m } from "../../../paraglide/messages.js";
-import GitPanel from "../../../components/git/GitPanel.svelte";
-import ForgeSection from "../../../components/git/ForgeSection.svelte";
 import GitSettingsSection from "../../../components/settings/GitSettingsSection.svelte";
+import GitPanel from "../../../components/git/GitPanel.svelte";
+import { viewRegistry } from "../viewRegistry.svelte.js";
 
 function getGitPath(): string {
   return modStore.projectPath || modStore.selectedModPath || "";
@@ -88,12 +87,11 @@ export const gitPlugin: PluginModule = {
         },
       },
       viewsContainers: [
-        { id: "cmty-git", title: "Source Control", icon: "git-branch", location: "sidebar" },
+        { id: "git", title: "Source Control", icon: "git-branch", location: "sidebar" },
       ],
       views: {
-        "cmty-git": [
+        "git": [
           { id: "git.panel", name: "Git", when: "modLoaded" },
-          { id: "git.forge", name: "Forge", when: "gitRepoActive && gitForgeDetected" },
         ],
       },
       statusBarItems: [
@@ -411,9 +409,8 @@ export const gitPlugin: PluginModule = {
     ];
     commandRegistry.registerMany(commands);
 
-    // 2. Set view component for sidebar
+    // 2. Set view components for sidebar
     viewRegistry.setViewComponent("git.panel", GitPanel);
-    viewRegistry.setViewComponent("git.forge", ForgeSection);
 
     // 3. Find the status bar item registered by the host and configure it
     const branchItem = statusBarRegistry.items.find(i => i.id === "git.branch");
@@ -445,6 +442,13 @@ export const gitPlugin: PluginModule = {
 
     // 6. Set up context key syncing and status bar text via $effect.root
     const cleanupEffects = $effect.root(() => {
+      // Auto-refresh git when a project is loaded (so status bar shows branch before opening the Git pane)
+      $effect(() => {
+        const path = getGitPath();
+        if (path) {
+          gitStore.refresh(path);
+        }
+      });
       // Sync gitStore → context keys
       $effect(() => {
         contextKeys.set("gitRepoActive", gitStore.isRepo);

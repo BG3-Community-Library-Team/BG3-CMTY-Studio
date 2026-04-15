@@ -9,6 +9,8 @@
   let showDropdown = $state(false);
   let token = $state("");
   let connecting = $state(false);
+  let pickerBtnEl: HTMLButtonElement | null = $state(null);
+  let dropdownPos = $state({ top: 0, right: 0 });
 
   let info = $derived(gitStore.forgeInfo);
   let connected = $derived(gitStore.forgeConnected);
@@ -16,6 +18,10 @@
 
   function toggleDropdown() {
     showDropdown = !showDropdown;
+    if (showDropdown && pickerBtnEl) {
+      const rect = pickerBtnEl.getBoundingClientRect();
+      dropdownPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+    }
     if (!showDropdown) {
       token = "";
     }
@@ -92,6 +98,7 @@
     <button
       class="forge-picker-btn"
       class:connected
+      bind:this={pickerBtnEl}
       title={connected ? `${info.forgeType}: ${user?.login ?? info.host}` : `Connect to ${info.host}`}
       aria-label={connected ? `Forge: ${info.forgeType}, connected as ${user?.login ?? info.host}` : `Connect to ${info.host}`}
       aria-expanded={showDropdown}
@@ -108,7 +115,7 @@
     </button>
 
     {#if showDropdown}
-      <div class="forge-dropdown">
+      <div class="forge-dropdown" style="top: {dropdownPos.top}px; right: {dropdownPos.right}px;">
         {#if connected && user}
           <div class="forge-dd-header">
             {#if user.avatarUrl}
@@ -120,7 +127,10 @@
             </div>
           </div>
           <div class="forge-dd-actions">
-            <button class="forge-dd-btn danger" onclick={disconnect}>
+            <button
+              class="flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs text-red-400 hover:bg-red-950/30"
+              onclick={disconnect}
+            >
               <LogOut size={12} aria-hidden="true" />
               Disconnect
             </button>
@@ -206,12 +216,9 @@
   }
 
   .forge-dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
+    position: fixed;
     z-index: 10000;
     min-width: 220px;
-    margin-top: 4px;
     background: var(--th-bg-800, #27272a);
     border: 1px solid var(--th-border-600, #52525b);
     border-radius: 6px;
@@ -270,10 +277,6 @@
 
   .forge-dd-btn:hover:not(:disabled) {
     background: var(--th-bg-700);
-  }
-
-  .forge-dd-btn.danger:hover {
-    color: var(--th-error, #ef4444);
   }
 
   .forge-dd-btn.primary {

@@ -24,7 +24,7 @@ const POLL_TIMEOUT_SECS: u64 = 300;
 pub struct NexusUploadParams {
     pub file_path: String,
     pub mod_uuid: String,
-    pub file_group_id: u64,
+    pub file_group_id: String,
     pub name: String,
     pub version: String,
     pub description: Option<String>,
@@ -389,7 +389,7 @@ async fn poll_upload(client: &NexusClient, upload_id: &str) -> Result<(), Platfo
 
 async fn create_update_group_version(
     client: &NexusClient,
-    group_id: u64,
+    group_id: &str,
     upload_id: &str,
     name: &str,
     version: &str,
@@ -569,7 +569,7 @@ async fn finish_upload(
 
     create_update_group_version(
         client,
-        params.file_group_id,
+        &params.file_group_id,
         upload_id,
         &params.name,
         &params.version,

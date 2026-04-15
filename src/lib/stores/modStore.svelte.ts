@@ -152,6 +152,10 @@ class ModStore {
     return this.scanResult?.mod_meta.folder ?? "";
   }
 
+  get metaDependencies() {
+    return this.scanResult?.mod_meta.dependencies ?? [];
+  }
+
   /**
    * The prefix for mod files relative to the listing root (projectPath or selectedModPath).
    * When projectPath is set, selectedModPath is a subdirectory of projectPath,

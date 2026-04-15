@@ -1,4 +1,4 @@
-//! Nexus Mods API integration (Sprint 33+).
+//! Nexus Mods API integration
 
 pub mod client;
 pub mod commands;

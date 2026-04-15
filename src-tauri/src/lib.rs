@@ -2381,13 +2381,17 @@ pub fn run() {
             #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_get_file_groups,
             #[cfg(feature = "nexus-integration")]
+            platform::nexus::commands::cmd_nexus_get_file_versions,
+            #[cfg(feature = "nexus-integration")]
+            platform::nexus::commands::cmd_nexus_get_all_mod_files,
+            #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_upload_file,
             #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_create_mod_file,
             #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_package_and_upload,
             #[cfg(feature = "nexus-integration")]
-            platform::nexus::commands::cmd_nexus_get_file_dependencies,
+            platform::nexus::commands::cmd_nexus_get_mod_requirements,
             #[cfg(feature = "nexus-integration")]
             platform::nexus::commands::cmd_nexus_set_file_dependencies,
             #[cfg(feature = "nexus-integration")]

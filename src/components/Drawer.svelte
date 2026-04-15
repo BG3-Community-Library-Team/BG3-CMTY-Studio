@@ -95,11 +95,9 @@
     {/if}
   </div>
 
-  {#if !collapsed}
-    <div class="drawer-body">
-      {@render children()}
-    </div>
-  {/if}
+  <div class="drawer-body" class:drawer-body-hidden={collapsed}>
+    {@render children()}
+  </div>
 </div>
 
 <style>
@@ -210,11 +208,43 @@
     color: var(--th-text-200, #e4e4e7);
   }
 
+  :global(.drawer-action-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--th-text-500, #8b8b94);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  :global(.drawer-action-btn:hover) {
+    background: var(--th-bg-600, #52525b);
+    color: var(--th-text-200, #e4e4e7);
+  }
+
+  :global(.drawer-action-btn.active) {
+    color: var(--th-accent, #0ea5e9);
+  }
+
+  :global(.drawer-action-btn.active :is(svg)) {
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+
   .drawer-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+  }
+
+  .drawer-body-hidden {
+    display: none;
   }
 
   :global(:root.reduced-motion) .drawer-chevron {

@@ -11,7 +11,7 @@ import { viewRegistry } from "../viewRegistry.svelte.js";
 import { statusBarRegistry } from "../statusBarRegistry.svelte.js";
 import { nexusStore } from "../../stores/nexusStore.svelte.js";
 import NexusPanel from "../../../components/platform/nexus/NexusPanel.svelte";
-import NexusSettingsSubpanel from "../../../components/platform/nexus/NexusSettingsSubpanel.svelte";
+import NexusModsIcon from "../../../components/icons/NexusModsIcon.svelte";
 
 export const nexusPlugin: PluginModule = {
   manifest: {
@@ -32,12 +32,11 @@ export const nexusPlugin: PluginModule = {
         properties: {},
       },
       viewsContainers: [
-        { id: "cmty-publishing", title: "Publishing", icon: "globe", location: "sidebar" },
+        { id: "cmty-nexus", title: "Nexus Mods", icon: "nexus-mods", iconComponent: NexusModsIcon, location: "sidebar" },
       ],
       views: {
-        "cmty-publishing": [
+        "cmty-nexus": [
           { id: "nexus.panel", name: "Nexus Mods", when: "modLoaded" },
-          { id: "nexus.settings", name: "Nexus Settings" },
         ],
       },
       statusBarItems: [
@@ -109,7 +108,6 @@ export const nexusPlugin: PluginModule = {
 
     // 2. Set view components for sidebar
     viewRegistry.setViewComponent("nexus.panel", NexusPanel);
-    viewRegistry.setViewComponent("nexus.settings", NexusSettingsSubpanel);
 
     // 3. Find the status bar item registered by the host and configure it
     const statusItem = statusBarRegistry.items.find(i => i.id === "nexus.status");
@@ -124,13 +122,10 @@ export const nexusPlugin: PluginModule = {
       $effect(() => {
         contextKeys.set("nexusConnected", nexusStore.apiKeyValid);
       });
-      $effect(() => {
-        if (statusItem) {
-          statusItem.text = nexusStore.modName ?? "";
-          statusItem.tooltip = nexusStore.apiKeyValid ? "Nexus: Connected" : "Nexus: Not connected";
-        }
-      });
     });
+
+    // 5. Check API key on activation so the status bar icon shows immediately
+    nexusStore.checkApiKey();
 
     // Store cleanup in subscriptions
     ctx.subscriptions.push({ dispose: cleanupEffects });

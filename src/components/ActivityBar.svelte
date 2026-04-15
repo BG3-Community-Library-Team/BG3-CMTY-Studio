@@ -10,13 +10,26 @@
   import HelpCircle from "@lucide/svelte/icons/help-circle";
   import FileBox from "@lucide/svelte/icons/file-box";
   import GitBranch from "@lucide/svelte/icons/git-branch";
+  import Globe from "@lucide/svelte/icons/globe";
+  import Package from "@lucide/svelte/icons/package";
+  import Upload from "@lucide/svelte/icons/upload";
   import Puzzle from "@lucide/svelte/icons/puzzle";
+
+  /** Map manifest icon names to icon components for plugin containers (fallback) */
+  const PLUGIN_ICON_MAP: Record<string, typeof FolderOpen> = {
+    globe: Globe,
+    package: Package,
+    upload: Upload,
+    "git-branch": GitBranch,
+    search: Search,
+    settings: Settings,
+    database: Database,
+  };
 
   const VIEW_REGISTRY: Record<string, { label: () => string; icon: typeof FolderOpen }> = {
     project: { label: () => m.activity_bar_project(), icon: FileBox },
     explorer: { label: () => m.activity_bar_explorer(), icon: FolderOpen },
     search: { label: () => m.activity_bar_search(), icon: Search },
-    git: { label: () => m.activity_bar_git(), icon: GitBranch },
     "loaded-data": { label: () => m.activity_bar_loaded_data(), icon: Database },
     settings: { label: () => m.activity_bar_settings(), icon: Settings },
     help: { label: () => m.activity_bar_help(), icon: HelpCircle },
@@ -34,19 +47,38 @@
     );
     const allKnownIds = new Set([...Object.keys(VIEW_REGISTRY), ...pluginLookup.keys()]);
 
-    return uiStore.activityBarOrder
+    const ordered = uiStore.activityBarOrder
       .filter(id => allKnownIds.has(id))
       .filter(id => id !== "search" || modReady)
       .filter(id => id !== "project" || modReady)
       .filter(id => id !== "git" || modReady)
+      .filter(id => id !== "cmty-nexus" || modReady)
+      .filter(id => id !== "cmty-modio" || modReady)
       .map(id => {
         const core = VIEW_REGISTRY[id];
         if (core) {
           return { id, label: core.label(), icon: core.icon };
         }
         const plugin = pluginLookup.get(id)!;
-        return { id, label: plugin.title, icon: Puzzle };
+        // Use the first visible non-settings view name as label, fallback to container title
+        const firstView = viewRegistry.resolveContainerView(id);
+        const viewName = firstView ? viewRegistry.getViewName(firstView) : null;
+        return { id, label: viewName ?? plugin.title, icon: (plugin.iconComponent ?? PLUGIN_ICON_MAP[plugin.icon] ?? Puzzle) as typeof FolderOpen };
       });
+
+    // Append plugin containers not yet in the persisted order
+    const orderedIds = new Set(ordered.map(v => v.id));
+    for (const [id, plugin] of pluginLookup) {
+      if (!orderedIds.has(id)) {
+        // Apply the same modReady gate as the persisted-order filters
+        if ((id === "git" || id === "cmty-nexus" || id === "cmty-modio") && !modReady) continue;
+        const firstView = viewRegistry.resolveContainerView(id);
+        const viewName = firstView ? viewRegistry.getViewName(firstView) : null;
+        ordered.push({ id, label: viewName ?? plugin.title, icon: (plugin.iconComponent ?? PLUGIN_ICON_MAP[plugin.icon] ?? Puzzle) as typeof FolderOpen });
+      }
+    }
+
+    return ordered;
   });
 
   // ── Drag-and-drop state ──
@@ -82,9 +114,17 @@
     dropIndex = Math.max(0, Math.min(views.length - 1, rawTarget));
   }
 
+  /** Ensure all visible IDs exist in the persisted order before reordering. */
+  function ensureOrderContainsVisibleIds(order: string[]): void {
+    for (const v of views) {
+      if (!order.includes(v.id)) order.push(v.id);
+    }
+  }
+
   function onPointerUp() {
     if (isDragging && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
       const order = [...uiStore.activityBarOrder];
+      ensureOrderContainsVisibleIds(order);
       const visibleIds = views.map(v => v.id);
       const fromId = visibleIds[dragIndex];
       const toId = visibleIds[dropIndex];
@@ -112,6 +152,7 @@
     const newIndex = index + dir;
     if (newIndex < 0 || newIndex >= views.length) return;
     const order = [...uiStore.activityBarOrder];
+    ensureOrderContainsVisibleIds(order);
     const visibleIds = views.map(v => v.id);
     const fromFull = order.indexOf(visibleIds[index]);
     const toFull = order.indexOf(visibleIds[newIndex]);
@@ -126,7 +167,7 @@
 <nav class="activity-bar" class:no-transition={suppressTransition} aria-label={m.activity_bar_aria()}>
   {#each views as view, i (view.id)}
     {@const Icon = view.icon}
-    {@const isActive = uiStore.activeView === view.id && uiStore.sidebarVisible}
+    {@const isActive = uiStore.sidebarVisible && (uiStore.activeView === view.id || viewRegistry.resolveContainerView(view.id) === uiStore.activeView)}
     {@const isBeingDragged = isDragging && dragIndex === i}
     {@const shift = isDragging && dragIndex !== null && dropIndex !== null && i !== dragIndex
       ? (i >= Math.min(dragIndex, dropIndex) && i <= Math.max(dragIndex, dropIndex)
@@ -142,7 +183,12 @@
       aria-pressed={isActive}
       aria-roledescription="reorderable"
       style={isBeingDragged ? `transform: translateY(${dragOffsetY}px); z-index: 50; opacity: 0.7;` : shift ? `transform: translateY(${shift}px);` : ''}
-      onclick={() => { if (!isDragging) uiStore.toggleSidebar(view.id); }}
+      onclick={() => {
+        if (isDragging) return;
+        // For plugin containers, resolve to first visible non-settings view
+        const resolved = viewRegistry.resolveContainerView(view.id);
+        uiStore.toggleSidebar(resolved ?? view.id);
+      }}
       onpointerdown={(e) => onPointerDown(e, i)}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
@@ -165,7 +211,7 @@
     padding-top: 4px;
     gap: 2px;
     align-items: center;
-    z-index: 10;
+    z-index: 1;
   }
 
   .activity-icon {
