@@ -13,6 +13,7 @@
   } from "../../../lib/tauri/nexus.js";
   import Check from "@lucide/svelte/icons/check";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
+  import ConnectionBadge from "../ConnectionBadge.svelte";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Loader2 from "@lucide/svelte/icons/loader-2";
 
@@ -114,19 +115,10 @@
   <!-- Section Header -->
   <div class="flex items-center justify-between">
     <h4 class="text-sm font-semibold text-[var(--th-text-200)]">{m.nexus_settings_header()}</h4>
-    <span
-      class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full"
-      style="color: {keyStatus === 'valid' ? 'var(--th-success, #10b981)' : 'var(--th-text-500)'}; background: {keyStatus === 'valid' ? 'color-mix(in srgb, var(--th-success, #10b981) 12%, transparent)' : 'var(--th-bg-800)'}"
-      role="status"
-      aria-live="polite"
-    >
-      {#if keyStatus === "valid"}
-        <Check size={10} aria-hidden="true" />
-        {m.nexus_connected()}
-      {:else}
-        {m.nexus_not_connected()}
-      {/if}
-    </span>
+    <ConnectionBadge
+      status={keyStatus === "valid" ? "connected" : "disconnected"}
+      label={keyStatus === "valid" ? m.nexus_connected() : m.nexus_not_connected()}
+    />
   </div>
 
   <!-- Connection Section (always visible) -->

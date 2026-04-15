@@ -38,7 +38,6 @@ export interface ModioModResponse {
 }
 
 export interface CreateModParams {
-  game_id: number;
   name: string;
   logo_path: string;
   summary?: string;
@@ -49,7 +48,6 @@ export interface CreateModParams {
 }
 
 export interface EditModParams {
-  game_id: number;
   mod_id: number;
   name?: string;
   summary?: string;
@@ -61,7 +59,6 @@ export interface EditModParams {
 }
 
 export interface AddMediaParams {
-  game_id: number;
   mod_id: number;
   image_paths?: string[];
   logo_path?: string;
@@ -98,7 +95,6 @@ export interface ModioFileEntry {
 }
 
 export interface EditFileParams {
-  game_id: number;
   mod_id: number;
   file_id: number;
   version?: string;
@@ -107,7 +103,6 @@ export interface EditFileParams {
 }
 
 export interface ModioUploadParams {
-  game_id: number;
   mod_id: number;
   file_path: string;
   version: string;
@@ -127,32 +122,12 @@ export interface ModioModfileResponse {
 
 // ── Authentication & Credential Commands ────────────────────────
 
-export async function modioSetApiKey(apiKey: string): Promise<void> {
-  return invoke("cmd_modio_set_api_key", { apiKey });
-}
-
-export async function modioHasApiKey(): Promise<boolean> {
-  return invoke("cmd_modio_has_api_key");
-}
-
 export async function modioHasOauthToken(): Promise<boolean> {
   return invoke("cmd_modio_has_oauth_token");
 }
 
 export async function modioSetOauthToken(token: string): Promise<ModioUserProfile> {
   return invoke("cmd_modio_set_oauth_token", { token });
-}
-
-export async function modioClearApiKey(): Promise<void> {
-  return invoke("cmd_modio_clear_api_key");
-}
-
-export async function modioConnect(email: string): Promise<void> {
-  return invoke("cmd_modio_connect", { email });
-}
-
-export async function modioVerifyCode(code: string): Promise<ModioUserProfile> {
-  return invoke("cmd_modio_verify_code", { code });
 }
 
 export async function modioDisconnect(): Promise<void> {
@@ -165,86 +140,86 @@ export async function modioGetUser(): Promise<ModioUserProfile> {
 
 // ── Mod Listing ─────────────────────────────────────────────────
 
-export async function modioGetMyMods(gameId?: number): Promise<ModioModSummary[]> {
-  return invoke("cmd_modio_get_my_mods", { gameId });
+export async function modioGetMyMods(): Promise<ModioModSummary[]> {
+  return invoke("cmd_modio_get_my_mods", { gameId: 629 });
 }
 
 // ── Mod Profile Management ──────────────────────────────────────
 
 export async function modioCreateMod(params: CreateModParams): Promise<ModioModResponse> {
-  return invoke("cmd_modio_create_mod", { params });
+  return invoke("cmd_modio_create_mod", { params: { ...params, game_id: 629 } });
 }
 
 export async function modioEditMod(params: EditModParams): Promise<ModioModResponse> {
-  return invoke("cmd_modio_edit_mod", { params });
+  return invoke("cmd_modio_edit_mod", { params: { ...params, game_id: 629 } });
 }
 
 // ── Media Management ────────────────────────────────────────────
 
 export async function modioAddMedia(params: AddMediaParams): Promise<void> {
-  return invoke("cmd_modio_add_media", { params });
+  return invoke("cmd_modio_add_media", { params: { ...params, game_id: 629 } });
 }
 
-export async function modioDeleteMedia(gameId: number, modId: number, filenames: string[]): Promise<void> {
-  return invoke("cmd_modio_delete_media", { gameId, modId, filenames });
+export async function modioDeleteMedia(modId: number, filenames: string[]): Promise<void> {
+  return invoke("cmd_modio_delete_media", { gameId: 629, modId, filenames });
 }
 
 // ── File/Version Management ─────────────────────────────────────
 
-export async function modioListFiles(modId: number, gameId?: number): Promise<ModioFileEntry[]> {
-  return invoke("cmd_modio_list_files", { gameId, modId });
+export async function modioListFiles(modId: number): Promise<ModioFileEntry[]> {
+  return invoke("cmd_modio_list_files", { gameId: 629, modId });
 }
 
 export async function modioEditFile(params: EditFileParams): Promise<void> {
-  return invoke("cmd_modio_edit_file", { params });
+  return invoke("cmd_modio_edit_file", { params: { ...params, game_id: 629 } });
 }
 
-export async function modioDeleteFile(modId: number, fileId: number, gameId?: number): Promise<void> {
-  return invoke("cmd_modio_delete_file", { gameId, modId, fileId });
+export async function modioDeleteFile(modId: number, fileId: number): Promise<void> {
+  return invoke("cmd_modio_delete_file", { gameId: 629, modId, fileId });
 }
 
 export async function modioUploadFile(params: ModioUploadParams): Promise<ModioModfileResponse> {
-  return invoke("cmd_modio_upload_file", { params });
+  return invoke("cmd_modio_upload_file", { params: { ...params, game_id: 629 } });
 }
 
 // ── Dependency Management ───────────────────────────────────────
 
-export async function modioGetDependencies(modId: number, gameId?: number): Promise<ModioDependency[]> {
-  return invoke("cmd_modio_get_dependencies", { gameId, modId });
+export async function modioGetDependencies(modId: number): Promise<ModioDependency[]> {
+  return invoke("cmd_modio_get_dependencies", { gameId: 629, modId });
 }
 
-export async function modioAddDependencies(modId: number, dependencyIds: number[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_add_dependencies", { gameId, modId, dependencyIds });
+export async function modioAddDependencies(modId: number, dependencyIds: number[]): Promise<void> {
+  return invoke("cmd_modio_add_dependencies", { gameId: 629, modId, dependencyIds });
 }
 
-export async function modioRemoveDependencies(modId: number, dependencyIds: number[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_remove_dependencies", { gameId, modId, dependencyIds });
+export async function modioRemoveDependencies(modId: number, dependencyIds: number[]): Promise<void> {
+  return invoke("cmd_modio_remove_dependencies", { gameId: 629, modId, dependencyIds });
 }
 
 // ── Tag Management ──────────────────────────────────────────────
 
-export async function modioGetGameTags(gameId?: number): Promise<TagOption[]> {
-  return invoke("cmd_modio_get_game_tags", { gameId });
+export async function modioGetGameTags(): Promise<TagOption[]> {
+  return invoke("cmd_modio_get_game_tags", { gameId: 629 });
 }
 
-export async function modioAddTags(modId: number, tags: string[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_add_tags", { gameId, modId, tags });
+export async function modioAddTags(modId: number, tags: string[]): Promise<void> {
+  return invoke("cmd_modio_add_tags", { gameId: 629, modId, tags });
 }
 
-export async function modioRemoveTags(modId: number, tags: string[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_remove_tags", { gameId, modId, tags });
+export async function modioRemoveTags(modId: number, tags: string[]): Promise<void> {
+  return invoke("cmd_modio_remove_tags", { gameId: 629, modId, tags });
 }
 
 // ── Metadata KVP ────────────────────────────────────────────────
 
-export async function modioGetMetadata(modId: number, gameId?: number): Promise<MetadataEntry[]> {
-  return invoke("cmd_modio_get_metadata", { gameId, modId });
+export async function modioGetMetadata(modId: number): Promise<MetadataEntry[]> {
+  return invoke("cmd_modio_get_metadata", { gameId: 629, modId });
 }
 
-export async function modioAddMetadata(modId: number, entries: MetadataEntry[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_add_metadata", { gameId, modId, entries });
+export async function modioAddMetadata(modId: number, entries: MetadataEntry[]): Promise<void> {
+  return invoke("cmd_modio_add_metadata", { gameId: 629, modId, entries });
 }
 
-export async function modioRemoveMetadata(modId: number, entries: MetadataEntry[], gameId?: number): Promise<void> {
-  return invoke("cmd_modio_remove_metadata", { gameId, modId, entries });
+export async function modioRemoveMetadata(modId: number, entries: MetadataEntry[]): Promise<void> {
+  return invoke("cmd_modio_remove_metadata", { gameId: 629, modId, entries });
 }

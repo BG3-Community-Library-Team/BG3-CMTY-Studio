@@ -11,6 +11,7 @@ import { contextKeys } from "../contextKeyService.svelte.js";
 import { viewRegistry } from "../viewRegistry.svelte.js";
 import { statusBarRegistry } from "../statusBarRegistry.svelte.js";
 import { modioStore } from "../../stores/modioStore.svelte.js";
+import { modStore } from "../../stores/modStore.svelte.js";
 import ModioPanel from "../../../components/platform/modio/ModioPanel.svelte";
 import ModioSettingsSubpanel from "../../../components/platform/modio/ModioSettingsSubpanel.svelte";
 import modioIcon from "../../../components/icons/modioIcon.svelte";
@@ -147,7 +148,20 @@ export const modioPlugin: PluginModule = {
             : "mod.io: Not connected";
         }
       });
+
+      // Project lifecycle: load/reset config when project changes
+      $effect(() => {
+        const path = modStore.selectedModPath;
+        if (path) {
+          modioStore.loadProjectConfig(path);
+        } else {
+          modioStore.resetProject();
+        }
+      });
     });
+
+    // Check auth on activation so status bar shows immediately
+    modioStore.checkAuth();
 
     // Store cleanup in subscriptions
     ctx.subscriptions.push({ dispose: cleanupEffects });
