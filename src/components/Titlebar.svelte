@@ -152,12 +152,12 @@
     role="presentation"
     onmousedown={handleDragMousedown}
   >
-    <!-- <img
-      src="/app-icon-flask.svg"
+    <img
+      src="/icon.svg"
       alt=""
-      class="h-9 w-9"d
+      class="h-12 w-12 shrink-0"
       draggable="false"
-    /> -->
+    />
     <span class="hidden sm:inline text-[var(--th-text-200)]">{APP_NAME}</span>
   </div>
 
