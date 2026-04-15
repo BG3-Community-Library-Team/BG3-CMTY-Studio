@@ -39,6 +39,7 @@ export interface ModioModResponse {
 
 export interface CreateModParams {
   name: string;
+  name_id?: string;
   logo_path: string;
   summary?: string;
   description?: string;
@@ -180,6 +181,21 @@ export async function modioDeleteFile(modId: number, fileId: number): Promise<vo
 
 export async function modioUploadFile(params: ModioUploadParams): Promise<ModioModfileResponse> {
   return invoke("cmd_modio_upload_file", { params: { ...params, game_id: 629 } });
+}
+
+// ── Integrated Package + Upload ─────────────────────────────────
+
+export interface ModioPackageUploadParams {
+  source_dir: string;
+  mod_id: number;
+  version: string;
+  changelog?: string;
+  active?: boolean;
+  exclude_patterns?: string[];
+}
+
+export async function modioPackageAndUpload(params: ModioPackageUploadParams): Promise<void> {
+  return invoke("cmd_modio_package_and_upload", { params });
 }
 
 // ── Dependency Management ───────────────────────────────────────

@@ -17,6 +17,8 @@ const MAX_LOGO_SIZE: u64 = 8 * 1024 * 1024;
 pub struct CreateModParams {
     pub game_id: u64,
     pub name: String,
+    /// URL-friendly slug (e.g. `"my-cool-mod"`). Auto-generated if omitted.
+    pub name_id: Option<String>,
     /// Path to logo image file on disk (min 512×288, JPG/PNG, max 8 MB).
     pub logo_path: String,
     pub summary: Option<String>,
@@ -137,6 +139,9 @@ pub async fn create_mod(
         .text("name", params.name.clone())
         .part("logo", logo_part);
 
+    if let Some(ref name_id) = params.name_id {
+        form = form.text("name_id", name_id.clone());
+    }
     if let Some(ref summary) = params.summary {
         form = form.text("summary", summary.clone());
     }

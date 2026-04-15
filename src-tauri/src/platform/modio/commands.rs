@@ -2,6 +2,7 @@
 
 use std::sync::Mutex;
 
+use serde::Deserialize;
 use tauri::State;
 
 use crate::error::AppError;
@@ -662,4 +663,76 @@ pub async fn cmd_modio_remove_metadata(
     let gid = game_id.unwrap_or(BG3_GAME_ID);
     meta::remove_metadata(&client_snapshot, gid, mod_id, &entries).await?;
     Ok(())
+}
+
+// ── Integrated Package + Upload ─────────────────────────────────────
+
+/// Parameters for integrated package-and-upload to mod.io.
+#[derive(Debug, Deserialize)]
+pub struct ModioPackageUploadParams {
+    pub source_dir: String,
+    pub mod_id: u64,
+    pub version: String,
+    pub changelog: Option<String>,
+    pub active: Option<bool>,
+    pub exclude_patterns: Option<Vec<String>>,
+}
+
+/// Package a mod directory into a zip and upload it to mod.io in one step.
+#[tauri::command]
+pub async fn cmd_modio_package_and_upload(
+    app: tauri::AppHandle,
+    state: State<'_, ModioState>,
+    params: ModioPackageUploadParams,
+) -> Result<(), AppError> {
+    let client_snapshot = {
+        let guard = state.client.lock().map_err(|e| {
+            AppError::internal(format!("Failed to lock ModioState: {e}"))
+        })?;
+        guard.as_ref().ok_or_else(|| {
+            AppError::invalid_input("mod.io client not initialised")
+        })?.clone_snapshot()
+    };
+
+    // Create a temp directory for the zip.
+    let temp_dir = std::env::temp_dir().join("cmty-studio-upload");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| crate::platform::errors::PlatformError::IoError(
+            format!("Failed to create temp dir: {e}"),
+        ))?;
+
+    let zip_name = format!("modio-{}-{}.zip", params.mod_id, &params.version);
+    let zip_path = temp_dir.join(&zip_name);
+
+    let excludes: Vec<&str> = params
+        .exclude_patterns
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
+    let _pkg = crate::platform::packaging::create_upload_zip(
+        std::path::Path::new(&params.source_dir),
+        &zip_path,
+        &excludes,
+    )?;
+
+    // Acquire write rate limit before upload.
+    client_snapshot.write_limiter.acquire().await;
+
+    let upload_params = upload::ModioUploadParams {
+        game_id: BG3_GAME_ID,
+        mod_id: params.mod_id,
+        file_path: zip_path.to_string_lossy().to_string(),
+        version: params.version,
+        changelog: params.changelog,
+        active: params.active,
+        metadata_blob: None,
+    };
+
+    let result = upload::upload_file(&client_snapshot, &upload_params, &app).await;
+
+    // Clean up the temp zip regardless of outcome.
+    let _ = std::fs::remove_file(&zip_path);
+
+    result.map(|_| ()).map_err(AppError::from)
 }

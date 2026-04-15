@@ -2420,6 +2420,8 @@ pub fn run() {
             #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_upload_file,
             #[cfg(feature = "modio-integration")]
+            platform::modio::commands::cmd_modio_package_and_upload,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_create_mod,
             #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_edit_mod,
