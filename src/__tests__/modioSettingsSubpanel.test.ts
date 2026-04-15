@@ -56,12 +56,6 @@ vi.mock("../lib/stores/toastStore.svelte.js", () => ({
   },
 }));
 
-// Mock @lucide/svelte icons
-vi.mock("@lucide/svelte/icons/external-link", () => ({ default: {} }));
-vi.mock("@lucide/svelte/icons/alert-triangle", () => ({ default: {} }));
-vi.mock("@lucide/svelte/icons/loader-2", () => ({ default: {} }));
-vi.mock("@lucide/svelte/icons/log-out", () => ({ default: {} }));
-
 // ── Imports ──────────────────────────────────────────────────────
 
 import { modioStore } from "../lib/stores/modioStore.svelte.js";
@@ -96,7 +90,8 @@ describe("ModioSettingsSubpanel", () => {
     modioStore.tokenExpiry = new Date(Date.now() + 86_400_000 * 15); // 15 days
 
     render(ModioSettingsSubpanel);
-    expect(screen.getByText(/TestUser/)).toBeTruthy();
+    // Mock proxy renders the message key; parameterized call returns "modio_connected_as"
+    expect(screen.getByText(/modio_connected_as/)).toBeTruthy();
     // The avatar img should be present
     const img = document.querySelector('img[loading="lazy"]');
     expect(img).toBeTruthy();
@@ -110,8 +105,8 @@ describe("ModioSettingsSubpanel", () => {
 
     render(ModioSettingsSubpanel);
 
-    // Should show connected state
-    expect(screen.getByText(/TestUser/)).toBeTruthy();
+    // Should show connected state (mock proxy returns key name)
+    expect(screen.getByText(/modio_connected_as/)).toBeTruthy();
 
     // Click disconnect
     const disconnectBtn = screen.getByText("modio_disconnect");
