@@ -15,7 +15,7 @@ const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024;
 /// Parameters for a mod.io file upload.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModioUploadParams {
-    /// mod.io game ID (default: 629 for BG3).
+    /// mod.io game ID (default: 6715 for BG3).
     pub game_id: u64,
     /// The mod to upload to.
     pub mod_id: u64,

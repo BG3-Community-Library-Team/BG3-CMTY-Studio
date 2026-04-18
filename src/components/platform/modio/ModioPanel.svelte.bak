@@ -7,52 +7,44 @@
   import { toastStore } from "../../../lib/stores/toastStore.svelte.js";
   import { open as shellOpen } from "@tauri-apps/plugin-shell";
   import { getPrefersReducedMotion } from "../../../lib/stores/motion.svelte.js";
-  import { modioPackageAndUpload, modioEditMod } from "../../../lib/tauri/modio.js";
-  import type { ModioImage } from "../../../lib/tauri/modio.js";
+  import { modioPackageAndUpload } from "../../../lib/tauri/modio.js";
   import { modStore } from "../../../lib/stores/modStore.svelte.js";
   import { localizeError, type AppError } from "../../../lib/errorLocalization.js";
-  import { uiStore } from "../../../lib/stores/uiStore.svelte.js";
 
-  // Icons
+  // Icons — always use direct imports
   import Globe from "@lucide/svelte/icons/globe";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Upload from "@lucide/svelte/icons/upload";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import Plus from "@lucide/svelte/icons/plus";
-  import Pencil from "@lucide/svelte/icons/pencil";
   import Check from "@lucide/svelte/icons/check";
   import Eye from "@lucide/svelte/icons/eye";
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Download from "@lucide/svelte/icons/download";
   import Users from "@lucide/svelte/icons/users";
+  import UnlinkIcon from "@lucide/svelte/icons/unlink";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import LogOut from "@lucide/svelte/icons/log-out";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import LinkIcon from "@lucide/svelte/icons/link";
-  import X from "@lucide/svelte/icons/x";
 
-  // Section components
+  // Section components (stubs for now, replaced by other agents)
   import ModioFileVersions from "./ModioFileVersions.svelte";
+  import ModioModDetails from "./ModioModDetails.svelte";
   import ModioMediaSection from "./ModioMediaSection.svelte";
   import ModioTagSection from "./ModioTagSection.svelte";
   import ModioDependencies from "./ModioDependencies.svelte";
   import CreateModDialog from "./CreateModDialog.svelte";
   import UploadProgressModal from "../UploadProgressModal.svelte";
-  import ExplorerDrawer from "../../ExplorerDrawer.svelte";
 
   // ── Upload form state ──
   let uploadVersion = $state("");
   let uploadChangelog = $state("");
   let uploadActive = $state(true);
-  let showUploadForm = $state(false);
-
-  // Pre-fill version from meta.lsx when upload form opens
-  $effect(() => {
-    if (showUploadForm && !uploadVersion) {
-      uploadVersion = modStore.scanResult?.mod_meta?.version ?? "";
-    }
-  });
+  let showUploadForm = $state(true);
 
   // ── UI state ──
   let showCreateDialog = $state(false);
@@ -61,49 +53,6 @@
   let isRefreshing = $state(false);
   let lastRefreshAt = 0;
   const REFRESH_COOLDOWN_MS = 30_000;
-
-  // ── Mod info card state ──
-  let summaryExpanded = $state(false);
-  let summaryEl: HTMLParagraphElement | null = $state(null);
-  let summaryTruncated = $state(false);
-
-  // ── Inline description editing state ──
-  let isEditingDescription = $state(false);
-  let editDescriptionValue = $state("");
-  let isSavingDescription = $state(false);
-
-  // ── Media section ref for header browse button ──
-  let mediaSectionRef: ModioMediaSection | null = $state(null);
-
-  // ── Dependencies add form state ──
-  let showDepAddForm = $state(false);
-
-  // ── Resizable info/drawer split ──
-  let infoHeight: number | null = $state(null);
-  let isResizing = $state(false);
-  let infoSectionRef: HTMLDivElement | null = $state(null);
-
-  function handleResizeStart(e: MouseEvent) {
-    e.preventDefault();
-    isResizing = true;
-    const startY = e.clientY;
-    const startHeight = infoHeight ?? infoSectionRef?.getBoundingClientRect().height ?? 200;
-    // Get the parent container height to cap the info section
-    const parentHeight = infoSectionRef?.parentElement?.getBoundingClientRect().height ?? 600;
-
-    function onMove(ev: MouseEvent) {
-      const delta = ev.clientY - startY;
-      // Clamp between 80px and 80% of parent
-      infoHeight = Math.max(80, Math.min(parentHeight * 0.8, startHeight + delta));
-    }
-    function onUp() {
-      isResizing = false;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
 
   // ── Link-by-URL state (mirrors Nexus pattern) ──
   let linkInput = $state("");
@@ -126,29 +75,14 @@
     "var(--th-text-600, #6b7280)"
   );
 
-  // ── Drawer visibility & pinning (matches Nexus/Git pane pattern) ──
-  const allModioDrawerIds = ["modio-file-versions", "modio-media", "modio-dependencies"];
-  const modioDrawerTitles: Record<string, string> = $derived({
-    "modio-file-versions": m.modio_file_versions_header(),
-    "modio-media": m.modio_media_header(),
-    "modio-dependencies": m.modio_dependencies_header(),
+  // ── Collapsible sections ──
+  let sectionsExpanded: Record<string, boolean> = $state({
+    fileVersions: false,
+    modDetails: false,
+    media: false,
+    tags: false,
+    dependencies: false,
   });
-  let visibleDrawerIds = $derived.by(() => {
-    const visible = allModioDrawerIds.filter(id => !uiStore.isDrawerHidden(id));
-    const pinned = visible.filter(id => uiStore.isDrawerPinned(id));
-    const unpinned = visible.filter(id => !uiStore.isDrawerPinned(id));
-    return [...pinned, ...unpinned];
-  });
-
-  // Detect if summary text is actually truncated by line-clamp
-  $effect(() => {
-    if (summaryEl && !summaryExpanded) {
-      summaryTruncated = summaryEl.scrollHeight > summaryEl.clientHeight;
-    }
-  });
-
-  // File count for drawer header badge
-  let fileCount = $state(0);
 
   // ── Derived ──
   let canUpload = $derived(
@@ -289,6 +223,10 @@
     }
   }
 
+  function toggleSection(key: string) {
+    sectionsExpanded[key] = !sectionsExpanded[key];
+  }
+
   async function handleUpload() {
     if (!canUpload || !modioStore.selectedModId) return;
 
@@ -330,41 +268,11 @@
     }
   }
 
-  // ── Inline description editing ──
-  function startEditDescription() {
-    editDescriptionValue = selectedModData?.summary ?? "";
-    isEditingDescription = true;
-  }
-
-  async function saveDescription() {
-    if (!modioStore.selectedModId || isSavingDescription) return;
-    isSavingDescription = true;
-    try {
-      await modioEditMod({
-        mod_id: modioStore.selectedModId,
-        summary: editDescriptionValue.trim(),
-      });
-      isEditingDescription = false;
-      await modioStore.loadUserMods();
-    } catch {
-      toastStore.error(m.modio_error_save_failed());
-    } finally {
-      isSavingDescription = false;
-    }
-  }
-
-  function cancelEditDescription() {
-    isEditingDescription = false;
-  }
-
   // Find the selected mod in the user mods list for stats display
   let selectedModData = $derived.by(() => {
     if (!modioStore.selectedModId) return null;
     return modioStore.userMods.find(mod => mod.id === modioStore.selectedModId) ?? null;
   });
-
-  // Media images for drawer count badge
-  let mediaImages = $derived(selectedModData?.media_images ?? []);
 
   onMount(async () => {
     if (modioStore.isAuthenticated) {
@@ -420,23 +328,29 @@
         <RefreshCw size={14} class={isRefreshing && !getPrefersReducedMotion() ? "animate-spin" : ""} />
       </button>
 
-      <!-- Upload toggle button (only when connected, like Nexus) -->
-      {#if modioStore.isAuthenticated}
+      <!-- External link to mod profile -->
+      {#if modioStore.selectedModUrl}
         <button
           type="button"
           class="rounded p-1 text-[var(--th-text-500)] hover:bg-[var(--th-bg-800)] hover:text-[var(--th-text-200)]"
-          class:text-[var(--th-accent,#0ea5e9)]={showUploadForm}
-          onclick={() => { showUploadForm = !showUploadForm; }}
-          aria-label={showUploadForm ? m.common_cancel() : m.modio_upload_button()}
-          title={showUploadForm ? m.common_cancel() : m.modio_upload_button()}
+          onclick={openModPage}
+          aria-label={m.modio_view_on_modio()}
+          title={m.modio_view_on_modio()}
         >
-          {#if showUploadForm}
-            <X size={14} />
-          {:else}
-            <Upload size={14} />
-          {/if}
+          <ExternalLink size={14} />
         </button>
       {/if}
+
+      <!-- Unlink button -->
+      <button
+        type="button"
+        class="rounded p-1 text-[var(--th-text-500)] hover:bg-[var(--th-bg-800)] hover:text-red-400"
+        onclick={handleUnlink}
+        aria-label="Unlink mod"
+        title="Unlink mod"
+      >
+        <UnlinkIcon size={14} />
+      </button>
     {/if}
 
     <!-- Connection indicator button — always visible -->
@@ -564,220 +478,58 @@
         </div>
       {/if}
     </div>
-    <!-- External link to mod page (after connection, like Nexus) -->
-    {#if modioStore.selectedModUrl}
-      <button
-        type="button"
-        class="rounded p-1 text-[var(--th-text-500)] hover:bg-[var(--th-bg-800)] hover:text-[var(--th-text-200)]"
-        onclick={openModPage}
-        aria-label={m.modio_view_on_modio()}
-        title={m.modio_view_on_modio()}
-      >
-        <ExternalLink size={14} />
-      </button>
-    {/if}
   </div>
 
   {#if modioStore.selectedModId}
     <!-- ── Linked state ─────────────────────────────────────────── -->
+    <div class="flex-1 overflow-y-auto">
+      <!-- Mod info header -->
+      <div class="border-b border-[var(--th-border-700)] px-3 py-3">
+        <!-- Mod name -->
+        <h3 class="text-xs font-semibold text-[var(--th-text-200)] truncate">
+          {modioStore.selectedModName ?? "Unknown Mod"}
+        </h3>
 
-    {#if showUploadForm}
-      <!-- Upload form (replaces mod info card when active, like Nexus) -->
-      <div class="flex flex-col gap-2 border-b border-[var(--th-border-700)] px-3 py-2">
-        <!-- Version input -->
-        <div>
-          <label for="modio-upload-version" class="mb-0.5 block text-[10px] font-medium text-[var(--th-text-500)]">
-            {m.modio_upload_version_label()}
-          </label>
-          <input
-            id="modio-upload-version"
-            type="text"
-            class="w-full rounded border border-[var(--th-input-border,var(--th-bg-700))] bg-[var(--th-input-bg,var(--th-bg-800))] px-2 py-1 text-xs text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:border-[var(--th-accent,#0ea5e9)] focus:outline-none"
-            placeholder={m.modio_upload_version_placeholder()}
-            bind:value={uploadVersion}
-            required
-          />
-        </div>
-
-        <!-- Changelog textarea -->
-        <div>
-          <label for="modio-upload-changelog" class="mb-0.5 block text-[10px] font-medium text-[var(--th-text-500)]">
-            {m.modio_upload_changelog_label()}
-          </label>
-          <textarea
-            id="modio-upload-changelog"
-            class="w-full resize-none rounded border border-[var(--th-input-border,var(--th-bg-700))] bg-[var(--th-input-bg,var(--th-bg-800))] px-2 py-1 text-xs text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:border-[var(--th-accent,#0ea5e9)] focus:outline-none"
-            placeholder={m.modio_upload_changelog_placeholder()}
-            rows={3}
-            bind:value={uploadChangelog}
-          ></textarea>
-        </div>
-
-        <!-- Active checkbox -->
-        <label class="flex items-center gap-2 text-xs text-[var(--th-text-300)] cursor-pointer">
-          <input
-            type="checkbox"
-            class="accent-[var(--th-accent,#0ea5e9)]"
-            bind:checked={uploadActive}
-          />
-          {m.modio_upload_active_label()}
-        </label>
-
-        <!-- Upload + Cancel buttons -->
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="flex flex-1 items-center justify-center gap-1.5 rounded bg-[var(--th-accent,#0ea5e9)] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110 disabled:opacity-50"
-            onclick={handleUpload}
-            disabled={!canUpload}
-          >
-            {#if platformUploadStore.isUploading}
-              <Loader2 size={14} class={getPrefersReducedMotion() ? "" : "animate-spin"} aria-hidden="true" />
-            {:else}
-              <Upload size={14} aria-hidden="true" />
-            {/if}
-            {m.modio_upload_button()}
-          </button>
-          <button
-            type="button"
-            class="rounded border border-[var(--th-border-600)] px-3 py-1.5 text-xs text-[var(--th-text-400)] hover:bg-[var(--th-bg-700)]"
-            onclick={() => { showUploadForm = false; }}
-          >
-            {m.common_cancel()}
-          </button>
-        </div>
-      </div>
-    {:else}
-      <!-- Mod info card (shown when upload form is hidden, like Nexus) -->
-      <div class="modio-info-section" bind:this={infoSectionRef} style={infoHeight != null ? `height: ${infoHeight}px` : ''}>
-        <div class="p-3">
-        <!-- Thumbnail -->
-        {#if selectedModData?.logo_url}
-          <img
-            src={selectedModData.logo_url}
-            alt={modioStore.selectedModName ?? ""}
-            class="mb-2 w-full rounded border border-[var(--th-border-700)] object-cover"
-            style="max-height: 120px;"
-          />
-        {/if}
-
-        <!-- Title + ID on same row -->
-        <div class="flex items-baseline gap-1.5">
-          <span class="text-xs font-semibold text-[var(--th-text-200)] truncate flex-1">
-            {modioStore.selectedModName ?? "Unknown Mod"}
-          </span>
-          <span class="text-[10px] text-[var(--th-text-500)] shrink-0">
-            #{modioStore.selectedModId}
-          </span>
-        </div>
-
-        <!-- Version + badges -->
-        <div class="mt-0.5 flex items-center gap-1.5">
-          {#if modStore.scanResult?.mod_meta?.version}
-            <span class="text-[10px] text-[var(--th-text-400)]">
-              {m.modio_mod_version_label()}: {modStore.scanResult.mod_meta.version}
-            </span>
-          {/if}
+        <!-- Badges row -->
+        <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <!-- Status badge -->
           {#if selectedModData}
-            <div class="ml-auto flex items-center gap-1">
-              {#if selectedModData.status === 1}
-                <span
-                  class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
-                  style="background: color-mix(in srgb, var(--th-success, #10b981) 15%, transparent); color: var(--th-success, #10b981);"
-                >
-                  <Check size={9} aria-hidden="true" />
-                  {m.modio_mod_status_accepted()}
-                </span>
-              {:else}
-                <span
-                  class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
-                  style="background: color-mix(in srgb, var(--th-warning, #f59e0b) 15%, transparent); color: var(--th-warning, #f59e0b);"
-                >
-                  <Loader2 size={9} aria-hidden="true" />
-                  {m.modio_mod_status_pending()}
-                </span>
-              {/if}
-              {#if selectedModData.visibility === 1}
-                <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--th-text-400)]">
-                  <Eye size={9} aria-hidden="true" />
-                  {m.modio_mod_visibility_public()}
-                </span>
-              {:else}
-                <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--th-text-500)]">
-                  <EyeOff size={9} aria-hidden="true" />
-                  {m.modio_mod_visibility_hidden()}
-                </span>
-              {/if}
-            </div>
-          {/if}
-        </div>
-
-        <!-- Description (inline editable) -->
-        {#if isEditingDescription}
-          <div class="mt-1.5">
-            <textarea
-              class="w-full resize-none rounded border border-[var(--th-accent,#0ea5e9)] bg-[var(--th-bg-800)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--th-text-300)] focus:outline-none"
-              maxlength={250}
-              rows={4}
-              bind:value={editDescriptionValue}
-              onkeydown={(e) => { if (e.key === "Escape") { cancelEditDescription(); } }}
-            ></textarea>
-            <div class="flex items-center justify-between mt-1">
-              <span class="text-[9px] text-[var(--th-text-500)]" class:text-[var(--th-error,#ef4444)]={editDescriptionValue.length > 250}>
-                {editDescriptionValue.length}/250
-              </span>
-              <div class="flex items-center gap-1.5">
-                {#if isSavingDescription}
-                  <Loader2 size={10} class="animate-spin text-[var(--th-text-500)]" />
-                {/if}
-                <button
-                  type="button"
-                  class="rounded px-2 py-0.5 text-[10px] text-[var(--th-text-400)] hover:bg-[var(--th-bg-700)] transition-colors"
-                  onclick={cancelEditDescription}
-                >
-                  {m.common_cancel()}
-                </button>
-                <button
-                  type="button"
-                  class="rounded bg-[var(--th-accent,#0ea5e9)] px-2 py-0.5 text-[10px] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-                  disabled={isSavingDescription}
-                  onclick={saveDescription}
-                >
-                  {m.common_save()}
-                </button>
-              </div>
-            </div>
-          </div>
-        {:else}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="modio-description-block mt-1.5" onclick={startEditDescription}>
-            {#if selectedModData?.summary}
-              <p
-                bind:this={summaryEl}
-                class="text-[11px] leading-relaxed text-[var(--th-text-400)] {summaryExpanded ? '' : 'line-clamp-3'}"
+            {#if selectedModData.status === 1}
+              <span
+                class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                style="background: color-mix(in srgb, var(--th-success, #10b981) 15%, transparent); color: var(--th-success, #10b981);"
               >
-                {selectedModData.summary}
-              </p>
-              {#if summaryTruncated || summaryExpanded}
-                <button
-                  type="button"
-                  class="mt-0.5 text-[10px] text-[var(--th-accent,#0ea5e9)] hover:underline"
-                  onclick={(e) => { e.stopPropagation(); summaryExpanded = !summaryExpanded; }}
-                >
-                  {summaryExpanded ? m.modio_show_less() : m.modio_show_more()}
-                </button>
-              {/if}
+                <Check size={10} aria-hidden="true" />
+                {m.modio_mod_status_accepted()}
+              </span>
             {:else}
-              <span class="inline-flex items-center gap-1 text-[11px] italic text-[var(--th-text-500)]">
-                <Pencil size={10} />
-                Click to add a description…
+              <span
+                class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                style="background: color-mix(in srgb, var(--th-warning, #f59e0b) 15%, transparent); color: var(--th-warning, #f59e0b);"
+              >
+                <Loader2 size={10} aria-hidden="true" />
+                {m.modio_mod_status_pending()}
               </span>
             {/if}
-          </div>
-        {/if}
 
-
+            <!-- Visibility badge -->
+            {#if selectedModData.visibility === 1}
+              <span
+                class="inline-flex items-center gap-1 rounded-full bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--th-text-400)]"
+              >
+                <Eye size={10} aria-hidden="true" />
+                {m.modio_mod_visibility_public()}
+              </span>
+            {:else}
+              <span
+                class="inline-flex items-center gap-1 rounded-full bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--th-text-500)]"
+              >
+                <EyeOff size={10} aria-hidden="true" />
+                {m.modio_mod_visibility_hidden()}
+              </span>
+            {/if}
+          {/if}
+        </div>
 
         <!-- Quick stats -->
         {#if selectedModData?.stats}
@@ -800,80 +552,118 @@
             </span>
           </div>
         {/if}
-
-        <!-- Tags (mod's own tags + inline add, replaces Tags drawer) -->
-        <div class="mt-2">
-          <ModioTagSection modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} tags={selectedModData?.tags ?? []} />
-        </div>
       </div>
-      </div>
-    {/if}
 
-    <!-- Resize handle between info and drawers -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="modio-resize-handle"
-      onmousedown={handleResizeStart}
-    ></div>
-
-    <!-- Drawers (ExplorerDrawer pattern – matches Nexus/Git pane) -->
-    <div class="modio-drawer-layout">
-      {#each visibleDrawerIds as drawerId, i (drawerId)}
-        <div
-          class="modio-drawer-slot"
-          class:drawer-collapsed={uiStore.isDrawerCollapsed(drawerId)}
-          class:drawer-sized={!uiStore.isDrawerCollapsed(drawerId) && uiStore.explorerDrawers[drawerId]?.height != null}
+      <!-- Upload form (collapsible) -->
+      <div class="border-b border-[var(--th-border-700)]">
+        <button
+          type="button"
+          class="flex w-full items-center gap-1.5 px-3 py-2 text-[10px] font-medium text-[var(--th-text-300)] hover:bg-[var(--th-bg-800)]"
+          onclick={() => { showUploadForm = !showUploadForm; }}
+          aria-expanded={showUploadForm}
         >
-          {#if drawerId === "modio-file-versions"}
-            <ExplorerDrawer id="modio-file-versions" title={m.modio_file_versions_header()} isFirst={i === 0} count={fileCount || undefined} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
-              {#snippet headerActions()}
-                <button
-                  class="drawer-action-btn"
-                  class:active={showUploadForm}
-                  title={m.modio_upload_button()}
-                  aria-label={m.modio_upload_button()}
-                  onclick={(e: MouseEvent) => { e.stopPropagation(); showUploadForm = !showUploadForm; }}
-                >
-                  <Upload size={14} aria-hidden="true" />
-                </button>
-              {/snippet}
-              {#snippet children()}
-                <ModioFileVersions modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} bind:fileCount={fileCount} />
-              {/snippet}
-            </ExplorerDrawer>
-          {:else if drawerId === "modio-media"}
-            <ExplorerDrawer id="modio-media" title={m.modio_media_header()} isFirst={i === 0} defaultOpen={false} count={mediaImages.length || undefined} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
-              {#snippet headerActions()}
-                <button
-                  class="drawer-action-btn"
-                  title={m.modio_add_image()}
-                  aria-label={m.modio_add_image()}
-                  onclick={(e: MouseEvent) => { e.stopPropagation(); mediaSectionRef?.browseAndAdd(); }}
-                >
-                  <Plus size={14} aria-hidden="true" />
-                </button>
-              {/snippet}
-              {#snippet children()}
-                <ModioMediaSection bind:this={mediaSectionRef} modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} mediaImages={selectedModData?.media_images ?? []} />
-              {/snippet}
-            </ExplorerDrawer>
-          {:else if drawerId === "modio-dependencies"}
-            <ExplorerDrawer id="modio-dependencies" title={m.modio_dependencies_header()} isFirst={i === 0} defaultOpen={false} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
-              {#snippet headerActions()}
-                <button
-                  class="drawer-action-btn"
-                  class:active={showDepAddForm}
-                  title={m.modio_add_dependency()}
-                  aria-label={m.modio_add_dependency()}
-                  onclick={(e: MouseEvent) => { e.stopPropagation(); showDepAddForm = !showDepAddForm; }}
-                >
-                  <Plus size={14} aria-hidden="true" />
-                </button>
-              {/snippet}
-              {#snippet children()}
-                <ModioDependencies modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} bind:showAddForm={showDepAddForm} />
-              {/snippet}
-            </ExplorerDrawer>
+          {#if showUploadForm}
+            <ChevronDown size={12} aria-hidden="true" />
+          {:else}
+            <ChevronRight size={12} aria-hidden="true" />
+          {/if}
+          <Upload size={12} aria-hidden="true" />
+          {m.modio_upload_button()}
+        </button>
+
+        {#if showUploadForm}
+          <div class="flex flex-col gap-2 px-3 pb-3">
+            <!-- Version input -->
+            <div>
+              <label for="modio-upload-version" class="mb-0.5 block text-[10px] font-medium text-[var(--th-text-500)]">
+                {m.modio_upload_version_label()}
+              </label>
+              <input
+                id="modio-upload-version"
+                type="text"
+                class="w-full rounded border border-[var(--th-input-border,var(--th-bg-700))] bg-[var(--th-input-bg,var(--th-bg-800))] px-2 py-1 text-xs text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:border-[var(--th-accent,#0ea5e9)] focus:outline-none"
+                placeholder={m.modio_upload_version_placeholder()}
+                bind:value={uploadVersion}
+                required
+              />
+            </div>
+
+            <!-- Changelog textarea -->
+            <div>
+              <label for="modio-upload-changelog" class="mb-0.5 block text-[10px] font-medium text-[var(--th-text-500)]">
+                {m.modio_upload_changelog_label()}
+              </label>
+              <textarea
+                id="modio-upload-changelog"
+                class="w-full resize-none rounded border border-[var(--th-input-border,var(--th-bg-700))] bg-[var(--th-input-bg,var(--th-bg-800))] px-2 py-1 text-xs text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:border-[var(--th-accent,#0ea5e9)] focus:outline-none"
+                placeholder={m.modio_upload_changelog_placeholder()}
+                rows={3}
+                bind:value={uploadChangelog}
+              ></textarea>
+            </div>
+
+            <!-- Active checkbox -->
+            <label class="flex items-center gap-2 text-xs text-[var(--th-text-300)] cursor-pointer">
+              <input
+                type="checkbox"
+                class="accent-[var(--th-accent,#0ea5e9)]"
+                bind:checked={uploadActive}
+              />
+              {m.modio_upload_active_label()}
+            </label>
+
+            <!-- Upload button -->
+            <button
+              type="button"
+              class="flex items-center justify-center gap-1.5 rounded bg-[var(--th-accent,#0ea5e9)] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110 disabled:opacity-50"
+              onclick={handleUpload}
+              disabled={!canUpload}
+            >
+              {#if platformUploadStore.isUploading}
+                <Loader2 size={14} class={getPrefersReducedMotion() ? "" : "animate-spin"} aria-hidden="true" />
+              {:else}
+                <Upload size={14} aria-hidden="true" />
+              {/if}
+              {m.modio_upload_button()}
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Collapsible sections -->
+      {#each [
+        { key: "fileVersions", label: m.modio_file_versions_header(), component: "fileVersions" },
+        { key: "modDetails", label: m.modio_mod_details_header(), component: "modDetails" },
+        { key: "media", label: m.modio_media_header(), component: "media" },
+        { key: "tags", label: m.modio_tags_header(), component: "tags" },
+        { key: "dependencies", label: m.modio_dependencies_header(), component: "dependencies" },
+      ] as section (section.key)}
+        <div class="border-b border-[var(--th-border-700)]">
+          <button
+            type="button"
+            class="flex w-full items-center gap-1.5 px-3 py-2 text-[10px] font-medium text-[var(--th-text-300)] hover:bg-[var(--th-bg-800)]"
+            onclick={() => toggleSection(section.key)}
+            aria-expanded={sectionsExpanded[section.key]}
+          >
+            {#if sectionsExpanded[section.key]}
+              <ChevronDown size={12} aria-hidden="true" />
+            {:else}
+              <ChevronRight size={12} aria-hidden="true" />
+            {/if}
+            {section.label}
+          </button>
+          {#if sectionsExpanded[section.key]}
+            {#if section.component === "fileVersions"}
+              <ModioFileVersions modId={modioStore.selectedModId} gameId={modioStore.GAME_ID} />
+            {:else if section.component === "modDetails"}
+              <ModioModDetails modId={modioStore.selectedModId} gameId={modioStore.GAME_ID} />
+            {:else if section.component === "media"}
+              <ModioMediaSection modId={modioStore.selectedModId} gameId={modioStore.GAME_ID} />
+            {:else if section.component === "tags"}
+              <ModioTagSection modId={modioStore.selectedModId} gameId={modioStore.GAME_ID} />
+            {:else if section.component === "dependencies"}
+              <ModioDependencies modId={modioStore.selectedModId} gameId={modioStore.GAME_ID} />
+            {/if}
           {/if}
         </div>
       {/each}
@@ -1057,70 +847,3 @@
     {/if}
   {/if}
 </div>
-
-<style>
-  .modio-drawer-layout {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    justify-content: flex-end;
-    overflow: hidden;
-  }
-
-  .modio-drawer-slot {
-    position: relative;
-    min-height: 0;
-    flex: 1 1 0%;
-    overflow: hidden;
-  }
-
-  .modio-drawer-slot.drawer-collapsed,
-  .modio-drawer-slot.drawer-sized {
-    flex: 0 0 auto;
-  }
-
-  /* Description block */
-  .modio-description-block {
-    position: relative;
-    border-radius: 4px;
-    padding: 6px 8px;
-    background: var(--th-bg-800, #1e1e2e);
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .modio-description-block:hover {
-    background: var(--th-bg-700, #181825);
-  }
-
-  /* Info/drawer resizable split */
-  .modio-info-section {
-    flex-shrink: 0;
-    overflow-y: auto;
-    min-height: 80px;
-  }
-
-  .modio-resize-handle {
-    height: 6px;
-    flex-shrink: 0;
-    cursor: ns-resize;
-    background: var(--th-border-700, #2e2e3e);
-    transition: background 0.15s;
-    touch-action: none;
-  }
-
-  .modio-resize-handle:hover,
-  .modio-resize-handle:active {
-    background: var(--th-accent, #0ea5e9);
-  }
-
-  /* HC adjustments */
-  :global(.theme-hcDark) .modio-description-block {
-    background: var(--th-bg-900, #000);
-    border: 1px solid var(--th-border-600, #6b7280);
-  }
-  :global(.theme-hcDark) .modio-description-block:hover {
-    background: var(--th-bg-800, #1e1e2e);
-  }
-</style>

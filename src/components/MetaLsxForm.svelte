@@ -358,6 +358,34 @@
     if (p) editVersion64 = partsToVersion64(p.major, p.minor, p.revision, p.build);
   }
 
+  /** Handle mod.io URL input — auto-link by matching name_id from URL to userMods */
+  function handleModioUrlInput(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      // Clear = unlink
+      modioStore.selectedModId = null;
+      modioStore.selectedModName = null;
+      modioStore.selectedModNameId = null;
+      modioStore.selectedModUrl = null;
+      modioStore.saveProjectConfig();
+      return;
+    }
+    // Try to extract name_id from a mod.io URL pattern
+    const match = trimmed.match(/mod\.io\/g\/[^/]+\/m\/([a-z0-9_-]+)/i);
+    if (match) {
+      const nameId = match[1];
+      const found = modioStore.userMods.find((mod: { name_id: string }) => mod.name_id === nameId);
+      if (found) {
+        modioStore.selectMod(found);
+        return;
+      }
+      // Not in userMods, store what we can
+      modioStore.selectedModNameId = nameId;
+    }
+    modioStore.selectedModUrl = trimmed;
+    modioStore.saveProjectConfig();
+  }
+
   function updatePublishVersion(input: string) {
     const p = parseVersionString(input);
     if (p) editPublishVersion = partsToVersion64(p.major, p.minor, p.revision, p.build);
@@ -624,6 +652,15 @@
                    placeholder={m.nexus_meta_lsx_nexus_url_placeholder()}
                    value={nexusStore.modUrl ?? ""}
                    oninput={(e) => { nexusStore.modUrl = (e.target as HTMLInputElement).value || null; }} />
+          </label>
+
+          <!-- mod.io URL (not saved to LSX — stored in modio config, auto-links mod) -->
+          <label class="flex flex-col gap-1 text-xs">
+            <span class={labelClass}>{m.modio_meta_lsx_url_label()}</span>
+            <input type="text" class={inputClass}
+                   placeholder={m.modio_meta_lsx_url_placeholder()}
+                   value={modioStore.selectedModUrl ?? ""}
+                   oninput={(e) => { handleModioUrlInput((e.target as HTMLInputElement).value); }} />
           </label>
 
           <label class="flex flex-col gap-1 text-xs">

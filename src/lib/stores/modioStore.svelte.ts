@@ -1,4 +1,4 @@
-import { modioHasOauthToken, modioSetOauthToken, modioGetUser, modioDisconnect, modioGetMyMods, type ModioModSummary } from "../tauri/modio.js";
+import { modioHasOauthToken, modioSetOauthToken, modioGetUser, modioDisconnect, modioGetMyMods, modioGetMod, type ModioModSummary } from "../tauri/modio.js";
 import { readProjectFile, writeProjectFile } from "../tauri/project-settings.js";
 
 function isTauri(): boolean {
@@ -24,7 +24,7 @@ class ModioStore {
   connectionError = $state<string | null>(null);
 
   /** BG3 game ID on mod.io. */
-  readonly GAME_ID = 629;
+  readonly GAME_ID = 6715;
 
   // ── Per-project state ───────────────────────────────────────────
   selectedModId = $state<number | null>(null);
@@ -83,9 +83,9 @@ class ModioStore {
     }
   }
 
-  async saveToken(token: string): Promise<void> {
+  async saveToken(token: string, userId: number): Promise<void> {
     try {
-      const profile = await modioSetOauthToken(token);
+      const profile = await modioSetOauthToken(token, userId);
       this.isAuthenticated = true;
       this.userName = profile.name;
       this.userId = profile.id;
@@ -189,6 +189,52 @@ class ModioStore {
     this.selectedModNameId = mod.name_id;
     this.selectedModUrl = `https://mod.io/g/baldursgate3/m/${mod.name_id}`;
     this.saveProjectConfig();
+  }
+
+  /** Resolve a mod.io URL or numeric ID to a mod summary and link it. */
+  async resolveMod(input: string): Promise<void> {
+    const trimmed = input.trim();
+
+    // Extract numeric mod ID from URL or raw number
+    let modId: number | null = null;
+    const urlMatch = trimmed.match(/mod\.io\/.*?\/m\/[^/]+/i) ? null : trimmed.match(/(\d+)/);
+    // Try numeric ID first
+    const asNum = parseInt(trimmed, 10);
+    if (!isNaN(asNum) && String(asNum) === trimmed) {
+      modId = asNum;
+    }
+    // Try extracting from mod.io URL — mod.io uses name_id in URLs not numeric IDs,
+    // so we search the user's mods for a matching name_id
+    if (modId == null) {
+      const nameIdMatch = trimmed.match(/mod\.io\/.*?\/m\/([a-zA-Z0-9_-]+)/i);
+      if (nameIdMatch) {
+        const nameId = nameIdMatch[1].toLowerCase();
+        const found = this.userMods.find(m => m.name_id.toLowerCase() === nameId);
+        if (found) {
+          this.selectMod(found);
+          return;
+        }
+      }
+      // Also try a generic numeric ID at end of URL
+      if (urlMatch) {
+        modId = parseInt(urlMatch[1], 10);
+      }
+    }
+
+    if (modId == null || modId <= 0) {
+      throw new Error("Could not parse a mod ID from the input");
+    }
+
+    // Check if already in user mods
+    const existing = this.userMods.find(m => m.id === modId);
+    if (existing) {
+      this.selectMod(existing);
+      return;
+    }
+
+    // Fetch from API
+    const mod = await modioGetMod(modId);
+    this.selectMod(mod);
   }
 }
 

@@ -13,6 +13,7 @@
   import LogOut from "@lucide/svelte/icons/log-out";
 
   let tokenInput = $state("");
+  let userIdInput = $state("");
   let isSaving = $state(false);
   let tokenInputEl: HTMLInputElement | undefined = $state(undefined);
 
@@ -30,11 +31,18 @@
 
   async function handleSaveToken() {
     const raw = tokenInput.trim();
-    if (!raw || isSaving) return;
+    const rawUserId = userIdInput.trim();
+    if (!raw || !rawUserId || isSaving) return;
+    const userId = parseInt(rawUserId, 10);
+    if (isNaN(userId) || userId <= 0) {
+      toastStore.error(m.modio_auth_error_title(), m.modio_user_id_invalid());
+      return;
+    }
     isSaving = true;
     try {
-      await modioStore.saveToken(raw);
+      await modioStore.saveToken(raw, userId);
       tokenInput = "";
+      userIdInput = "";
     } catch {
       toastStore.error(m.modio_auth_error_title(), modioStore.connectionError ?? m.modio_error_invalid_token());
     } finally {
@@ -111,29 +119,40 @@
         {m.modio_token_hint()}
       </p>
 
-      <!-- Token input -->
-      <div class="flex gap-2">
+      <!-- User ID + Token input -->
+      <div class="flex flex-col gap-2">
         <input
-          type="password"
-          class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
-          placeholder={m.modio_token_placeholder()}
-          bind:value={tokenInput}
-          bind:this={tokenInputEl}
-          onkeydown={handleKeydown}
+          type="text"
+          inputmode="numeric"
+          class="form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+          placeholder={m.modio_user_id_placeholder()}
+          bind:value={userIdInput}
           autocomplete="off"
-          aria-label={m.modio_token_label()}
+          aria-label={m.modio_user_id_placeholder()}
         />
-        <button
-          class="px-3 py-1.5 text-xs rounded bg-[var(--th-accent,#0ea5e9)] hover:brightness-110 text-white font-medium transition-colors disabled:opacity-40"
-          disabled={!tokenInput.trim() || isSaving}
-          onclick={handleSaveToken}
-        >
-          {#if isSaving}
-            <Loader2 size={12} class="animate-spin" />
-          {:else}
-            {m.modio_connect_btn()}
-          {/if}
-        </button>
+        <div class="flex gap-2">
+          <input
+            type="password"
+            class="flex-1 form-input bg-[var(--th-bg-800)] border border-[var(--th-border-600)] text-[var(--th-text-200)] rounded px-2 py-1.5 text-xs focus:border-[var(--th-accent-500,#0ea5e9)]"
+            placeholder={m.modio_token_placeholder()}
+            bind:value={tokenInput}
+            bind:this={tokenInputEl}
+            onkeydown={handleKeydown}
+            autocomplete="off"
+            aria-label={m.modio_token_label()}
+          />
+          <button
+            class="px-3 py-1.5 text-xs rounded bg-[var(--th-accent,#0ea5e9)] hover:brightness-110 text-white font-medium transition-colors disabled:opacity-40"
+            disabled={!tokenInput.trim() || !userIdInput.trim() || isSaving}
+            onclick={handleSaveToken}
+          >
+            {#if isSaving}
+              <Loader2 size={12} class="animate-spin" />
+            {:else}
+              {m.modio_connect_btn()}
+            {/if}
+          </button>
+        </div>
       </div>
 
       <a

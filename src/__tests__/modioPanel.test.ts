@@ -236,9 +236,9 @@ describe("ModioPanel", () => {
 
   // ── Header actions ─────────────────────────────────────
 
-  it("settings button is always visible", () => {
+  it("connection button is always visible", () => {
     render(ModioPanel);
-    expect(screen.getByLabelText("modio_settings_gear")).toBeTruthy();
+    expect(screen.getByLabelText("modio_connection_label")).toBeTruthy();
   });
 
   it("refresh button appears in linked state", () => {

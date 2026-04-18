@@ -28,8 +28,11 @@ const KEY_API_KEY: &str = "modio-api-key";
 /// Keyring username for the OAuth2 token.
 const KEY_OAUTH_TOKEN: &str = "modio-oauth-token";
 
+/// Keyring username for the user ID.
+const KEY_USER_ID: &str = "modio-user-id";
+
 /// Default BG3 game ID on mod.io.
-const BG3_GAME_ID: u64 = 629;
+const BG3_GAME_ID: u64 = 6715;
 
 /// Managed Tauri state holding the mod.io client.
 pub struct ModioState {
@@ -68,27 +71,33 @@ pub async fn cmd_modio_has_oauth_token() -> Result<bool, AppError> {
     Ok(val.is_some())
 }
 
-/// Store an OAuth2 Access Token directly, validate it, and return the user profile.
+/// Store an OAuth2 Access Token and User ID, validate, and return the user profile.
 ///
 /// This is the primary authentication path for third-party tools.
-/// The user generates a token at <https://mod.io/me/access> with `read+write`
-/// scope and pastes it here.  We validate by calling `GET /me`.
+/// The user provides their User ID and OAuth2 Access Token from
+/// <https://mod.io/me/access>.  We validate by calling `GET /me`
+/// on the user-scoped subdomain `u-{user_id}.modapi.io`.
 #[tauri::command]
 pub async fn cmd_modio_set_oauth_token(
     state: State<'_, ModioState>,
     token: String,
+    user_id: u64,
 ) -> Result<ModioUserProfile, AppError> {
     let trimmed = token.trim().to_string();
     if trimmed.is_empty() {
         return Err(AppError::invalid_input("OAuth token must not be empty"));
     }
+    if user_id == 0 {
+        return Err(AppError::invalid_input("User ID must not be zero"));
+    }
 
-    // Build a token-only client and validate via /me
-    let new_client = ModioClient::with_token_only(&trimmed)?;
-    let profile = auth::get_user(new_client.http_client(), &trimmed).await?;
+    // Build a client with user subdomain and validate via /me
+    let new_client = ModioClient::with_user_token(&trimmed, user_id)?;
+    let profile = auth::get_user(new_client.http_client(), &trimmed, user_id).await?;
 
-    // Persist token in keyring
+    // Persist credentials in keyring
     credentials::store_credential(SERVICE, KEY_OAUTH_TOKEN, &trimmed)?;
+    credentials::store_credential(SERVICE, KEY_USER_ID, &user_id.to_string())?;
     // Clear any old API key — no longer needed
     let _ = credentials::delete_credential(SERVICE, KEY_API_KEY);
 
@@ -165,18 +174,43 @@ pub async fn cmd_modio_verify_code(
     // Store token in keyring
     credentials::store_credential(SERVICE, KEY_OAUTH_TOKEN, &token)?;
 
-    // Set token on client (upgrades rate limits)
+    // We need the user's ID to use the user-scoped subdomain.
+    // The email flow gives us a token from the game domain, so we use the
+    // game domain's /me endpoint (which may still work with api_key auth).
+    // First, try to get profile from the game domain with the token.
+    let game_url = format!("https://g-{BG3_GAME_ID}.modapi.io/v1/me");
+    let profile_resp = client_ref
+        .get(&game_url)
+        .header("Accept", "application/json")
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to get user from game domain: {e}")))?;
+
+    let profile: ModioUserProfile = if profile_resp.status().is_success() {
+        profile_resp.json().await.map_err(|e| {
+            AppError::internal(format!("Failed to parse user profile: {e}"))
+        })?
+    } else {
+        return Err(AppError::internal(
+            "Failed to fetch user profile after email exchange. Please try connecting with User ID + Access Token instead."
+        ));
+    };
+
+    // Store user ID in keyring
+    credentials::store_credential(SERVICE, KEY_USER_ID, &profile.id.to_string())?;
+
+    // Set token and user ID on client
     {
         let mut guard = state.client.lock().map_err(|e| {
             AppError::internal(format!("Failed to lock ModioState: {e}"))
         })?;
         if let Some(c) = guard.as_mut() {
             c.set_token(&token);
+            c.set_user_id(profile.id);
         }
     }
 
-    // Fetch and return user profile
-    let profile = auth::get_user(&client_ref, &token).await?;
     Ok(profile)
 }
 
@@ -191,17 +225,18 @@ pub async fn cmd_modio_disconnect(
             AppError::internal(format!("Failed to lock ModioState: {e}"))
         })?;
         guard.as_ref().and_then(|c| {
-            c.token().map(|t| (c.http_client().clone(), t.to_string()))
+            c.token().map(|t| (c.http_client().clone(), t.to_string(), c.user_id()))
         })
     };
 
-    if let Some((client_ref, token)) = maybe_token {
-        let _ = auth::logout(&client_ref, &token).await;
+    if let Some((client_ref, token, Some(uid))) = maybe_token {
+        let _ = auth::logout(&client_ref, &token, uid).await;
     }
 
     // Clear local credentials
     credentials::delete_credential(SERVICE, KEY_API_KEY)?;
     credentials::delete_credential(SERVICE, KEY_OAUTH_TOKEN)?;
+    let _ = credentials::delete_credential(SERVICE, KEY_USER_ID);
 
     // Drop client
     let mut guard = state.client.lock().map_err(|e| {
@@ -217,7 +252,7 @@ pub async fn cmd_modio_disconnect(
 pub async fn cmd_modio_get_user(
     state: State<'_, ModioState>,
 ) -> Result<ModioUserProfile, AppError> {
-    let (client_ref, token) = {
+    let (client_ref, token, user_id) = {
         let guard = state.client.lock().map_err(|e| {
             AppError::internal(format!("Failed to lock ModioState: {e}"))
         })?;
@@ -227,10 +262,13 @@ pub async fn cmd_modio_get_user(
         let t = c.token().ok_or_else(|| {
             AppError::invalid_input("Not authenticated with mod.io — no OAuth2 token")
         })?;
-        (c.http_client().clone(), t.to_string())
+        let uid = c.user_id().ok_or_else(|| {
+            AppError::invalid_input("User ID not set — reconnect to mod.io")
+        })?;
+        (c.http_client().clone(), t.to_string(), uid)
     };
 
-    let profile = auth::get_user(&client_ref, &token).await?;
+    let profile = auth::get_user(&client_ref, &token, user_id).await?;
     Ok(profile)
 }
 
@@ -254,6 +292,52 @@ pub async fn cmd_modio_get_my_mods(
 
     let gid = game_id.unwrap_or(BG3_GAME_ID);
     let result = mods::get_my_mods(&client_snapshot, gid).await?;
+    Ok(result)
+}
+
+/// Resolve a single mod by its numeric ID.
+#[tauri::command]
+pub async fn cmd_modio_get_mod(
+    state: State<'_, ModioState>,
+    mod_id: u64,
+    game_id: Option<u64>,
+) -> Result<ModioModSummary, AppError> {
+    let client_snapshot = {
+        let guard = state.client.lock().map_err(|e| {
+            AppError::internal(format!("Failed to lock ModioState: {e}"))
+        })?;
+        guard.as_ref().ok_or_else(|| {
+            AppError::invalid_input("mod.io client not initialised")
+        })?.clone_snapshot()
+    };
+
+    client_snapshot.read_limiter.acquire().await;
+
+    let gid = game_id.unwrap_or(BG3_GAME_ID);
+    let result = mods::get_mod(&client_snapshot, gid, mod_id).await?;
+    Ok(result)
+}
+
+/// Resolve a mod by its `name_id` slug (used when linking from a mod.io URL).
+#[tauri::command]
+pub async fn cmd_modio_get_mod_by_name_id(
+    state: State<'_, ModioState>,
+    name_id: String,
+    game_id: Option<u64>,
+) -> Result<ModioModSummary, AppError> {
+    let client_snapshot = {
+        let guard = state.client.lock().map_err(|e| {
+            AppError::internal(format!("Failed to lock ModioState: {e}"))
+        })?;
+        guard.as_ref().ok_or_else(|| {
+            AppError::invalid_input("mod.io client not initialised")
+        })?.clone_snapshot()
+    };
+
+    client_snapshot.read_limiter.acquire().await;
+
+    let gid = game_id.unwrap_or(BG3_GAME_ID);
+    let result = mods::get_mod_by_name_id(&client_snapshot, gid, &name_id).await?;
     Ok(result)
 }
 
@@ -284,6 +368,22 @@ pub async fn cmd_modio_upload_file(
 ///
 /// Called during app setup. Silently returns `Ok(())` if no credentials are found.
 pub fn try_restore_client(state: &ModioState) -> Result<(), AppError> {
+    // First, try to restore from user_id + token (the primary auth path)
+    if let (Some(token), Some(uid_str)) = (
+        credentials::get_credential(SERVICE, KEY_OAUTH_TOKEN)?,
+        credentials::get_credential(SERVICE, KEY_USER_ID)?,
+    ) {
+        if let Ok(user_id) = uid_str.parse::<u64>() {
+            let client = ModioClient::with_user_token(&token, user_id)?;
+            let mut guard = state.client.lock().map_err(|e| {
+                AppError::internal(format!("Failed to lock ModioState: {e}"))
+            })?;
+            *guard = Some(client);
+            return Ok(());
+        }
+    }
+
+    // Fallback: restore from api_key (legacy email flow)
     let api_key = credentials::get_credential(SERVICE, KEY_API_KEY)?;
     let api_key = match api_key {
         Some(k) => k,
@@ -294,6 +394,11 @@ pub fn try_restore_client(state: &ModioState) -> Result<(), AppError> {
 
     if let Some(token) = credentials::get_credential(SERVICE, KEY_OAUTH_TOKEN)? {
         client.set_token(&token);
+    }
+    if let Some(uid_str) = credentials::get_credential(SERVICE, KEY_USER_ID)? {
+        if let Ok(user_id) = uid_str.parse::<u64>() {
+            client.set_user_id(user_id);
+        }
     }
 
     let mut guard = state.client.lock().map_err(|e| {

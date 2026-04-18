@@ -142,7 +142,7 @@ export const modioPlugin: PluginModule = {
       });
       $effect(() => {
         if (statusItem) {
-          statusItem.text = modioStore.userName || "";
+          statusItem.text = "";
           statusItem.tooltip = modioStore.isAuthenticated
             ? `mod.io: ${modioStore.userName}`
             : "mod.io: Not connected";

@@ -15,7 +15,7 @@
   import X from "@lucide/svelte/icons/x";
   import { getPrefersReducedMotion } from "../../../lib/stores/motion.svelte.js";
 
-  let { modId, gameId }: { modId: number; gameId: number } = $props();
+  let { modId, gameId, fileCount = $bindable(0) }: { modId: number; gameId: number; fileCount?: number } = $props();
 
   // ── State ──
   let files: ModioFileEntry[] = $state([]);
@@ -49,7 +49,10 @@
   async function loadFiles() {
     isLoading = true;
     try {
-      files = await modioListFiles(modId);
+      const raw = await modioListFiles(modId);
+      // Sort newest first by date_added
+      files = raw.sort((a, b) => b.date_added - a.date_added);
+      fileCount = files.length;
       // Reset pagination when list changes
       if (currentPage > Math.ceil(files.length / PAGE_SIZE)) {
         currentPage = 1;
@@ -171,7 +174,7 @@
         >
           {#if editingFileId === file.id}
             <!-- Edit mode -->
-            <div class="flex flex-col gap-1.5">
+            <div class="mt-1 flex flex-col gap-1.5">
               <label class="flex flex-col gap-0.5">
                 <span class="text-[9px] font-medium text-[var(--th-text-500)]">{m.modio_file_version_label()}</span>
                 <input
@@ -185,7 +188,7 @@
                 <span class="text-[9px] font-medium text-[var(--th-text-500)]">{m.modio_file_changelog_label()}</span>
                 <textarea
                   bind:value={editChangelog}
-                  rows="2"
+                  rows="4"
                   class="resize-y rounded border border-[var(--th-border-700)] bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[10px] text-[var(--th-text-200)] outline-none focus:border-[var(--th-accent,#0ea5e9)]"
                 ></textarea>
               </label>
@@ -270,7 +273,7 @@
                   {/if}
                 </div>
                 <span class="truncate text-[var(--th-text-500)]">
-                  {file.filename} · {formatFileSize(file.filesize)} · {formatDate(file.date_added)}
+                  {formatFileSize(file.filesize)} · {formatDate(file.date_added)}
                 </span>
               </div>
 

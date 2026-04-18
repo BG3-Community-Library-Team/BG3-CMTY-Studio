@@ -6,6 +6,7 @@
     modioGetDependencies,
     modioAddDependencies,
     modioRemoveDependencies,
+    modioGetModByNameId,
     type ModioDependency,
   } from "../../../lib/tauri/modio.js";
   import {
@@ -20,13 +21,14 @@
   import Link from "@lucide/svelte/icons/link";
   import Unlink from "@lucide/svelte/icons/unlink";
 
-  let { modId, gameId }: { modId: number; gameId: number } = $props();
+  let { modId, gameId, showAddForm = $bindable(false) }: { modId: number; gameId: number; showAddForm?: boolean } = $props();
 
   // ── State ──
   let apiDeps: ModioDependency[] = $state([]);
   let isLoading = $state(false);
-  let addModIdInput = $state("");
+  let addInput = $state("");
   let isAdding = $state(false);
+  let addError: string | null = $state(null);
   let linkingIndex: number | null = $state(null);
   let linkModIdInput = $state("");
 
@@ -61,15 +63,42 @@
     }
   }
 
+  /** Parse a mod.io URL or numeric ID and return the numeric mod ID. */
+  async function resolveModInput(raw: string): Promise<number | null> {
+    const trimmed = raw.trim();
+    // Try plain numeric ID
+    const asNum = parseInt(trimmed, 10);
+    if (!isNaN(asNum) && String(asNum) === trimmed && asNum > 0) {
+      return asNum;
+    }
+    // Try mod.io URL with name_id slug
+    const nameIdMatch = trimmed.match(/mod\.io\/.*?\/m\/([a-zA-Z0-9_-]+)/i);
+    if (nameIdMatch) {
+      const nameId = nameIdMatch[1];
+      try {
+        const mod = await modioGetModByNameId(nameId);
+        return mod.id;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   // ── Handlers ──
   async function handleAddDep() {
-    const depId = parseInt(addModIdInput.trim(), 10);
-    if (isNaN(depId) || depId <= 0) return;
-
+    if (!addInput.trim() || isAdding) return;
+    addError = null;
     isAdding = true;
     try {
+      const depId = await resolveModInput(addInput);
+      if (!depId) {
+        addError = "Could not resolve mod. Use a numeric ID or mod.io URL.";
+        return;
+      }
       await modioAddDependencies(modId, [depId]);
-      addModIdInput = "";
+      addInput = "";
+      showAddForm = false;
       await loadApiDeps();
     } catch {
       toastStore.error(m.modio_error_save_failed());
@@ -157,6 +186,10 @@
           {/each}
         </ul>
       </div>
+    {:else if !showAddForm}
+      <p class="py-3 text-center text-[10px] text-[var(--th-text-500)]">
+        No dependencies found.
+      </p>
     {/if}
 
     <!-- Unlinked meta.lsx deps -->
@@ -220,31 +253,49 @@
       </div>
     {/if}
 
-    <!-- Add dependency form -->
-    <div class="flex items-center gap-1.5">
-      <input
-        type="number"
-        class="flex-1 rounded border border-[var(--th-border-600)] bg-[var(--th-bg-800)] px-2 py-1 text-[10px] text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)]"
-        placeholder={m.modio_dep_mod_id_placeholder()}
-        aria-label={m.modio_dep_mod_id_placeholder()}
-        bind:value={addModIdInput}
-      />
-      <button
-        type="button"
-        class="flex items-center gap-1 rounded bg-[var(--th-accent,#0ea5e9)] px-2 py-1 text-[10px] font-medium text-white hover:brightness-110 disabled:opacity-50"
-        onclick={handleAddDep}
-        disabled={isAdding || !addModIdInput.trim()}
-      >
-        {#if isAdding}
-          <Loader2
-            size={10}
-            class={getPrefersReducedMotion() ? '' : 'animate-spin'}
+    <!-- Add dependency form (toggled by header + button) -->
+    {#if showAddForm}
+      <div class="mt-2 rounded border border-[var(--th-border-600)] bg-[var(--th-bg-800)] p-2">
+        <form
+          class="flex flex-col gap-1.5"
+          onsubmit={(e) => { e.preventDefault(); handleAddDep(); }}
+        >
+          <input
+            type="text"
+            class="w-full rounded border border-[var(--th-border-600)] bg-[var(--th-bg-700)] px-2 py-1 text-[10px] text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:border-[var(--th-accent,#0ea5e9)] focus:outline-none"
+            placeholder="Mod ID or mod.io URL…"
+            aria-label="Add dependency by ID or URL"
+            bind:value={addInput}
           />
-        {:else}
-          <Plus size={10} />
-        {/if}
-        {m.modio_add_dependency()}
-      </button>
-    </div>
+          {#if addError}
+            <p class="text-[9px] text-[var(--th-error,#ef4444)]">{addError}</p>
+          {/if}
+          <div class="flex items-center gap-1.5">
+            <button
+              type="submit"
+              class="flex items-center gap-1 rounded bg-[var(--th-accent,#0ea5e9)] px-2 py-0.5 text-[10px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+              disabled={isAdding || !addInput.trim()}
+            >
+              {#if isAdding}
+                <Loader2
+                  size={10}
+                  class={getPrefersReducedMotion() ? '' : 'animate-spin'}
+                />
+              {:else}
+                <Plus size={10} />
+              {/if}
+              {m.modio_add_dependency()}
+            </button>
+            <button
+              type="button"
+              class="rounded px-2 py-0.5 text-[10px] text-[var(--th-text-400)] hover:bg-[var(--th-bg-700)] transition-colors"
+              onclick={() => { showAddForm = false; addInput = ""; addError = null; }}
+            >
+              {m.common_cancel()}
+            </button>
+          </div>
+        </form>
+      </div>
+    {/if}
   {/if}
 </div>

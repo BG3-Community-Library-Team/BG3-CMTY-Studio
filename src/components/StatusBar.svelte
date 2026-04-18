@@ -26,7 +26,9 @@
   import NotificationHistory from "./NotificationHistory.svelte";
   import ValidationSummaryModal from "./ValidationSummaryModal.svelte";
   import NexusModsIcon from "./icons/NexusModsIcon.svelte";
+  import ModioIcon from "./icons/modioIcon.svelte";
   import { nexusStore } from "../lib/stores/nexusStore.svelte.js";
+  import { modioStore } from "../lib/stores/modioStore.svelte.js";
   import { open as shellOpen } from "@tauri-apps/plugin-shell";
 
   /** Operation status message with auto-clear */
@@ -209,6 +211,19 @@
           }}
         >
           <NexusModsIcon size={12} />
+        </button>
+      {/if}
+      {#if modioStore.selectedModUrl && modioStore.isAuthenticated}
+        <button
+          class="inline-flex items-center text-[var(--th-text-500)] hover:text-[var(--th-accent-400,#60a5fa)] transition-colors cursor-pointer"
+          title="Open on mod.io"
+          type="button"
+          onclick={async () => {
+            const url = modioStore.selectedModUrl!;
+            try { await shellOpen(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
+          }}
+        >
+          <ModioIcon size={12} />
         </button>
       {/if}
       <span class="text-[var(--th-border-600)]">│</span>

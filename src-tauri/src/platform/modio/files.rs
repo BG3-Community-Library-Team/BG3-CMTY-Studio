@@ -1,9 +1,20 @@
 //! mod.io file/version management — list, edit, and delete modfiles.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::platform::errors::PlatformError;
 use crate::platform::modio::client::{ModioClientSnapshot, BASE_URL};
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/// Deserialize a value that may be `null` in JSON, falling back to `T::default()`.
+fn nullable_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 // ── Response types ──────────────────────────────────────────────────
 
@@ -12,17 +23,17 @@ use crate::platform::modio::client::{ModioClientSnapshot, BASE_URL};
 pub struct ModioFileEntry {
     pub id: u64,
     pub mod_id: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub filename: String,
     #[serde(default)]
     pub version: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub filesize: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub date_added: u64,
     #[serde(default)]
     pub changelog: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub virus_status: u8,
 }
 
@@ -65,7 +76,9 @@ pub async fn list_files(
     game_id: u64,
     mod_id: u64,
 ) -> Result<Vec<ModioFileEntry>, PlatformError> {
-    let url = format!("{BASE_URL}/games/{game_id}/mods/{mod_id}/files");
+    let url = format!("{BASE_URL}/games/{game_id}/mods/{mod_id}/files?_limit=100");
+
+    eprintln!("[modio] GET {url}");
 
     let mut req = client.http_client().get(&url);
     if let Some(token) = client.token() {
@@ -79,17 +92,26 @@ pub async fn list_files(
         .await
         .map_err(|e| PlatformError::HttpError(format!("List files request failed: {e}")))?;
 
-    if resp.status().is_success() {
-        let body: PaginatedResponse = resp.json().await.map_err(|e| {
+    let status_code = resp.status();
+    eprintln!("[modio] list_files response: HTTP {status_code}");
+
+    if status_code.is_success() {
+        let body_text = resp.text().await
+            .map_err(|e| PlatformError::HttpError(format!("Failed to read list files body: {e}")))?;
+        eprintln!("[modio] list_files body (first 500 chars): {}", &body_text[..body_text.len().min(500)]);
+
+        let body: PaginatedResponse = serde_json::from_str(&body_text).map_err(|e| {
             PlatformError::HttpError(format!("Failed to parse list files response: {e}"))
         })?;
+        eprintln!("[modio] list_files parsed {} file entries", body.data.len());
         Ok(body.data)
     } else {
-        let status = resp.status().as_u16();
-        let message = match resp.json::<ModioErrorResponse>().await {
-            Ok(body) => body.error.message,
-            Err(_) => format!("HTTP {status}"),
-        };
+        let status = status_code.as_u16();
+        let body_text = resp.text().await.unwrap_or_default();
+        eprintln!("[modio] list_files error body: {body_text}");
+        let message = serde_json::from_str::<ModioErrorResponse>(&body_text)
+            .map(|e| e.error.message)
+            .unwrap_or_else(|_| format!("HTTP {status}"));
         Err(PlatformError::ApiError { status, message })
     }
 }

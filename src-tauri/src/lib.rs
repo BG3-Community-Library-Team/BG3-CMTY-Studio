@@ -2418,6 +2418,10 @@ pub fn run() {
             #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_get_my_mods,
             #[cfg(feature = "modio-integration")]
+            platform::modio::commands::cmd_modio_get_mod,
+            #[cfg(feature = "modio-integration")]
+            platform::modio::commands::cmd_modio_get_mod_by_name_id,
+            #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_upload_file,
             #[cfg(feature = "modio-integration")]
             platform::modio::commands::cmd_modio_package_and_upload,

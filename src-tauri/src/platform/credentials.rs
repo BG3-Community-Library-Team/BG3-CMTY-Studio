@@ -10,45 +10,139 @@ use super::errors::PlatformError;
 /// Service name used for all platform credentials in the OS keyring.
 const SERVICE_NAME: &str = "bg3-cmty-studio";
 
+/// Maximum characters per keyring entry on Windows.
+/// Windows Credential Manager limits passwords to 2560 bytes (UTF-16),
+/// which is ~1280 characters. We use 1200 to leave a safety margin.
+const CHUNK_MAX_CHARS: usize = 1200;
+
 /// Store a credential in the OS keyring.
+///
+/// If the value exceeds the platform limit, it is automatically split
+/// across multiple keyring entries (`key`, `key:1`, `key:2`, …).
 pub fn store_credential(service: &str, username: &str, value: &str) -> Result<(), PlatformError> {
     let key = format!("{service}:{username}");
-    let entry = Entry::new(SERVICE_NAME, &key)
+
+    if value.len() <= CHUNK_MAX_CHARS {
+        // Fast path: fits in a single entry — clear any old chunks first.
+        delete_chunks(&key);
+        let entry = Entry::new(SERVICE_NAME, &key)
+            .map_err(|e| PlatformError::KeyringError(format!("Failed to create keyring entry: {e}")))?;
+        entry
+            .set_password(value)
+            .map_err(|e| PlatformError::KeyringError(format!("Failed to store credential: {e}")))?;
+        return Ok(());
+    }
+
+    // Chunked path: split into CHUNK_MAX_CHARS-sized pieces.
+    let chunks: Vec<&str> = value
+        .as_bytes()
+        .chunks(CHUNK_MAX_CHARS)
+        .map(|c| std::str::from_utf8(c).unwrap_or(""))
+        .collect();
+
+    // Store the chunk count in the base entry so we know how to reassemble.
+    let base_entry = Entry::new(SERVICE_NAME, &key)
         .map_err(|e| PlatformError::KeyringError(format!("Failed to create keyring entry: {e}")))?;
-    entry
-        .set_password(value)
-        .map_err(|e| PlatformError::KeyringError(format!("Failed to store credential: {e}")))
+    base_entry
+        .set_password(&format!("__chunked:{}", chunks.len()))
+        .map_err(|e| PlatformError::KeyringError(format!("Failed to store credential header: {e}")))?;
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        let chunk_key = format!("{key}:{i}");
+        let entry = Entry::new(SERVICE_NAME, &chunk_key)
+            .map_err(|e| PlatformError::KeyringError(format!("Failed to create keyring entry for chunk {i}: {e}")))?;
+        entry
+            .set_password(chunk)
+            .map_err(|e| PlatformError::KeyringError(format!("Failed to store credential chunk {i}: {e}")))?;
+    }
+
+    Ok(())
 }
 
 /// Retrieve a credential from the OS keyring.
 ///
+/// Transparently reassembles chunked credentials.
 /// Returns `Ok(None)` when no entry exists for the given service/username pair.
 pub fn get_credential(service: &str, username: &str) -> Result<Option<String>, PlatformError> {
     let key = format!("{service}:{username}");
     let entry = Entry::new(SERVICE_NAME, &key)
         .map_err(|e| PlatformError::KeyringError(format!("Failed to create keyring entry: {e}")))?;
-    match entry.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(PlatformError::KeyringError(format!(
+    let base_value = match entry.get_password() {
+        Ok(value) => value,
+        Err(keyring::Error::NoEntry) => return Ok(None),
+        Err(e) => return Err(PlatformError::KeyringError(format!(
             "Failed to read credential: {e}"
         ))),
+    };
+
+    // Check if this is a chunked credential.
+    if let Some(count_str) = base_value.strip_prefix("__chunked:") {
+        let count: usize = count_str.parse().map_err(|_| {
+            PlatformError::KeyringError("Corrupted chunked credential header".into())
+        })?;
+        let mut assembled = String::new();
+        for i in 0..count {
+            let chunk_key = format!("{key}:{i}");
+            let chunk_entry = Entry::new(SERVICE_NAME, &chunk_key)
+                .map_err(|e| PlatformError::KeyringError(format!("Failed to open chunk {i}: {e}")))?;
+            let chunk = chunk_entry.get_password().map_err(|e| {
+                PlatformError::KeyringError(format!("Failed to read chunk {i}: {e}"))
+            })?;
+            assembled.push_str(&chunk);
+        }
+        return Ok(Some(assembled));
     }
+
+    Ok(Some(base_value))
 }
 
 /// Delete a credential from the OS keyring.
 ///
 /// Silently succeeds if the credential does not exist.
+/// Also cleans up any chunked entries.
 pub fn delete_credential(service: &str, username: &str) -> Result<(), PlatformError> {
     let key = format!("{service}:{username}");
+
+    // Check if chunked and clean up chunk entries first.
     let entry = Entry::new(SERVICE_NAME, &key)
         .map_err(|e| PlatformError::KeyringError(format!("Failed to create keyring entry: {e}")))?;
+    if let Ok(val) = entry.get_password() {
+        if let Some(count_str) = val.strip_prefix("__chunked:") {
+            if let Ok(count) = count_str.parse::<usize>() {
+                for i in 0..count {
+                    let chunk_key = format!("{key}:{i}");
+                    if let Ok(ce) = Entry::new(SERVICE_NAME, &chunk_key) {
+                        let _ = ce.delete_credential();
+                    }
+                }
+            }
+        }
+    }
+
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(PlatformError::KeyringError(format!(
             "Failed to delete credential: {e}"
         ))),
+    }
+}
+
+/// Delete any leftover chunk entries for a key (used when overwriting).
+fn delete_chunks(key: &str) {
+    if let Ok(entry) = Entry::new(SERVICE_NAME, key) {
+        if let Ok(val) = entry.get_password() {
+            if let Some(count_str) = val.strip_prefix("__chunked:") {
+                if let Ok(count) = count_str.parse::<usize>() {
+                    for i in 0..count {
+                        let chunk_key = format!("{key}:{i}");
+                        if let Ok(ce) = Entry::new(SERVICE_NAME, &chunk_key) {
+                            let _ = ce.delete_credential();
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

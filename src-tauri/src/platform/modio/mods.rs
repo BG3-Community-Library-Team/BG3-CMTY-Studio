@@ -25,6 +25,19 @@ pub struct ModioModSummary {
     pub date_updated: u64,
     #[serde(default)]
     pub stats: ModioModStats,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub media_images: Vec<ModioImage>,
+}
+
+/// An image from the mod's media gallery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModioImage {
+    pub filename: String,
+    pub original: String,
+    #[serde(default)]
+    pub thumb_320x180: String,
 }
 
 /// Aggregate stats for a mod.
@@ -62,6 +75,30 @@ struct StatsObject {
     ratings_negative: u64,
 }
 
+/// A single tag entry from the mod.io API.
+#[derive(Deserialize)]
+struct TagEntry {
+    name: String,
+}
+
+/// Image entry from the mod.io media object.
+#[derive(Deserialize)]
+struct RawImageEntry {
+    #[serde(default)]
+    filename: String,
+    #[serde(default)]
+    original: String,
+    #[serde(default)]
+    thumb_320x180: String,
+}
+
+/// Media container from mod.io API.
+#[derive(Deserialize, Default)]
+struct MediaObject {
+    #[serde(default)]
+    images: Vec<RawImageEntry>,
+}
+
 /// Raw mod entry from the mod.io API response.
 #[derive(Deserialize)]
 struct RawMod {
@@ -82,6 +119,10 @@ struct RawMod {
     date_updated: u64,
     #[serde(default)]
     stats: Option<StatsObject>,
+    #[serde(default)]
+    tags: Vec<TagEntry>,
+    #[serde(default)]
+    media: Option<MediaObject>,
 }
 
 /// Paginated response envelope from mod.io.
@@ -110,6 +151,14 @@ impl RawMod {
                 ratings_negative: s.ratings_negative,
             })
             .unwrap_or_default();
+        let tags = self.tags.into_iter().map(|t| t.name).collect();
+        let media_images = self.media
+            .map(|m| m.images.into_iter().map(|img| ModioImage {
+                filename: img.filename,
+                original: img.original,
+                thumb_320x180: img.thumb_320x180,
+            }).collect())
+            .unwrap_or_default();
         ModioModSummary {
             id: self.id,
             name: self.name,
@@ -121,6 +170,8 @@ impl RawMod {
             date_added: self.date_added,
             date_updated: self.date_updated,
             stats,
+            tags,
+            media_images,
         }
     }
 }
@@ -141,10 +192,13 @@ struct ModioErrorResponse {
 
 /// Fetch all mods owned by the authenticated user for a given game.
 ///
+/// Uses the game-scoped subdomain (`g-{game_id}.modapi.io`) for `/me/mods`.
+/// The game subdomain implicitly scopes results to that game, so no
+/// `game_id` query parameter is needed.
 /// Handles mod.io pagination (100 results per page).
 pub async fn get_my_mods(
     client: &ModioClientSnapshot,
-    game_id: u64,
+    _game_id: u64,
 ) -> Result<Vec<ModioModSummary>, PlatformError> {
     let token = client.token().ok_or_else(|| {
         PlatformError::ApiError {
@@ -158,9 +212,12 @@ pub async fn get_my_mods(
     let limit: usize = 100;
 
     loop {
+        // /me/mods on the game subdomain — game is implicit from the subdomain.
         let url = format!(
-            "{BASE_URL}/me/mods?game_id={game_id}&_limit={limit}&_offset={offset}"
+            "{BASE_URL}/me/mods?_limit={limit}&_offset={offset}"
         );
+
+        eprintln!("[modio] GET {url}");
 
         let resp = client
             .http_client()
@@ -170,18 +227,24 @@ pub async fn get_my_mods(
             .await
             .map_err(|e| PlatformError::HttpError(format!("Get my mods failed: {e}")))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let message = match resp.json::<ModioErrorResponse>().await {
-                Ok(body) => body.error.message,
-                Err(_) => format!("HTTP {status}"),
-            };
+        let status_code = resp.status();
+        eprintln!("[modio] /me/mods response: HTTP {status_code}");
+
+        if !status_code.is_success() {
+            let status = status_code.as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            eprintln!("[modio] /me/mods error body: {body_text}");
+            let message = serde_json::from_str::<ModioErrorResponse>(&body_text)
+                .map(|e| e.error.message)
+                .unwrap_or_else(|_| format!("HTTP {status}"));
             return Err(PlatformError::ApiError { status, message });
         }
 
-        let page: PaginatedResponse = resp
-            .json()
-            .await
+        let body_text = resp.text().await
+            .map_err(|e| PlatformError::HttpError(format!("Failed to read response body: {e}")))?;
+        eprintln!("[modio] /me/mods body (first 500 chars): {}", &body_text[..body_text.len().min(500)]);
+
+        let page: PaginatedResponse = serde_json::from_str(&body_text)
             .map_err(|e| PlatformError::HttpError(format!("Failed to parse mods response: {e}")))?;
 
         let count = page.result_count;
@@ -198,4 +261,99 @@ pub async fn get_my_mods(
     }
 
     Ok(all_mods)
+}
+
+/// Fetch a single mod by ID.
+///
+/// Uses the game-scoped subdomain (`g-6715.modapi.io`) for
+/// `GET /games/{game_id}/mods/{mod_id}`.
+pub async fn get_mod(
+    client: &ModioClientSnapshot,
+    game_id: u64,
+    mod_id: u64,
+) -> Result<ModioModSummary, PlatformError> {
+    let token = client.token().ok_or_else(|| {
+        PlatformError::ApiError {
+            status: 401,
+            message: "Not authenticated — OAuth2 token required".into(),
+        }
+    })?;
+
+    let url = format!("{BASE_URL}/games/{game_id}/mods/{mod_id}");
+
+    let resp = client
+        .http_client()
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| PlatformError::HttpError(format!("Get mod failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let message = match resp.json::<ModioErrorResponse>().await {
+            Ok(body) => body.error.message,
+            Err(_) => format!("HTTP {status}"),
+        };
+        return Err(PlatformError::ApiError { status, message });
+    }
+
+    let raw: RawMod = resp
+        .json()
+        .await
+        .map_err(|e| PlatformError::HttpError(format!("Failed to parse mod response: {e}")))?;
+
+    Ok(raw.into_summary())
+}
+
+/// Fetch a single mod by its `name_id` slug.
+///
+/// Uses `GET /games/{game_id}/mods?name_id={name_id}` on the game-scoped
+/// subdomain. Returns the first matching mod (name_id is unique per game).
+pub async fn get_mod_by_name_id(
+    client: &ModioClientSnapshot,
+    game_id: u64,
+    name_id: &str,
+) -> Result<ModioModSummary, PlatformError> {
+    let token = client.token().ok_or_else(|| {
+        PlatformError::ApiError {
+            status: 401,
+            message: "Not authenticated — OAuth2 token required".into(),
+        }
+    })?;
+
+    let url = format!(
+        "{BASE_URL}/games/{game_id}/mods?name_id={name_id}&_limit=1"
+    );
+
+    let resp = client
+        .http_client()
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| PlatformError::HttpError(format!("Get mod by name_id failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let message = match resp.json::<ModioErrorResponse>().await {
+            Ok(body) => body.error.message,
+            Err(_) => format!("HTTP {status}"),
+        };
+        return Err(PlatformError::ApiError { status, message });
+    }
+
+    let page: PaginatedResponse = resp
+        .json()
+        .await
+        .map_err(|e| PlatformError::HttpError(format!("Failed to parse mod response: {e}")))?;
+
+    page.data
+        .into_iter()
+        .next()
+        .map(|raw| raw.into_summary())
+        .ok_or_else(|| PlatformError::ApiError {
+            status: 404,
+            message: format!("No mod found with name_id '{name_id}'"),
+        })
 }

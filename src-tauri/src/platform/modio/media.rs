@@ -41,6 +41,7 @@ fn mime_for_image(path: &Path) -> &'static str {
         e if e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg") => "image/jpeg",
         e if e.eq_ignore_ascii_case("png") => "image/png",
         e if e.eq_ignore_ascii_case("gif") => "image/gif",
+        e if e.eq_ignore_ascii_case("webp") => "image/webp",
         _ => "application/octet-stream",
     }
 }
@@ -62,7 +63,7 @@ pub async fn add_media(
     let mut form = reqwest::multipart::Form::new();
 
     if let Some(ref image_paths) = params.image_paths {
-        for img_path in image_paths {
+        for (i, img_path) in image_paths.iter().enumerate() {
             let p = Path::new(img_path);
             if !p.exists() {
                 return Err(PlatformError::ValidationError(format!(
@@ -82,7 +83,7 @@ pub async fn add_media(
                 .file_name(filename)
                 .mime_str(mime)
                 .map_err(|e| PlatformError::HttpError(format!("Failed to set MIME type: {e}")))?;
-            form = form.part("images[]", part);
+            form = form.part(format!("image{i}"), part);
         }
     }
 

@@ -2,7 +2,28 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::client::{user_base_url, BASE_URL};
 use crate::platform::errors::PlatformError;
+
+/// Avatar object nested inside the mod.io user response.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct AvatarObject {
+    #[serde(default)]
+    thumb_100x100: String,
+    #[serde(default)]
+    original: String,
+}
+
+/// Raw user response from the mod.io `/me` endpoint.
+#[derive(Debug, Deserialize)]
+struct RawUserProfile {
+    id: u64,
+    #[serde(alias = "username")]
+    name: String,
+    #[serde(default)]
+    avatar: Option<AvatarObject>,
+    date_online: u64,
+}
 
 /// User profile returned by the mod.io `/me` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,9 +35,6 @@ pub struct ModioUserProfile {
     pub avatar_url: String,
     pub date_online: u64,
 }
-
-/// mod.io API base URL (game-specific subdomain for BG3, game ID 629).
-const BASE_URL: &str = "https://g-629.modapi.io/v1";
 
 // ── Response wrappers (mod.io envelope) ─────────────────────────────
 
@@ -99,38 +117,67 @@ pub async fn email_exchange(
 /// Fetch the authenticated user's profile.
 ///
 /// `GET /me` with `Authorization: Bearer {token}`.
+///
+/// Uses the user-scoped subdomain (`u-{user_id}.modapi.io`)
+/// which is required for `/me` endpoints with Bearer tokens.
 pub async fn get_user(
     client: &reqwest::Client,
     token: &str,
+    user_id: u64,
 ) -> Result<ModioUserProfile, PlatformError> {
-    let url = format!("{BASE_URL}/me");
+    let url = format!("{}/me", user_base_url(user_id));
+
     let resp = client
         .get(&url)
+        .header("Accept", "application/json")
         .bearer_auth(token)
         .send()
         .await
         .map_err(|e| PlatformError::HttpError(format!("Get user failed: {e}")))?;
 
     if resp.status().is_success() {
-        // mod.io wraps user in a top-level object; the fields are at root level
-        let profile: ModioUserProfile = resp
-            .json()
-            .await
-            .map_err(|e| PlatformError::HttpError(format!("Failed to parse user profile: {e}")))?;
-        Ok(profile)
-    } else {
-        Err(extract_api_error(resp).await)
+        return parse_user_profile(resp).await;
     }
+
+    Err(extract_api_error(resp).await)
+}
+
+async fn parse_user_profile(resp: reqwest::Response) -> Result<ModioUserProfile, PlatformError> {
+    let raw: RawUserProfile = resp
+        .json()
+        .await
+        .map_err(|e| PlatformError::HttpError(format!("Failed to parse user profile: {e}")))?;
+
+    let avatar_url = raw
+        .avatar
+        .map(|a| {
+            if !a.thumb_100x100.is_empty() {
+                a.thumb_100x100
+            } else {
+                a.original
+            }
+        })
+        .unwrap_or_default();
+
+    Ok(ModioUserProfile {
+        id: raw.id,
+        name: raw.name,
+        avatar_url,
+        date_online: raw.date_online,
+    })
 }
 
 /// Revoke the current OAuth2 token.
 ///
 /// `POST /oauth/logout` with `Authorization: Bearer {token}`.
+///
+/// Uses the user-scoped subdomain (`u-{user_id}.modapi.io`).
 pub async fn logout(
     client: &reqwest::Client,
     token: &str,
+    user_id: u64,
 ) -> Result<(), PlatformError> {
-    let url = format!("{BASE_URL}/oauth/logout");
+    let url = format!("{}/oauth/logout", user_base_url(user_id));
     let resp = client
         .post(&url)
         .bearer_auth(token)

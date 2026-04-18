@@ -10,8 +10,15 @@ const USER_AGENT: &str = "BG3-CMTY-Studio/1.0.0";
 /// Request timeout in seconds.
 const TIMEOUT_SECS: u64 = 120;
 
-/// mod.io API base URL (game-specific subdomain for BG3, game ID 629).
-pub const BASE_URL: &str = "https://g-629.modapi.io/v1";
+/// mod.io API base URL (game-specific subdomain for BG3, game ID 6715).
+/// Used for game-scoped endpoints (mod management, uploads, tags, etc.).
+pub const BASE_URL: &str = "https://g-6715.modapi.io/v1";
+
+/// Build the user-scoped API base URL for a given user.
+/// Used for user-scoped endpoints (`/me`, `/me/mods`, `/oauth/logout`).
+pub fn user_base_url(user_id: u64) -> String {
+    format!("https://u-{user_id}.modapi.io/v1")
+}
 
 /// HTTP client wrapper for the mod.io API.
 ///
@@ -21,6 +28,7 @@ pub struct ModioClient {
     client: reqwest::Client,
     api_key: String,
     token: Option<String>,
+    user_id: Option<u64>,
     pub read_limiter: TokenBucket,
     pub write_limiter: TokenBucket,
 }
@@ -33,6 +41,7 @@ impl ModioClient {
             client,
             api_key: api_key.to_string(),
             token: None,
+            user_id: None,
             read_limiter: TokenBucket::new_modio_read(false),
             write_limiter: TokenBucket::new_modio_write(),
         })
@@ -45,23 +54,25 @@ impl ModioClient {
             client,
             api_key: api_key.to_string(),
             token: Some(token.to_string()),
+            user_id: None,
             read_limiter: TokenBucket::new_modio_read(true),
             write_limiter: TokenBucket::new_modio_write(),
         })
     }
 
-    /// Create a client authenticated only with an OAuth2 token (no API key).
+    /// Create a client authenticated with an OAuth2 token and user ID.
     ///
-    /// This is the recommended path for third-party tools: the user generates
-    /// an OAuth2 Access Token at `mod.io/me/access` and pastes it in.
-    /// A Bearer token covers both read and write operations, so no API key
-    /// is needed.
-    pub fn with_token_only(token: &str) -> Result<Self, PlatformError> {
+    /// This is the recommended path for third-party tools: the user provides
+    /// their User ID and OAuth2 Access Token from `mod.io/me/access`.
+    /// The user ID is used to construct the user-scoped API subdomain
+    /// (`u-{user_id}.modapi.io`) for endpoints like `/me` and `/me/mods`.
+    pub fn with_user_token(token: &str, user_id: u64) -> Result<Self, PlatformError> {
         let client = build_client(USER_AGENT, TIMEOUT_SECS)?;
         Ok(Self {
             client,
             api_key: String::new(),
             token: Some(token.to_string()),
+            user_id: Some(user_id),
             read_limiter: TokenBucket::new_modio_read(true),
             write_limiter: TokenBucket::new_modio_write(),
         })
@@ -72,6 +83,11 @@ impl ModioClient {
         self.token = Some(token.to_string());
         // Upgrade read bucket to authenticated limit (120 req/min)
         self.read_limiter = TokenBucket::new_modio_read(true);
+    }
+
+    /// Set the user ID (for user-scoped subdomain).
+    pub fn set_user_id(&mut self, user_id: u64) {
+        self.user_id = Some(user_id);
     }
 
     /// Whether an OAuth2 token is available.
@@ -89,6 +105,11 @@ impl ModioClient {
         self.token.as_deref()
     }
 
+    /// Get the user ID, if set.
+    pub fn user_id(&self) -> Option<u64> {
+        self.user_id
+    }
+
     /// Get the underlying `reqwest::Client`.
     pub fn http_client(&self) -> &reqwest::Client {
         &self.client
@@ -104,6 +125,7 @@ impl ModioClient {
             client: self.client.clone(),
             api_key: self.api_key.clone(),
             token: self.token.clone(),
+            user_id: self.user_id,
             read_limiter: if self.token.is_some() {
                 TokenBucket::new_modio_read(true)
             } else {
@@ -120,6 +142,7 @@ pub struct ModioClientSnapshot {
     client: reqwest::Client,
     api_key: String,
     token: Option<String>,
+    user_id: Option<u64>,
     pub read_limiter: TokenBucket,
     pub write_limiter: TokenBucket,
 }
@@ -139,5 +162,9 @@ impl ModioClientSnapshot {
 
     pub fn has_token(&self) -> bool {
         self.token.is_some()
+    }
+
+    pub fn user_id(&self) -> Option<u64> {
+        self.user_id
     }
 }
