@@ -25,8 +25,7 @@
   let isLoading = $state(false);
   let loadError: string | null = $state(null);
   let collapsedCategories: Record<string, boolean> = $state({ Old: true, Archived: true });
-  let expandedDescriptions: Set<string> = $state(new Set());
-  let expandedChangelogs: Set<string> = $state(new Set());
+  let expandedDetails: Set<string> = $state(new Set());
 
   $effect(() => { fileCount = versions.length; });
 
@@ -62,18 +61,11 @@
     collapsedCategories[cat] = !collapsedCategories[cat];
   }
 
-  function toggleDescription(fileId: string) {
-    const next = new Set(expandedDescriptions);
+  function toggleDetails(fileId: string) {
+    const next = new Set(expandedDetails);
     if (next.has(fileId)) next.delete(fileId);
     else next.add(fileId);
-    expandedDescriptions = next;
-  }
-
-  function toggleChangelog(fileId: string) {
-    const next = new Set(expandedChangelogs);
-    if (next.has(fileId)) next.delete(fileId);
-    else next.add(fileId);
-    expandedChangelogs = next;
+    expandedDetails = next;
   }
 
   /** Build Nexus download URL. */
@@ -163,22 +155,12 @@
                     </div>
 
                     <div class="flex shrink-0 items-center gap-0.5">
-                      {#if ver.description}
+                      {#if ver.description || ver.changelog_html}
                         <button
-                          onclick={() => toggleDescription(ver.id)}
-                          aria-label={expandedDescriptions.has(ver.id) ? m.nexus_file_hide_description() : m.nexus_file_show_description()}
+                          onclick={() => toggleDetails(ver.id)}
+                          aria-label={expandedDetails.has(ver.id) ? m.nexus_file_hide_description() : m.nexus_file_show_description()}
                           class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
-                          class:text-[var(--th-accent,#0ea5e9)]={expandedDescriptions.has(ver.id)}
-                        >
-                          <FileText size={11} />
-                        </button>
-                      {/if}
-                      {#if ver.changelog_html}
-                        <button
-                          onclick={() => toggleChangelog(ver.id)}
-                          aria-label={m.nexus_file_changelog()}
-                          class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
-                          class:text-[var(--th-accent,#0ea5e9)]={expandedChangelogs.has(ver.id)}
+                          class:text-[var(--th-accent,#0ea5e9)]={expandedDetails.has(ver.id)}
                         >
                           <FileText size={11} />
                         </button>
@@ -202,15 +184,17 @@
                     </div>
                   </div>
 
-                  {#if expandedDescriptions.has(ver.id) && ver.description}
-                    <div class="mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)] whitespace-pre-wrap">
-                      {ver.description}
-                    </div>
-                  {/if}
-
-                  {#if expandedChangelogs.has(ver.id) && ver.changelog_html}
-                    <div class="file-entry-changelog mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)]">
-                      {@html ver.changelog_html}
+                  {#if expandedDetails.has(ver.id) && (ver.description || ver.changelog_html)}
+                    <div class="mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)]">
+                      {#if ver.description}
+                        <div class="whitespace-pre-wrap">{ver.description}</div>
+                      {/if}
+                      {#if ver.description && ver.changelog_html}
+                        <hr class="my-1 border-[var(--th-border-700)]" />
+                      {/if}
+                      {#if ver.changelog_html}
+                        <div class="file-entry-changelog">{@html ver.changelog_html}</div>
+                      {/if}
                     </div>
                   {/if}
                 </div>

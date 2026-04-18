@@ -59,42 +59,24 @@
       {m.nexus_changelog_empty()}
     </p>
   {:else}
-    <div class="overflow-y-auto">
+    <ul role="list" class="flex flex-col gap-2 px-3 pb-3 pt-2">
       {#each changelogVersions as ver (ver.id)}
-        <div class="changelog-entry">
-          <div class="changelog-entry-header">
+        <li class="rounded border border-[var(--th-border-700)] bg-[var(--th-bg-800)] px-2 py-1.5">
+          <div class="flex items-center gap-1.5 text-[10px]">
             <span class="font-medium text-[var(--th-text-200)]">v{ver.version}</span>
             {#if ver.created_at}
+              <span class="text-[var(--th-text-500)]">·</span>
               <span class="text-[var(--th-text-500)]">{ver.created_at}</span>
             {/if}
           </div>
-          <div class="changelog-entry-body">{@html ver.changelog_html}</div>
-        </div>
+          <div class="changelog-entry-body mt-1 text-[9px] text-[var(--th-text-300)]">{@html ver.changelog_html}</div>
+        </li>
       {/each}
-    </div>
+    </ul>
   {/if}
 </div>
 
 <style>
-  .changelog-entry {
-    border-bottom: 1px solid var(--th-border-700);
-    padding: 8px 12px;
-  }
-  .changelog-entry:last-child {
-    border-bottom: 0;
-  }
-  .changelog-entry-header {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 11px;
-  }
-  .changelog-entry-body {
-    margin-top: 4px;
-    font-size: 11px;
-    line-height: 1.4;
-    color: var(--th-text-400);
-  }
   .changelog-entry-body :global(ul) {
     padding-left: 16px;
     margin: 2px 0;

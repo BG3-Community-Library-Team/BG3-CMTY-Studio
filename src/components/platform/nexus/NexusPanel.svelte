@@ -78,6 +78,9 @@
     const unpinned = visible.filter(id => !uiStore.isDrawerPinned(id));
     return [...pinned, ...unpinned];
   });
+  let allDrawersCollapsed = $derived(
+    visibleDrawerIds.length === 0 || visibleDrawerIds.every(id => uiStore.isDrawerCollapsed(id))
+  );
 
   // Detect if summary text is actually truncated by line-clamp
   $effect(() => {
@@ -810,7 +813,8 @@
       </div>
     {:else}
       <!-- ── Mod info card ── -->
-      <div class="p-3 shrink-0">
+      <div class="nexus-info-section" style={allDrawersCollapsed ? 'flex: 1' : ''}>
+      <div class="p-3">
         <!-- Thumbnail -->
         {#if nexusStore.modThumbnailUrl}
           <img
@@ -884,10 +888,11 @@
           </div>
         {/if}
       </div>
+      </div>
     {/if}
 
     <!-- ── Drawers (ExplorerDrawer pattern – matches Git pane) ── -->
-    <div class="nexus-drawer-layout">
+    <div class="nexus-drawer-layout" style={allDrawersCollapsed ? 'flex: 0 0 auto' : ''}>
       {#each visibleDrawerIds as drawerId, i (drawerId)}
         <div
           class="nexus-drawer-slot"
@@ -979,6 +984,12 @@
 </div>
 
 <style>
+  .nexus-info-section {
+    flex-shrink: 0;
+    overflow-y: auto;
+    min-height: 80px;
+  }
+
   .nexus-drawer-layout {
     display: flex;
     flex: 1;
