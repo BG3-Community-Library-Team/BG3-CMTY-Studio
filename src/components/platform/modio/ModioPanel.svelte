@@ -35,6 +35,7 @@
 
   // Section components
   import ModioFileVersions from "./ModioFileVersions.svelte";
+  import ModioChangelog from "./ModioChangelog.svelte";
   import ModioMediaSection from "./ModioMediaSection.svelte";
   import ModioTagSection from "./ModioTagSection.svelte";
   import ModioDependencies from "./ModioDependencies.svelte";
@@ -129,12 +130,12 @@
   );
 
   // ── Drawer visibility & pinning (matches Nexus/Git pane pattern) ──
-  const allModioDrawerIds = ["modio-file-versions", "modio-media", "modio-dependencies", "modio-reports"];
+  const allModioDrawerIds = ["modio-file-versions", "modio-changelog", "modio-media", "modio-dependencies"];
   const modioDrawerTitles: Record<string, string> = $derived({
-    "modio-file-versions": m.modio_file_versions_header(),
+    "modio-file-versions": "File History",
+    "modio-changelog": "Changelog",
     "modio-media": m.modio_media_header(),
     "modio-dependencies": m.modio_dependencies_header(),
-    "modio-reports": "Reports",
   });
   let visibleDrawerIds = $derived.by(() => {
     const visible = allModioDrawerIds.filter(id => !uiStore.isDrawerHidden(id));
@@ -374,7 +375,23 @@
 
   onMount(async () => {
     if (modioStore.isAuthenticated) {
-      await modioStore.loadUserMods();
+      if (modioStore.isStale()) {
+        await modioStore.loadUserMods();
+        // Update cached fields from fresh data
+        if (modioStore.selectedModId) {
+          const fresh = modioStore.userMods.find(mod => mod.id === modioStore.selectedModId);
+          if (fresh) {
+            modioStore.modLogoUrl = fresh.logo_url || null;
+            modioStore.lastFetchedAt = Date.now();
+            modioStore.saveProjectConfig();
+          }
+        }
+      } else {
+        // Still load user mods for the mod list but skip if already populated
+        if (modioStore.userMods.length === 0) {
+          await modioStore.loadUserMods();
+        }
+      }
     }
   });
 
@@ -669,9 +686,9 @@
       <div class="modio-info-section" bind:this={infoSectionRef} style={allDrawersCollapsed ? 'flex: 1' : infoHeight != null ? `height: ${infoHeight}px` : ''}>
         <div class="p-3">
         <!-- Thumbnail -->
-        {#if selectedModData?.logo_url}
+        {#if selectedModData?.logo_url || modioStore.modLogoUrl}
           <img
-            src={selectedModData.logo_url}
+            src={selectedModData?.logo_url ?? modioStore.modLogoUrl ?? ""}
             alt={modioStore.selectedModName ?? ""}
             class="mb-2 w-full rounded border border-[var(--th-border-700)] object-cover"
             style="max-height: 120px;"
@@ -836,7 +853,7 @@
     {/if}
 
     <!-- Drawers (ExplorerDrawer pattern – matches Nexus/Git pane) -->
-    <div class="modio-drawer-layout">
+    <div class="modio-drawer-layout" style={allDrawersCollapsed ? 'flex: 0 0 auto' : ''}>
       {#each visibleDrawerIds as drawerId, i (drawerId)}
         <div
           class="modio-drawer-slot"
@@ -844,7 +861,7 @@
           class:drawer-sized={!uiStore.isDrawerCollapsed(drawerId) && uiStore.explorerDrawers[drawerId]?.height != null}
         >
           {#if drawerId === "modio-file-versions"}
-            <ExplorerDrawer id="modio-file-versions" title={m.modio_file_versions_header()} isFirst={i === 0} count={fileCount || undefined} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
+            <ExplorerDrawer id="modio-file-versions" title="File History" isFirst={i === 0} count={fileCount || undefined} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
               {#snippet headerActions()}
                 <button
                   class="drawer-action-btn"
@@ -857,7 +874,13 @@
                 </button>
               {/snippet}
               {#snippet children()}
-                <ModioFileVersions modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} bind:fileCount={fileCount} />
+                <ModioFileVersions modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} modUrl={modioStore.selectedModUrl} bind:fileCount={fileCount} />
+              {/snippet}
+            </ExplorerDrawer>
+          {:else if drawerId === "modio-changelog"}
+            <ExplorerDrawer id="modio-changelog" title="Changelog" isFirst={i === 0} defaultOpen={false} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
+              {#snippet children()}
+                <ModioChangelog modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} />
               {/snippet}
             </ExplorerDrawer>
           {:else if drawerId === "modio-media"}
@@ -900,23 +923,6 @@
               {/snippet}
               {#snippet children()}
                 <ModioDependencies modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} bind:showAddForm={showDepAddForm} />
-              {/snippet}
-            </ExplorerDrawer>
-          {:else if drawerId === "modio-reports"}
-            <ExplorerDrawer id="modio-reports" title="Reports" isFirst={i === 0} defaultOpen={false} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
-              {#snippet children()}
-                <div class="px-3 py-4 text-center">
-                  <p class="text-[10px] text-[var(--th-text-500)]">Reports are managed on the mod.io dashboard.</p>
-                  {#if modioStore.selectedModUrl}
-                    <button
-                      class="mt-2 inline-flex items-center gap-1 text-[10px] text-[var(--th-accent,#0ea5e9)] hover:underline"
-                      onclick={() => shellOpen(modioStore.selectedModUrl + '/report')}
-                    >
-                      <ExternalLink size={10} />
-                      View reports on mod.io
-                    </button>
-                  {/if}
-                </div>
               {/snippet}
             </ExplorerDrawer>
           {/if}

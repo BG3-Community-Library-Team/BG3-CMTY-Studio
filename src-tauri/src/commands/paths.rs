@@ -199,6 +199,10 @@ pub struct DetectedMod {
     pub author: String,
     /// Whether the effective project_path contains a `.git/` directory.
     pub has_git: bool,
+    /// Whether `.cmtystudio/nexus.json` exists with a mod ID.
+    pub has_nexus: bool,
+    /// Whether `.cmtystudio/modio.json` exists with a selected mod ID.
+    pub has_modio: bool,
 }
 
 /// Result of scanning a project folder for mod sub-folders.
@@ -235,19 +239,58 @@ fn dir_is_mod_folder(dir: &Path) -> bool {
 }
 
 /// Try to build a [`DetectedMod`] from a directory that is a ModFolder.
-fn try_detect_mod(dir: &Path, has_git: bool) -> Option<DetectedMod> {
+fn try_detect_mod(dir: &Path, project_root: &Path, has_git: bool) -> Option<DetectedMod> {
     let mod_path_str = dir.to_string_lossy().to_string();
+    let dir_name = dir.file_name()?.to_string_lossy().to_string();
     match read_mod_meta(&mod_path_str) {
-        Ok(meta) => Some(DetectedMod {
-            mod_path: mod_path_str,
-            mod_name: meta.name,
-            mod_uuid: meta.uuid,
-            mod_folder: meta.folder,
-            author: meta.author,
-            has_git,
-        }),
+        Ok(meta) => {
+            let has_nexus = has_platform_config(project_root, &dir_name, "nexus", "modId");
+            let has_modio = has_platform_config(project_root, &dir_name, "modio", "selectedModId");
+            Some(DetectedMod {
+                mod_path: mod_path_str,
+                mod_name: meta.name,
+                mod_uuid: meta.uuid,
+                mod_folder: meta.folder,
+                author: meta.author,
+                has_git,
+                has_nexus,
+                has_modio,
+            })
+        }
         Err(_) => None,
     }
+}
+
+/// Check if `platforms.json` has a config for a given mod+platform+key.
+fn has_platform_config(project_root: &Path, mod_dir_name: &str, platform: &str, key: &str) -> bool {
+    let path = project_root.join(".cmtystudio").join("platforms.json");
+    if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            return match &val[mod_dir_name][platform][key] {
+                serde_json::Value::Number(n) => n.as_u64().is_some_and(|v| v > 0),
+                serde_json::Value::String(s) => !s.is_empty(),
+                _ => false,
+            };
+        }
+    }
+    // Fallback: check legacy per-platform files (pre-migration)
+    let legacy_path = project_root.join(".cmtystudio").join(
+        match platform {
+            "nexus" => "nexus.json",
+            "modio" => "modio.json",
+            _ => return false,
+        }
+    );
+    if let Ok(content) = fs::read_to_string(&legacy_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            return match &val[key] {
+                serde_json::Value::Number(n) => n.as_u64().is_some_and(|v| v > 0),
+                serde_json::Value::String(s) => !s.is_empty(),
+                _ => false,
+            };
+        }
+    }
+    false
 }
 
 /// Scan a project folder for valid ModFolders.
@@ -273,7 +316,7 @@ pub fn detect_mod_folders(project_path: &str) -> Result<DetectResult, String> {
     for entry in entries.flatten() {
         let child = entry.path();
         if child.is_dir() && dir_is_mod_folder(&child) {
-            if let Some(dm) = try_detect_mod(&child, has_git) {
+            if let Some(dm) = try_detect_mod(&child, root, has_git) {
                 detected.push(dm);
             }
         }
@@ -294,7 +337,7 @@ pub fn detect_mod_folders(project_path: &str) -> Result<DetectResult, String> {
         let effective_str = effective_project.to_string_lossy().to_string();
         let parent_has_git = effective_project.join(".git").is_dir();
 
-        if let Some(dm) = try_detect_mod(root, parent_has_git) {
+        if let Some(dm) = try_detect_mod(root, effective_project, parent_has_git) {
             return Ok(DetectResult {
                 project_path: effective_str,
                 mods: vec![dm],

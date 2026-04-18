@@ -255,12 +255,13 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
   try {
     // Ensure .cmtystudio project dir exists at project root
     const projectRoot = modStore.projectPath || modPath;
+    const modFolder = modPath.split(/[\\/]/).pop() ?? "";
     if (projectRoot) {
       try { await ensureCmtystudioDir(projectRoot); } catch (e) {
         console.warn("[scanAndImport] Failed to create .cmtystudio dir:", e);
       }
       await projectSettingsStore.load(projectRoot);
-      await nexusStore.loadProjectConfig(projectRoot);
+      await nexusStore.loadProjectConfig(projectRoot, modFolder);
     }
 
     const result = await scanMod(modPath, extraScanPaths, true);

@@ -38,6 +38,23 @@
   let isLinking = $state(false);
   let linkError: string | null = $state(null);
 
+  // ── Tag badge colors (matches modio style) ──
+  const TAG_COLORS = [
+    { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", border: "rgba(59,130,246,0.3)" },
+    { bg: "rgba(168,85,247,0.15)", text: "#c084fc", border: "rgba(168,85,247,0.3)" },
+    { bg: "rgba(236,72,153,0.15)", text: "#f472b6", border: "rgba(236,72,153,0.3)" },
+    { bg: "rgba(34,197,94,0.15)",  text: "#4ade80", border: "rgba(34,197,94,0.3)" },
+    { bg: "rgba(245,158,11,0.15)", text: "#fbbf24", border: "rgba(245,158,11,0.3)" },
+    { bg: "rgba(14,165,233,0.15)", text: "#38bdf8", border: "rgba(14,165,233,0.3)" },
+    { bg: "rgba(244,63,94,0.15)",  text: "#fb7185", border: "rgba(244,63,94,0.3)" },
+    { bg: "rgba(20,184,166,0.15)", text: "#2dd4bf", border: "rgba(20,184,166,0.3)" },
+  ];
+  function tagColor(tag: string) {
+    let h = 0;
+    for (let i = 0; i < tag.length; i++) h = ((h << 5) - h + tag.charCodeAt(i)) | 0;
+    return TAG_COLORS[Math.abs(h) % TAG_COLORS.length];
+  }
+
   // ── UI state ──
   let summaryExpanded = $state(false);
   let summaryEl: HTMLParagraphElement | null = $state(null);
@@ -851,12 +868,16 @@
         {#if nexusStore.modTags.length > 0 || nexusStore.modAdultContent}
           <div class="mt-2 flex flex-wrap gap-1">
             {#if nexusStore.modAdultContent}
-              <span class="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[9px] font-medium text-red-400">
+              <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium" style="background: rgba(244,63,94,0.15); color: #fb7185; border-color: rgba(244,63,94,0.3);">
                 {m.nexus_adult_content_badge()}
               </span>
             {/if}
             {#each nexusStore.modTags as tag}
-              <span class="rounded-full bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--th-text-400)]">
+              {@const color = tagColor(tag)}
+              <span
+                class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors"
+                style="background: {color.bg}; color: {color.text}; border-color: {color.border};"
+              >
                 {tag}
               </span>
             {/each}

@@ -53,6 +53,8 @@ class NexusStore {
   /** Epoch ms when mod data was last fetched from the Nexus API. */
   lastFetchedAt: number | null = $state(null);
   projectPath: string | null = $state(null);
+  /** Directory name of the mod folder — key into platforms.json. */
+  modFolder: string | null = $state(null);
 
   /** 24 hours in milliseconds. */
   static readonly CACHE_TTL_MS = 86_400_000;
@@ -176,14 +178,30 @@ class NexusStore {
 
   // ── Config Persistence ──────────────────────────────────────────
 
-  async loadProjectConfig(projectPath: string): Promise<void> {
+  async loadProjectConfig(projectPath: string, modFolder: string): Promise<void> {
     this.projectPath = projectPath;
-    if (!projectPath || !isTauri()) {
+    this.modFolder = modFolder;
+    if (!projectPath || !modFolder || !isTauri()) {
       return;
     }
     try {
-      const content = await readProjectFile(projectPath, "nexus.json");
-      const parsed = JSON.parse(content);
+      // Try unified platforms.json first
+      let parsed: Record<string, unknown> | null = null;
+      const platformsContent = await readProjectFile(projectPath, "platforms.json");
+      const platformsData = JSON.parse(platformsContent);
+      if (platformsData && typeof platformsData === "object" && platformsData[modFolder]?.nexus) {
+        parsed = platformsData[modFolder].nexus;
+      }
+
+      // Fallback: legacy nexus.json (pre-migration)
+      if (!parsed) {
+        const legacyContent = await readProjectFile(projectPath, "nexus.json");
+        const legacyParsed = JSON.parse(legacyContent);
+        if (legacyParsed && typeof legacyParsed === "object" && legacyParsed.modId) {
+          parsed = legacyParsed;
+        }
+      }
+
       // Validate shape — only load known keys
       if (parsed && typeof parsed === "object") {
         this.modId = typeof parsed.modId === "string" ? parsed.modId : null;
@@ -223,7 +241,7 @@ class NexusStore {
   }
 
   async #executeSave(): Promise<void> {
-    if (!this.projectPath) return;
+    if (!this.projectPath || !this.modFolder) return;
     const config: Record<string, unknown> = {};
     if (this.modId != null) config.modId = this.modId;
     if (this.modUuid != null) config.modUuid = this.modUuid;
@@ -240,7 +258,12 @@ class NexusStore {
     if (this.defaultFileGroup) config.defaultFileGroup = this.defaultFileGroup;
     if (this.useUploadV3) config.useUploadV3 = this.useUploadV3;
     try {
-      await writeProjectFile(this.projectPath, "nexus.json", JSON.stringify(config, null, 2));
+      // Read-merge-write into platforms.json
+      const content = await readProjectFile(this.projectPath, "platforms.json");
+      const platforms = JSON.parse(content);
+      if (!platforms[this.modFolder]) platforms[this.modFolder] = {};
+      platforms[this.modFolder].nexus = config;
+      await writeProjectFile(this.projectPath, "platforms.json", JSON.stringify(platforms, null, 2));
     } catch (e) {
       console.warn("[nexusStore] Failed to save project config:", e);
     }
@@ -270,6 +293,7 @@ class NexusStore {
     this.defaultFileGroup = "";
     this.useUploadV3 = false;
     this.projectPath = null;
+    this.modFolder = null;
   }
 }
 

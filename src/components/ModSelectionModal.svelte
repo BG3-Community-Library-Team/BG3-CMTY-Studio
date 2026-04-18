@@ -6,6 +6,8 @@
   import X from "@lucide/svelte/icons/x";
   import User from "@lucide/svelte/icons/user";
   import GitBranch from "@lucide/svelte/icons/git-branch";
+  import NexusModsIcon from "./icons/NexusModsIcon.svelte";
+  import ModioIcon from "./icons/modioIcon.svelte";
   import type { DetectedMod } from "../lib/types/modSelection.js";
 
   function handleSelect(mod: DetectedMod) {
@@ -74,7 +76,13 @@
             <div class="flex items-center gap-2">
               <span class="text-sm font-medium text-[var(--th-text-100)] truncate">{mod.mod_name}</span>
               {#if mod.has_git}
-                <GitBranch size={12} class="text-[var(--th-text-500)] shrink-0" />
+                <GitBranch size={12} class="text-[var(--th-text-500)] shrink-0" title="Git repository" />
+              {/if}
+              {#if mod.has_nexus}
+                <NexusModsIcon size={12} class="text-amber-400 shrink-0" />
+              {/if}
+              {#if mod.has_modio}
+                <ModioIcon size={12} class="text-sky-400 shrink-0" />
               {/if}
             </div>
 

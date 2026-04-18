@@ -1,33 +1,23 @@
-<!-- ModioFileVersions — Lists mod file versions with edit/delete support. -->
+<!-- ModioFileVersions — Lists mod file history with download link and changelog toggle. -->
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
   import {
     modioListFiles,
-    modioEditFile,
-    modioDeleteFile,
     type ModioFileEntry,
   } from "../../../lib/tauri/modio.js";
-  import { toastStore } from "../../../lib/stores/toastStore.svelte.js";
   import Loader2 from "@lucide/svelte/icons/loader-2";
-  import Pencil from "@lucide/svelte/icons/pencil";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
-  import Check from "@lucide/svelte/icons/check";
-  import X from "@lucide/svelte/icons/x";
+  import Download from "@lucide/svelte/icons/download";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import { open as shellOpen } from "@tauri-apps/plugin-shell";
   import { getPrefersReducedMotion } from "../../../lib/stores/motion.svelte.js";
 
-  let { modId, gameId, fileCount = $bindable(0) }: { modId: number; gameId: number; fileCount?: number } = $props();
+  let { modId, gameId, modUrl = "", fileCount = $bindable(0) }: { modId: number; gameId: number; modUrl?: string | null; fileCount?: number } = $props();
 
   // ── State ──
   let files: ModioFileEntry[] = $state([]);
   let isLoading = $state(false);
-  let editingFileId: number | null = $state(null);
-  let editVersion = $state("");
-  let editChangelog = $state("");
-  let editActive = $state(false);
-  let deletingFileId: number | null = $state(null);
+  let expandedChangelogs: Set<number> = $state(new Set());
   let currentPage = $state(1);
-  let isSaving = $state(false);
-  let isDeleting = $state(false);
   const PAGE_SIZE = 10;
 
   // ── Derived ──
@@ -79,65 +69,15 @@
     });
   }
 
-  function versionLabel(file: ModioFileEntry): string {
-    return file.version || file.filename;
+  function toggleChangelog(fileId: number) {
+    const next = new Set(expandedChangelogs);
+    if (next.has(fileId)) next.delete(fileId);
+    else next.add(fileId);
+    expandedChangelogs = next;
   }
 
-  // ── Edit flow ──
-  function startEdit(file: ModioFileEntry) {
-    editingFileId = file.id;
-    editVersion = file.version ?? "";
-    editChangelog = file.changelog ?? "";
-    editActive = file.virus_status === 1; // virus_status 1 = active
-  }
-
-  function cancelEdit() {
-    editingFileId = null;
-  }
-
-  async function saveEdit() {
-    if (editingFileId == null) return;
-    isSaving = true;
-    try {
-      await modioEditFile({
-        mod_id: modId,
-        file_id: editingFileId,
-        version: editVersion,
-        changelog: editChangelog,
-        active: editActive,
-      });
-      editingFileId = null;
-      await loadFiles();
-    } catch (e) {
-      console.warn("[ModioFileVersions] Failed to save:", e);
-      toastStore.error(m.modio_error_save_failed());
-    } finally {
-      isSaving = false;
-    }
-  }
-
-  // ── Delete flow ──
-  function startDelete(fileId: number) {
-    deletingFileId = fileId;
-  }
-
-  function cancelDelete() {
-    deletingFileId = null;
-  }
-
-  async function confirmDelete() {
-    if (deletingFileId == null) return;
-    isDeleting = true;
-    try {
-      await modioDeleteFile(modId, deletingFileId);
-      deletingFileId = null;
-      await loadFiles();
-    } catch (e) {
-      console.warn("[ModioFileVersions] Failed to delete:", e);
-      toastStore.error(m.modio_error_delete_failed());
-    } finally {
-      isDeleting = false;
-    }
+  function openFilesTab() {
+    if (modUrl) shellOpen(modUrl + "#files");
   }
 
   // ── Pagination ──
@@ -172,124 +112,51 @@
           role="listitem"
           class="rounded border border-[var(--th-border-700)] bg-[var(--th-bg-800)] px-2 py-1.5 text-[10px]"
         >
-          {#if editingFileId === file.id}
-            <!-- Edit mode -->
-            <div class="flex flex-col gap-1.5">
-              <div class="flex items-center justify-between">
-                <span class="truncate text-[10px] font-medium text-[var(--th-text-200)]">
-                  {editVersion || file.filename}
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex min-w-0 flex-col gap-0.5">
+              <div class="flex items-center gap-1.5">
+                <span class="truncate font-medium text-[var(--th-text-200)]">
+                  {file.version ?? file.filename}
                 </span>
-                <button
-                  onclick={cancelEdit}
-                  disabled={isSaving}
-                  aria-label={m.common_cancel()}
-                  class="shrink-0 rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)] disabled:opacity-50"
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-
-              <label class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-medium text-[var(--th-text-500)]">{m.modio_file_changelog_label()}</span>
-                <textarea
-                  bind:value={editChangelog}
-                  rows="4"
-                  class="resize-y rounded border border-[var(--th-border-700)] bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[10px] text-[var(--th-text-200)] outline-none focus:border-[var(--th-accent,#0ea5e9)]"
-                ></textarea>
-              </label>
-
-              <label class="flex items-center gap-1.5 text-[9px] text-[var(--th-text-300)]">
-                <input type="checkbox" bind:checked={editActive} class="accent-[var(--th-accent,#0ea5e9)]" />
-                {m.modio_file_active_toggle()}
-              </label>
-
-              <div class="flex items-center gap-1">
-                <button
-                  onclick={saveEdit}
-                  disabled={isSaving}
-                  class="flex items-center gap-1 rounded bg-[var(--th-accent,#0ea5e9)] px-2 py-0.5 text-[9px] font-medium text-white hover:brightness-110 disabled:opacity-50"
-                >
-                  {#if isSaving}
-                    <Loader2
-                      size={10}
-                      class={getPrefersReducedMotion() ? "" : "animate-spin"}
-                    />
-                  {:else}
-                    <Check size={10} />
-                  {/if}
-                  {m.modio_file_save()}
-                </button>
-              </div>
-            </div>
-          {:else if deletingFileId === file.id}
-            <!-- Delete confirmation -->
-            <div class="flex flex-col gap-1.5">
-              <p class="text-[10px] text-[var(--th-text-300)]">
-                {m.modio_delete_file_confirm({ version: versionLabel(file) })}
-              </p>
-              <div class="flex items-center gap-1">
-                <button
-                  onclick={confirmDelete}
-                  disabled={isDeleting}
-                  class="flex items-center gap-1 rounded bg-[var(--th-error,#ef4444)] px-2 py-0.5 text-[9px] font-medium text-white hover:brightness-110 disabled:opacity-50"
-                >
-                  {#if isDeleting}
-                    <Loader2
-                      size={10}
-                      class={getPrefersReducedMotion() ? "" : "animate-spin"}
-                    />
-                  {:else}
-                    <Trash2 size={10} />
-                  {/if}
-                  {m.modio_delete_file({ version: versionLabel(file) })}
-                </button>
-                <button
-                  onclick={cancelDelete}
-                  disabled={isDeleting}
-                  aria-label={m.common_cancel()}
-                  class="flex items-center gap-1 rounded border border-[var(--th-border-700)] px-2 py-0.5 text-[9px] text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] disabled:opacity-50"
-                >
-                  <X size={10} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          {:else}
-            <!-- Normal display -->
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex min-w-0 flex-col gap-0.5">
-                <div class="flex items-center gap-1.5">
-                  <span class="truncate font-medium text-[var(--th-text-200)]">
-                    {file.version ?? file.filename}
+                {#if file.virus_status === 1}
+                  <span
+                    class="inline-flex shrink-0 rounded-sm bg-[color-mix(in_srgb,var(--th-success,#10b981)_20%,transparent)] px-1 py-px text-[8px] font-semibold text-[var(--th-success,#10b981)]"
+                  >
+                    {m.modio_file_active_badge()}
                   </span>
-                  {#if file.virus_status === 1}
-                    <span
-                      class="inline-flex shrink-0 rounded-sm bg-[color-mix(in_srgb,var(--th-success,#10b981)_20%,transparent)] px-1 py-px text-[8px] font-semibold text-[var(--th-success,#10b981)]"
-                    >
-                      {m.modio_file_active_badge()}
-                    </span>
-                  {/if}
-                </div>
-                <span class="truncate text-[var(--th-text-500)]">
-                  {formatFileSize(file.filesize)} · {formatDate(file.date_added)}
-                </span>
+                {/if}
               </div>
+              <span class="truncate text-[var(--th-text-500)]">
+                {formatFileSize(file.filesize)} · {formatDate(file.date_added)}
+              </span>
+            </div>
 
-              <div class="flex shrink-0 items-center gap-0.5">
+            <div class="flex shrink-0 items-center gap-0.5">
+              {#if file.changelog}
                 <button
-                  onclick={() => startEdit(file)}
-                  aria-label={m.modio_edit_file({ version: versionLabel(file) })}
+                  onclick={() => toggleChangelog(file.id)}
+                  aria-label="Toggle changelog"
+                  class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
+                  class:text-[var(--th-accent,#0ea5e9)]={expandedChangelogs.has(file.id)}
+                >
+                  <FileText size={11} />
+                </button>
+              {/if}
+              {#if modUrl}
+                <button
+                  onclick={openFilesTab}
+                  aria-label="Download on mod.io"
                   class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
                 >
-                  <Pencil size={11} />
+                  <Download size={11} />
                 </button>
-                <button
-                  onclick={() => startDelete(file.id)}
-                  aria-label={m.modio_delete_file({ version: versionLabel(file) })}
-                  class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-error,#ef4444)]"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
+              {/if}
+            </div>
+          </div>
+
+          {#if expandedChangelogs.has(file.id) && file.changelog}
+            <div class="mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)] whitespace-pre-wrap">
+              {file.changelog}
             </div>
           {/if}
         </li>

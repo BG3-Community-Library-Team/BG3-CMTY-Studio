@@ -63,10 +63,10 @@ describe("modioStore", () => {
 
   // ── GAME_ID constant ───────────────────────────────────
 
-  it("GAME_ID is 629 and not settable", () => {
-    expect(modioStore.GAME_ID).toBe(629);
-    // Verify it's readonly by checking the value stays 629
-    expect(modioStore.GAME_ID).toBe(629);
+  it("GAME_ID is 6715 and not settable", () => {
+    expect(modioStore.GAME_ID).toBe(6715);
+    // Verify it's readonly by checking the value stays 6715
+    expect(modioStore.GAME_ID).toBe(6715);
   });
 
   // ── checkAuth ──────────────────────────────────────────
@@ -115,16 +115,23 @@ describe("modioStore", () => {
   // ── Config roundtrip ───────────────────────────────────
 
   it("loadProjectConfig → saveProjectConfig roundtrip", async () => {
-    const config = {
-      selectedModId: 42,
-      selectedModName: "TestMod",
-      selectedModNameId: "test-mod",
-      selectedModUrl: "https://mod.io/g/baldursgate3/m/test-mod",
+    const platformsData = {
+      TestMod: {
+        modio: {
+          selectedModId: 42,
+          selectedModName: "TestMod",
+          selectedModNameId: "test-mod",
+          selectedModUrl: "https://mod.io/g/baldursgate3/m/test-mod",
+        },
+      },
     };
-    mockReadProjectFile.mockResolvedValueOnce(JSON.stringify(config));
-    await modioStore.loadProjectConfig("/project/path");
+    mockReadProjectFile.mockResolvedValueOnce(JSON.stringify(platformsData));
+    await modioStore.loadProjectConfig("/project/path", "TestMod");
     expect(modioStore.selectedModId).toBe(42);
     expect(modioStore.selectedModName).toBe("TestMod");
+
+    // Mock for read-merge-write in #executeSave
+    mockReadProjectFile.mockResolvedValueOnce("{}");
 
     // Trigger save
     vi.useFakeTimers();
@@ -136,8 +143,8 @@ describe("modioStore", () => {
       expect(mockWriteProjectFile).toHaveBeenCalled();
     });
     const written = JSON.parse(mockWriteProjectFile.mock.calls[0][2]);
-    expect(written.selectedModId).toBe(42);
-    expect(written.selectedModName).toBe("TestMod");
+    expect(written.TestMod.modio.selectedModId).toBe(42);
+    expect(written.TestMod.modio.selectedModName).toBe("TestMod");
   });
 
   // ── resetProject ───────────────────────────────────────
@@ -155,8 +162,9 @@ describe("modioStore", () => {
   // ── Missing config ─────────────────────────────────────
 
   it("missing config file handled silently", async () => {
-    mockReadProjectFile.mockResolvedValueOnce("{}");
-    await modioStore.loadProjectConfig("/empty/path");
+    mockReadProjectFile.mockResolvedValueOnce("{}");  // platforms.json
+    mockReadProjectFile.mockResolvedValueOnce("{}");  // legacy modio.json
+    await modioStore.loadProjectConfig("/empty/path", "EmptyMod");
     expect(modioStore.selectedModId).toBeNull();
     expect(modioStore.selectedModName).toBeNull();
     expect(modioStore.projectPath).toBe("/empty/path");
@@ -169,7 +177,7 @@ describe("modioStore", () => {
 
     it("corrupted JSON defaults gracefully", async () => {
       mockReadProjectFile.mockResolvedValueOnce("not json {{{");
-      await modioStore.loadProjectConfig("/bad/path");
+      await modioStore.loadProjectConfig("/bad/path", "BadMod");
       expectConsoleCalled(warnRef, "[modioStore]");
       expect(modioStore.selectedModId).toBeNull();
     });

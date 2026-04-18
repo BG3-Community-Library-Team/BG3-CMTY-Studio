@@ -4,7 +4,16 @@
  */
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/svelte";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/svelte";
+
+// Polyfill ResizeObserver for jsdom (used by ModioTagSection)
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
 
 afterEach(cleanup);
 
@@ -80,10 +89,18 @@ vi.mock("../lib/errorLocalization.js", () => ({
   localizeError: vi.fn().mockReturnValue("Unknown error"),
 }));
 
+// Mock Tauri webviewWindow (used by ModioMediaSection for drag-drop)
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({
+    onDragDropEvent: vi.fn().mockResolvedValue(() => {}),
+  }),
+}));
+
 // ── Imports ──────────────────────────────────────────────────────
 
 import { modioStore } from "../lib/stores/modioStore.svelte.js";
 import { modStore } from "../lib/stores/modStore.svelte.js";
+import { modioGetMyMods } from "../lib/tauri/modio.js";
 import ModioPanel from "../components/platform/modio/ModioPanel.svelte";
 
 describe("ModioPanel", () => {
@@ -113,14 +130,14 @@ describe("ModioPanel", () => {
     expect(screen.getByText("modio_create_mod")).toBeTruthy();
   });
 
-  it("shows empty mod list message", () => {
+  it("shows empty mod list message", async () => {
+    modioStore.isAuthenticated = true;
     render(ModioPanel);
-    expect(screen.getByText("modio_dashboard_empty")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("modio_dashboard_empty")).toBeTruthy());
   });
 
-  it("renders mod list when mods exist", () => {
-    modioStore.isLoadingMods = false;
-    modioStore.userMods = [
+  it("renders mod list when mods exist", async () => {
+    const testMods = [
       {
         id: 100,
         name: "Test Mod Alpha",
@@ -132,33 +149,43 @@ describe("ModioPanel", () => {
         date_added: 1000,
         date_updated: 2000,
         stats: { downloads_total: 500, subscribers_total: 100, ratings_positive: 10, ratings_negative: 2 },
+        tags: [], media_images: [],
       },
     ];
+    vi.mocked(modioGetMyMods).mockResolvedValue(testMods);
+    modioStore.isAuthenticated = true;
+    modioStore.isLoadingMods = false;
+    modioStore.userMods = testMods;
 
     render(ModioPanel);
 
-    expect(screen.getByText("Test Mod Alpha")).toBeTruthy();
-    // The listbox should be present
+    await waitFor(() => expect(screen.getByText("Test Mod Alpha")).toBeTruthy());
     expect(screen.getByRole("listbox")).toBeTruthy();
   });
 
   it("keyboard navigates mod list with ArrowDown/ArrowUp", async () => {
-    modioStore.isLoadingMods = false;
-    modioStore.userMods = [
+    const testMods = [
       {
         id: 100, name: "Mod A", name_id: "mod-a", summary: "", logo_url: "",
         status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 0, subscribers_total: 0, ratings_positive: 0, ratings_negative: 0 },
+        tags: [], media_images: [],
       },
       {
         id: 200, name: "Mod B", name_id: "mod-b", summary: "", logo_url: "",
         status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 0, subscribers_total: 0, ratings_positive: 0, ratings_negative: 0 },
+        tags: [], media_images: [],
       },
     ];
+    vi.mocked(modioGetMyMods).mockResolvedValue(testMods);
+    modioStore.isAuthenticated = true;
+    modioStore.isLoadingMods = false;
+    modioStore.userMods = testMods;
 
     render(ModioPanel);
 
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeTruthy());
     const listbox = screen.getByRole("listbox");
     await fireEvent.keyDown(listbox, { key: "ArrowDown" });
     await fireEvent.keyDown(listbox, { key: "ArrowDown" });
@@ -180,6 +207,7 @@ describe("ModioPanel", () => {
         id: 100, name: "My Cool Mod", name_id: "my-cool-mod", summary: "A mod",
         logo_url: "", status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 1234, subscribers_total: 567, ratings_positive: 10, ratings_negative: 1 },
+        tags: [], media_images: [],
       },
     ];
 
@@ -202,6 +230,7 @@ describe("ModioPanel", () => {
         id: 100, name: "Test Mod", name_id: "test", summary: "", logo_url: "",
         status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 0, subscribers_total: 0, ratings_positive: 0, ratings_negative: 0 },
+        tags: [], media_images: [],
       },
     ];
 
@@ -222,15 +251,14 @@ describe("ModioPanel", () => {
         id: 100, name: "Test Mod", name_id: "test", summary: "", logo_url: "",
         status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 0, subscribers_total: 0, ratings_positive: 0, ratings_negative: 0 },
+        tags: [], media_images: [],
       },
     ];
 
     render(ModioPanel);
 
-    // Upload version label should be present
-    expect(screen.getByText("modio_upload_version_label")).toBeTruthy();
-    // Upload button text
-    const uploadBtns = screen.getAllByText("modio_upload_button");
+    // Upload button should be present in linked state (toggles form open)
+    const uploadBtns = screen.getAllByLabelText("modio_upload_button");
     expect(uploadBtns.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -263,6 +291,7 @@ describe("ModioPanel", () => {
         id: 100, name: "Cool Mod", name_id: "cool", summary: "", logo_url: "",
         status: 1, visibility: 1, date_added: 1000, date_updated: 2000,
         stats: { downloads_total: 1500, subscribers_total: 200, ratings_positive: 0, ratings_negative: 0 },
+        tags: [], media_images: [],
       },
     ];
 

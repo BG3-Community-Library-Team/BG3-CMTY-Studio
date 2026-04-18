@@ -122,6 +122,8 @@
           ratings_positive: 0,
           ratings_negative: 0,
         },
+        tags: [],
+        media_images: [],
       };
 
       oncreated(newMod);

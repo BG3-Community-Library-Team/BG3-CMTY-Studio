@@ -51,19 +51,23 @@ describe("nexusStore config persistence", () => {
 
   // ── Config roundtrip ───────────────────────────────────
 
-  it("loadProjectConfig populates store fields from JSON", async () => {
-    const storedConfig = {
-      modId: "42",
-      modUuid: "abc-def",
-      modName: "My Cool Mod",
-      modUrl: "https://nexusmods.com/baldursgate3/mods/42",
-      selectedFileGroupId: "group-1",
-      category: "update",
-      defaultFileGroup: "Main Files",
+  it("loadProjectConfig populates store fields from platforms.json", async () => {
+    const platformsData = {
+      TestMod: {
+        nexus: {
+          modId: "42",
+          modUuid: "abc-def",
+          modName: "My Cool Mod",
+          modUrl: "https://nexusmods.com/baldursgate3/mods/42",
+          selectedFileGroupId: "group-1",
+          category: "update",
+          defaultFileGroup: "Main Files",
+        },
+      },
     };
-    mockReadProjectFile.mockResolvedValueOnce(JSON.stringify(storedConfig));
+    mockReadProjectFile.mockResolvedValueOnce(JSON.stringify(platformsData));
 
-    await nexusStore.loadProjectConfig("/project/path");
+    await nexusStore.loadProjectConfig("/project/path", "TestMod");
 
     expect(nexusStore.modId).toBe("42");
     expect(nexusStore.modUuid).toBe("abc-def");
@@ -75,19 +79,42 @@ describe("nexusStore config persistence", () => {
     expect(nexusStore.projectPath).toBe("/project/path");
   });
 
-  it("saveProjectConfig writes the expected JSON shape", async () => {
-    // Pre-populate store
+  it("loadProjectConfig falls back to legacy nexus.json", async () => {
+    const legacyConfig = {
+      modId: "42",
+      modName: "Legacy Mod",
+    };
+    // platforms.json has no entry for this mod
+    mockReadProjectFile.mockResolvedValueOnce("{}");
+    // legacy nexus.json
+    mockReadProjectFile.mockResolvedValueOnce(JSON.stringify(legacyConfig));
+
+    await nexusStore.loadProjectConfig("/project/path", "TestMod");
+
+    expect(nexusStore.modId).toBe("42");
+    expect(nexusStore.modName).toBe("Legacy Mod");
+  });
+
+  it("saveProjectConfig writes the expected JSON shape to platforms.json", async () => {
+    // Pre-populate store via platforms.json
     mockReadProjectFile.mockResolvedValueOnce(
       JSON.stringify({
-        modId: "99",
-        modUuid: "uuid-99",
-        modName: "Saved Mod",
-        modUrl: "https://nexusmods.com/baldursgate3/mods/99",
-        category: "optional",
-        defaultFileGroup: "Optional Files",
+        SaveMod: {
+          nexus: {
+            modId: "99",
+            modUuid: "uuid-99",
+            modName: "Saved Mod",
+            modUrl: "https://nexusmods.com/baldursgate3/mods/99",
+            category: "optional",
+            defaultFileGroup: "Optional Files",
+          },
+        },
       }),
     );
-    await nexusStore.loadProjectConfig("/save/path");
+    await nexusStore.loadProjectConfig("/save/path", "SaveMod");
+
+    // Mock for the read-merge-write in #executeSave
+    mockReadProjectFile.mockResolvedValueOnce("{}");
 
     // Trigger debounced save
     vi.useFakeTimers();
@@ -102,24 +129,29 @@ describe("nexusStore config persistence", () => {
 
     const [path, filename, content] = mockWriteProjectFile.mock.calls[0];
     expect(path).toBe("/save/path");
-    expect(filename).toBe("nexus.json");
+    expect(filename).toBe("platforms.json");
 
     const written = JSON.parse(content as string);
-    expect(written.modId).toBe("99");
-    expect(written.modUuid).toBe("uuid-99");
-    expect(written.modName).toBe("Saved Mod");
-    expect(written.modUrl).toBe("https://nexusmods.com/baldursgate3/mods/99");
-    expect(written.category).toBe("optional");
-    expect(written.defaultFileGroup).toBe("Optional Files");
+    expect(written.SaveMod.nexus.modId).toBe("99");
+    expect(written.SaveMod.nexus.modUuid).toBe("uuid-99");
+    expect(written.SaveMod.nexus.modName).toBe("Saved Mod");
+    expect(written.SaveMod.nexus.modUrl).toBe("https://nexusmods.com/baldursgate3/mods/99");
+    expect(written.SaveMod.nexus.category).toBe("optional");
+    expect(written.SaveMod.nexus.defaultFileGroup).toBe("Optional Files");
   });
 
   // ── nexus.json schema — only known keys written ────────
 
-  it("only writes known keys to nexus.json", async () => {
+  it("only writes known keys to platforms.json nexus subobject", async () => {
+    // Fall back to legacy nexus.json
+    mockReadProjectFile.mockResolvedValueOnce("{}");
     mockReadProjectFile.mockResolvedValueOnce(
       JSON.stringify({ modId: "1", modName: "Test" }),
     );
-    await nexusStore.loadProjectConfig("/schema/path");
+    await nexusStore.loadProjectConfig("/schema/path", "SchemaMod");
+
+    // Mock for read-merge-write
+    mockReadProjectFile.mockResolvedValueOnce("{}");
 
     vi.useFakeTimers();
     nexusStore.saveProjectConfig();
@@ -131,6 +163,8 @@ describe("nexusStore config persistence", () => {
     });
 
     const written = JSON.parse(mockWriteProjectFile.mock.calls[0][2] as string);
+    const nexusData = written.SchemaMod?.nexus;
+    expect(nexusData).toBeDefined();
     const allowedKeys = [
       "modId",
       "modUuid",
@@ -140,7 +174,7 @@ describe("nexusStore config persistence", () => {
       "category",
       "defaultFileGroup",
     ];
-    for (const key of Object.keys(written)) {
+    for (const key of Object.keys(nexusData)) {
       expect(allowedKeys).toContain(key);
     }
   });
@@ -148,6 +182,8 @@ describe("nexusStore config persistence", () => {
   // ── resetProject ───────────────────────────────────────
 
   it("resetProject clears all per-project state", async () => {
+    // platforms.json has no entry → falls back to legacy nexus.json
+    mockReadProjectFile.mockResolvedValueOnce("{}");
     mockReadProjectFile.mockResolvedValueOnce(
       JSON.stringify({
         modId: "10",
@@ -159,7 +195,7 @@ describe("nexusStore config persistence", () => {
         defaultFileGroup: "Files",
       }),
     );
-    await nexusStore.loadProjectConfig("/reset/path");
+    await nexusStore.loadProjectConfig("/reset/path", "ResetMod");
 
     // Verify populated
     expect(nexusStore.modId).toBe("10");
@@ -180,9 +216,10 @@ describe("nexusStore config persistence", () => {
   // ── Missing config file returns defaults ───────────────
 
   it("missing config file returns defaults without error", async () => {
-    mockReadProjectFile.mockResolvedValueOnce("{}");
+    mockReadProjectFile.mockResolvedValueOnce("{}");  // platforms.json
+    mockReadProjectFile.mockResolvedValueOnce("{}");  // legacy nexus.json
 
-    await nexusStore.loadProjectConfig("/empty/path");
+    await nexusStore.loadProjectConfig("/empty/path", "EmptyMod");
 
     expect(nexusStore.modId).toBeNull();
     expect(nexusStore.modUuid).toBeNull();
@@ -202,7 +239,7 @@ describe("nexusStore config persistence", () => {
     it("returns defaults and logs warning for invalid JSON", async () => {
       mockReadProjectFile.mockResolvedValueOnce("not valid json {{{");
 
-      await nexusStore.loadProjectConfig("/corrupt/path");
+      await nexusStore.loadProjectConfig("/corrupt/path", "CorruptMod");
 
       // Should still be defaults
       expect(nexusStore.modId).toBeNull();

@@ -31,9 +31,18 @@ class ModioStore {
   selectedModName = $state<string | null>(null);
   selectedModNameId = $state<string | null>(null);
   selectedModUrl = $state<string | null>(null);
+  /** Cached logo URL from last API fetch. */
+  modLogoUrl = $state<string | null>(null);
+  /** Epoch ms when mod data was last fetched from the mod.io API. */
+  lastFetchedAt = $state<number | null>(null);
   userMods = $state<ModioModSummary[]>([]);
   isLoadingMods = $state(false);
   projectPath = $state<string | null>(null);
+  /** Directory name of the mod folder — key into platforms.json. */
+  modFolder = $state<string | null>(null);
+
+  /** 24 hours in milliseconds. */
+  static readonly CACHE_TTL_MS = 86_400_000;
 
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -114,17 +123,35 @@ class ModioStore {
 
   // ── Config Persistence ──────────────────────────────────────────
 
-  async loadProjectConfig(path: string): Promise<void> {
-    this.projectPath = path;
-    if (!path || !isTauri()) return;
+  async loadProjectConfig(projectPath: string, modFolder: string): Promise<void> {
+    this.projectPath = projectPath;
+    this.modFolder = modFolder;
+    if (!projectPath || !modFolder || !isTauri()) return;
     try {
-      const content = await readProjectFile(path, "modio.json");
-      const parsed = JSON.parse(content);
+      // Try unified platforms.json first
+      let parsed: Record<string, unknown> | null = null;
+      const platformsContent = await readProjectFile(projectPath, "platforms.json");
+      const platformsData = JSON.parse(platformsContent);
+      if (platformsData && typeof platformsData === "object" && platformsData[modFolder]?.modio) {
+        parsed = platformsData[modFolder].modio;
+      }
+
+      // Fallback: legacy modio.json (pre-migration)
+      if (!parsed) {
+        const legacyContent = await readProjectFile(projectPath, "modio.json");
+        const legacyParsed = JSON.parse(legacyContent);
+        if (legacyParsed && typeof legacyParsed === "object" && legacyParsed.selectedModId) {
+          parsed = legacyParsed;
+        }
+      }
+
       if (parsed && typeof parsed === "object") {
         this.selectedModId = typeof parsed.selectedModId === "number" ? parsed.selectedModId : null;
         this.selectedModName = typeof parsed.selectedModName === "string" ? parsed.selectedModName : null;
         this.selectedModNameId = typeof parsed.selectedModNameId === "string" ? parsed.selectedModNameId : null;
         this.selectedModUrl = typeof parsed.selectedModUrl === "string" ? parsed.selectedModUrl : null;
+        this.modLogoUrl = typeof parsed.modLogoUrl === "string" ? parsed.modLogoUrl : null;
+        this.lastFetchedAt = typeof parsed.lastFetchedAt === "number" ? parsed.lastFetchedAt : null;
       }
     } catch (e) {
       console.warn("[modioStore] Failed to load project config:", e);
@@ -140,14 +167,21 @@ class ModioStore {
   }
 
   async #executeSave(): Promise<void> {
-    if (!this.projectPath) return;
+    if (!this.projectPath || !this.modFolder) return;
     const config: Record<string, unknown> = {};
     if (this.selectedModId != null) config.selectedModId = this.selectedModId;
     if (this.selectedModName != null) config.selectedModName = this.selectedModName;
     if (this.selectedModNameId != null) config.selectedModNameId = this.selectedModNameId;
     if (this.selectedModUrl != null) config.selectedModUrl = this.selectedModUrl;
+    if (this.modLogoUrl != null) config.modLogoUrl = this.modLogoUrl;
+    if (this.lastFetchedAt != null) config.lastFetchedAt = this.lastFetchedAt;
     try {
-      await writeProjectFile(this.projectPath, "modio.json", JSON.stringify(config, null, 2));
+      // Read-merge-write into platforms.json
+      const content = await readProjectFile(this.projectPath, "platforms.json");
+      const platforms = JSON.parse(content);
+      if (!platforms[this.modFolder]) platforms[this.modFolder] = {};
+      platforms[this.modFolder].modio = config;
+      await writeProjectFile(this.projectPath, "platforms.json", JSON.stringify(platforms, null, 2));
     } catch (e) {
       console.warn("[modioStore] Failed to save project config:", e);
     }
@@ -164,9 +198,12 @@ class ModioStore {
     this.selectedModName = null;
     this.selectedModNameId = null;
     this.selectedModUrl = null;
+    this.modLogoUrl = null;
+    this.lastFetchedAt = null;
     this.userMods = [];
     this.isLoadingMods = false;
     this.projectPath = null;
+    this.modFolder = null;
   }
 
   // ── Mod Listing ─────────────────────────────────────────────────
@@ -188,7 +225,31 @@ class ModioStore {
     this.selectedModName = mod.name;
     this.selectedModNameId = mod.name_id;
     this.selectedModUrl = `https://mod.io/g/baldursgate3/m/${mod.name_id}`;
+    this.modLogoUrl = mod.logo_url || null;
+    this.lastFetchedAt = Date.now();
     this.saveProjectConfig();
+  }
+
+  /** True when cached data is missing or older than CACHE_TTL_MS (24 h). */
+  isStale(): boolean {
+    if (this.lastFetchedAt == null) return true;
+    return Date.now() - this.lastFetchedAt > ModioStore.CACHE_TTL_MS;
+  }
+
+  /** Re-fetches user mods if stale and authenticated. */
+  async refreshIfStale(): Promise<void> {
+    if (!this.isAuthenticated || !this.isStale()) return;
+    await this.loadUserMods();
+    // Update cached fields from fresh data
+    if (this.selectedModId) {
+      const fresh = this.userMods.find(m => m.id === this.selectedModId);
+      if (fresh) {
+        this.modLogoUrl = fresh.logo_url || null;
+        this.selectedModName = fresh.name;
+        this.lastFetchedAt = Date.now();
+        this.saveProjectConfig();
+      }
+    }
   }
 
   /** Resolve a mod.io URL or numeric ID to a mod summary and link it. */

@@ -14,6 +14,7 @@ const ALLOWED_FILENAMES: &[&str] = &[
     "workspace.json",
     "nexus.json",
     "modio.json",
+    "platforms.json",
     "dependencies.json",
 ];
 

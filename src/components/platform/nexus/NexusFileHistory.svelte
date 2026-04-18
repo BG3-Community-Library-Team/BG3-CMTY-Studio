@@ -124,7 +124,7 @@
       {m.nexus_file_history_empty()}
     </p>
   {:else}
-    <div role="list" class="overflow-y-auto">
+    <div role="list" class="overflow-y-auto px-3 pb-3 pt-1">
       {#each groupedVersions as [category, files] (category)}
         <div class="file-category-group">
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -143,80 +143,79 @@
             <span class="file-category-count">{files.length}</span>
           </div>
           {#if !collapsedCategories[category]}
-            {#each files as ver (ver.id)}
-              <div role="listitem" class="file-entry">
-                <div class="file-entry-body">
-                  <!-- Left: info -->
-                  <div class="flex-1 min-w-0">
-                    <span class="font-medium text-[var(--th-text-200)] truncate block text-xs">{ver.name}</span>
-                    <!-- Date + size + description toggle on same row -->
-                    <div class="file-entry-meta">
-                      {#if ver.created_at}
-                        <span>{ver.created_at}</span>
-                      {/if}
-                      {#if ver.size_kb}
-                        <span>{ver.size_kb} KB</span>
-                      {/if}
+            <div class="flex flex-col gap-1 pt-1">
+              {#each files as ver (ver.id)}
+                <div
+                  role="listitem"
+                  class="rounded border border-[var(--th-border-700)] bg-[var(--th-bg-800)] px-2 py-1.5 text-[10px]"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex min-w-0 flex-col gap-0.5">
+                      <div class="flex items-center gap-1.5">
+                        <span class="truncate font-medium text-[var(--th-text-200)]">{ver.name}</span>
+                        <span class="shrink-0 text-[var(--th-text-500)]">v{ver.version}</span>
+                      </div>
+                      <span class="truncate text-[var(--th-text-500)]">
+                        {#if ver.size_kb}{ver.size_kb} KB{/if}
+                        {#if ver.size_kb && ver.created_at} · {/if}
+                        {#if ver.created_at}{ver.created_at}{/if}
+                      </span>
+                    </div>
+
+                    <div class="flex shrink-0 items-center gap-0.5">
                       {#if ver.description}
                         <button
-                          type="button"
-                          class="file-meta-link"
                           onclick={() => toggleDescription(ver.id)}
+                          aria-label={expandedDescriptions.has(ver.id) ? m.nexus_file_hide_description() : m.nexus_file_show_description()}
+                          class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
+                          class:text-[var(--th-accent,#0ea5e9)]={expandedDescriptions.has(ver.id)}
                         >
-                          {expandedDescriptions.has(ver.id) ? m.nexus_file_hide_description() : m.nexus_file_show_description()}
+                          <FileText size={11} />
                         </button>
                       {/if}
-                    </div>
-                  </div>
-                  <!-- Right: version + hover actions -->
-                  <div class="file-entry-right">
-                    <span class="file-entry-version">v{ver.version}</span>
-                    <div class="file-entry-actions">
                       {#if ver.changelog_html}
                         <button
-                          type="button"
-                          class="file-action-btn"
-                          class:file-action-active={expandedChangelogs.has(ver.id)}
-                          title={m.nexus_file_changelog()}
-                          aria-label={m.nexus_file_changelog()}
                           onclick={() => toggleChangelog(ver.id)}
+                          aria-label={m.nexus_file_changelog()}
+                          class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
+                          class:text-[var(--th-accent,#0ea5e9)]={expandedChangelogs.has(ver.id)}
                         >
-                          <FileText size={12} />
+                          <FileText size={11} />
                         </button>
                       {/if}
                       <button
-                        type="button"
-                        class="file-action-btn"
-                        title={m.nexus_file_download()}
-                        aria-label={m.nexus_file_download()}
                         onclick={() => openUrl(downloadUrl(ver.id))}
+                        aria-label={m.nexus_file_download()}
+                        class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
                       >
-                        <Download size={12} />
+                        <Download size={11} />
                       </button>
                       {#if onupdatefile}
                         <button
-                          type="button"
-                          class="file-action-btn"
-                          title={m.nexus_file_update()}
-                          aria-label={m.nexus_file_update()}
                           onclick={() => onupdatefile?.(ver)}
+                          aria-label={m.nexus_file_update()}
+                          class="rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)]"
                         >
-                          <Upload size={12} />
+                          <Upload size={11} />
                         </button>
                       {/if}
                     </div>
                   </div>
+
+                  {#if expandedDescriptions.has(ver.id) && ver.description}
+                    <div class="mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)] whitespace-pre-wrap">
+                      {ver.description}
+                    </div>
+                  {/if}
+
+                  {#if expandedChangelogs.has(ver.id) && ver.changelog_html}
+                    <div class="file-entry-changelog mt-1 rounded bg-[var(--th-bg-700)] px-2 py-1 text-[9px] text-[var(--th-text-300)]">
+                      {@html ver.changelog_html}
+                    </div>
+                  {/if}
                 </div>
-                <!-- Expanded description -->
-                {#if expandedDescriptions.has(ver.id) && ver.description}
-                  <p class="file-entry-expand">{ver.description}</p>
-                {/if}
-                <!-- Expanded changelog -->
-                {#if expandedChangelogs.has(ver.id) && ver.changelog_html}
-                  <div class="file-entry-expand file-entry-changelog">{@html ver.changelog_html}</div>
-                {/if}
-              </div>
-            {/each}
+              {/each}
+            </div>
           {/if}
         </div>
       {/each}
@@ -229,16 +228,14 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
+    padding: 4px 0;
     font-size: 11px;
     color: var(--th-text-300);
-    background: var(--th-bg-800);
-    border-bottom: 1px solid var(--th-border-700);
     cursor: pointer;
     user-select: none;
   }
   .file-category-header:hover {
-    background: var(--th-bg-700);
+    color: var(--th-text-200);
   }
   .file-category-chevron {
     display: inline-flex;
@@ -254,97 +251,6 @@
     color: var(--th-text-500);
   }
 
-  /* ── File entry ── */
-  .file-entry {
-    border-bottom: 1px solid var(--th-border-700);
-    padding: 6px 12px;
-    font-size: 12px;
-  }
-  .file-entry:last-child {
-    border-bottom: 0;
-  }
-  .file-entry-body {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  /* Meta row: date + size + description toggle */
-  .file-entry-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-    font-size: 10px;
-    color: var(--th-text-500);
-  }
-  .file-meta-link {
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--th-accent, #0ea5e9);
-    font-size: 10px;
-    cursor: pointer;
-  }
-  .file-meta-link:hover {
-    text-decoration: underline;
-  }
-
-  /* Right column: version visible by default, actions on hover */
-  .file-entry-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    flex-shrink: 0;
-  }
-  .file-entry-version {
-    font-size: 10px;
-    color: var(--th-text-500);
-  }
-  .file-entry-actions {
-    display: none;
-    gap: 2px;
-  }
-  .file-entry:hover .file-entry-actions {
-    display: flex;
-  }
-  .file-action-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--th-text-500);
-    cursor: pointer;
-    padding: 0;
-  }
-  .file-action-btn:hover {
-    background: var(--th-bg-600);
-    color: var(--th-text-200);
-  }
-  .file-action-active {
-    color: var(--th-accent, #0ea5e9);
-  }
-
-  /* Expanded content (description & changelog) */
-  .file-entry-expand {
-    margin-top: 4px;
-    padding: 4px 0;
-    font-size: 11px;
-    line-height: 1.4;
-    color: var(--th-text-400);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .file-entry-changelog {
-    white-space: normal;
-    border-top: 1px solid var(--th-border-700);
-    padding-top: 6px;
-  }
   /* Sanitize changelog HTML styles */
   .file-entry-changelog :global(ul) {
     padding-left: 16px;

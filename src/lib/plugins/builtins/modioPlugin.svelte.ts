@@ -151,9 +151,11 @@ export const modioPlugin: PluginModule = {
 
       // Project lifecycle: load/reset config when project changes
       $effect(() => {
-        const path = modStore.selectedModPath;
-        if (path) {
-          modioStore.loadProjectConfig(path);
+        const modPath = modStore.selectedModPath;
+        const projectRoot = modStore.projectPath || modPath;
+        const modFolder = modPath ? modPath.split(/[\\/]/).pop() ?? "" : "";
+        if (projectRoot && modFolder) {
+          modioStore.loadProjectConfig(projectRoot, modFolder);
         } else {
           modioStore.resetProject();
         }
