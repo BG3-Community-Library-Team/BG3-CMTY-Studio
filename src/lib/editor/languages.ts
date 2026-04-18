@@ -24,6 +24,7 @@ const languageMap: Record<string, () => Extension> = {
   lua: () => [StreamLanguage.define(lua), luaFoldService],
   json: () => json(),
   xml: () => xml(),
+  xaml: () => xml(),
   yaml: () => yaml(),
   markdown: () => markdown(),
   osiris: () => osiris(),

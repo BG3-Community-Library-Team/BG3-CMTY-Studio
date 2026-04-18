@@ -32,6 +32,7 @@
 
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Settings from "@lucide/svelte/icons/settings";
+  import Unlink from "@lucide/svelte/icons/unlink";
 
   let linkInput = $state("");
   let isLinking = $state(false);
@@ -440,6 +441,11 @@
       handleLinkMod();
     }
   }
+
+  function handleUnlink() {
+    nexusStore.resetProject();
+    nexusStore.saveProjectConfig();
+  }
 </script>
 
 <div class="flex h-full flex-col bg-[var(--th-sidebar-bg,var(--th-bg-900))]">
@@ -477,6 +483,16 @@
           {/if}
         </button>
       {/if}
+      <!-- Unlink mod button -->
+      <button
+        type="button"
+        class="rounded p-1 text-[var(--th-text-500)] hover:bg-[var(--th-bg-800)] hover:text-red-400"
+        onclick={handleUnlink}
+        aria-label="Unlink mod"
+        title="Unlink mod"
+      >
+        <Unlink size={14} />
+      </button>
       <!-- Settings dropdown -->
       <div class="relative">
         <button

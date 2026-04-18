@@ -153,7 +153,7 @@
   }
 </script>
 
-<div class="px-3 pb-3">
+<div class="px-3 pb-3 pt-2">
   {#if isLoading}
     <div class="flex items-center justify-center py-4">
       <Loader2
@@ -174,15 +174,20 @@
         >
           {#if editingFileId === file.id}
             <!-- Edit mode -->
-            <div class="mt-1 flex flex-col gap-1.5">
-              <label class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-medium text-[var(--th-text-500)]">{m.modio_file_version_label()}</span>
-                <input
-                  type="text"
-                  bind:value={editVersion}
-                  class="rounded border border-[var(--th-border-700)] bg-[var(--th-bg-700)] px-1.5 py-0.5 text-[10px] text-[var(--th-text-200)] outline-none focus:border-[var(--th-accent,#0ea5e9)]"
-                />
-              </label>
+            <div class="flex flex-col gap-1.5">
+              <div class="flex items-center justify-between">
+                <span class="truncate text-[10px] font-medium text-[var(--th-text-200)]">
+                  {editVersion || file.filename}
+                </span>
+                <button
+                  onclick={cancelEdit}
+                  disabled={isSaving}
+                  aria-label={m.common_cancel()}
+                  class="shrink-0 rounded p-0.5 text-[var(--th-text-500)] hover:bg-[var(--th-bg-700)] hover:text-[var(--th-text-200)] disabled:opacity-50"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
 
               <label class="flex flex-col gap-0.5">
                 <span class="text-[9px] font-medium text-[var(--th-text-500)]">{m.modio_file_changelog_label()}</span>
@@ -213,14 +218,6 @@
                     <Check size={10} />
                   {/if}
                   {m.modio_file_save()}
-                </button>
-                <button
-                  onclick={cancelEdit}
-                  disabled={isSaving}
-                  aria-label={m.common_cancel()}
-                  class="flex items-center gap-1 rounded border border-[var(--th-border-700)] px-2 py-0.5 text-[9px] text-[var(--th-text-300)] hover:bg-[var(--th-bg-700)] disabled:opacity-50"
-                >
-                  <X size={10} aria-hidden="true" />
                 </button>
               </div>
             </div>

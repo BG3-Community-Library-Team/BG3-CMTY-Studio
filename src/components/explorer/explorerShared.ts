@@ -26,6 +26,7 @@ export const EXT_BADGE_COLORS: Record<string, string> = {
   md: "var(--th-badge-md)",
   txt: "var(--th-badge-txt)",
   xml: "var(--th-badge-xml)",
+  xaml: "var(--th-badge-xml)",
   cfg: "var(--th-badge-cfg)",
   khn: "var(--th-badge-khn)",
   anc: "var(--th-badge-anubis)", ann: "var(--th-badge-anubis)", anm: "var(--th-badge-anubis)",
@@ -61,7 +62,7 @@ export function getSeContextBadge(path: string): { label: string; color: string 
 
 // ── Script file type ──
 
-const SCRIPT_EXTENSIONS = new Set(["lua", "khn", "anc", "ann", "anm", "clc", "cln", "clm", "json"]);
+const SCRIPT_EXTENSIONS = new Set(["lua", "khn", "anc", "ann", "anm", "clc", "cln", "clm", "json", "xaml"]);
 
 /** Check if a file extension is a script type that opens in the editor */
 export function isScriptFile(ext?: string): boolean {

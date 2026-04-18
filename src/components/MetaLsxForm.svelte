@@ -645,23 +645,24 @@
             </label>
           </div>
 
-          <!-- Nexus URL (not saved to LSX — stored in nexus config) -->
-          <label class="flex flex-col gap-1 text-xs">
-            <span class={labelClass}>{m.nexus_meta_lsx_nexus_url_label()}</span>
-            <input type="text" class={inputClass}
-                   placeholder={m.nexus_meta_lsx_nexus_url_placeholder()}
-                   value={nexusStore.modUrl ?? ""}
-                   oninput={(e) => { nexusStore.modUrl = (e.target as HTMLInputElement).value || null; }} />
-          </label>
+          <!-- Nexus URL + mod.io URL (same row, not saved to LSX — stored in platform configs) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex flex-col gap-1 text-xs">
+              <span class={labelClass}>{m.nexus_meta_lsx_nexus_url_label()}</span>
+              <input type="text" class={inputClass}
+                     placeholder={m.nexus_meta_lsx_nexus_url_placeholder()}
+                     value={nexusStore.modUrl ?? ""}
+                     oninput={(e) => { nexusStore.modUrl = (e.target as HTMLInputElement).value || null; }} />
+            </label>
 
-          <!-- mod.io URL (not saved to LSX — stored in modio config, auto-links mod) -->
-          <label class="flex flex-col gap-1 text-xs">
-            <span class={labelClass}>{m.modio_meta_lsx_url_label()}</span>
-            <input type="text" class={inputClass}
-                   placeholder={m.modio_meta_lsx_url_placeholder()}
-                   value={modioStore.selectedModUrl ?? ""}
-                   oninput={(e) => { handleModioUrlInput((e.target as HTMLInputElement).value); }} />
-          </label>
+            <label class="flex flex-col gap-1 text-xs">
+              <span class={labelClass}>{m.modio_meta_lsx_url_label()}</span>
+              <input type="text" class={inputClass}
+                     placeholder={m.modio_meta_lsx_url_placeholder()}
+                     value={modioStore.selectedModUrl ?? ""}
+                     oninput={(e) => { handleModioUrlInput((e.target as HTMLInputElement).value); }} />
+            </label>
+          </div>
 
           <label class="flex flex-col gap-1 text-xs">
             <span class={labelClass}>{m.meta_lsx_description()}</span>

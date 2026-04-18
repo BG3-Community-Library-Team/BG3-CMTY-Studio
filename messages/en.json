@@ -1495,7 +1495,7 @@
   "modio_error_invalid_input": "Enter a valid mod.io URL or numeric mod ID",
   "modio_suggested_matches": "Suggested matches",
   "modio_all_mods": "All your mods",
-  "modio_create_mod": "Create New Mod",
+  "modio_create_mod": "Publish Mod",
   "modio_mod_status_accepted": "Accepted",
   "modio_mod_status_pending": "Pending",
   "modio_mod_visibility_public": "Public",

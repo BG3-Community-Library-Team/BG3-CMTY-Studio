@@ -15,6 +15,7 @@ import { frameworkPlugin } from './frameworkPlugin.js';
 import { jsonSchemaPlugin } from './jsonSchemaPlugin.js';
 import { snippetPlugin } from '../editor/snippets.js';
 import { customSnippetPlugin } from '../editor/customSnippets.js';
+import { noesisXamlPlugin } from './noesisXamlPlugin.js';
 
 // Register built-in plugins
 completionRegistry.register(seApiPlugin);
@@ -28,3 +29,4 @@ completionRegistry.register(frameworkPlugin);
 completionRegistry.register(jsonSchemaPlugin);
 completionRegistry.register(snippetPlugin);
 completionRegistry.register(customSnippetPlugin);
+completionRegistry.register(noesisXamlPlugin);

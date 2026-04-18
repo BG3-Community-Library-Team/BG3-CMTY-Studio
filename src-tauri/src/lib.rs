@@ -543,7 +543,7 @@ pub struct ModFileEntry {
 }
 
 /// Allowed text file extensions for mod file preview.
-const TEXT_FILE_EXTS: &[&str] = &["md", "txt", "lua", "json", "yaml", "yml", "cfg", "xml", "loca", "khn", "toml", "ini", "anc", "ann", "anm", "clc", "cln", "clm", "lsx", "lsefx"];
+const TEXT_FILE_EXTS: &[&str] = &["md", "txt", "lua", "json", "yaml", "yml", "cfg", "xml", "xaml", "loca", "khn", "toml", "ini", "anc", "ann", "anm", "clc", "cln", "clm", "lsx", "lsefx"];
 
 /// List previewable text files within a mod directory.
 /// Returns paths relative to `mod_path` with forward-slash separators.

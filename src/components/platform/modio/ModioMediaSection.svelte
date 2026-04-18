@@ -31,7 +31,7 @@
   let deletingFilename: string | null = $state(null);
   let isDragOver = $state(false);
   let previewImage: { url: string; filename: string } | null = $state(null);
-  let dropTargetRef: HTMLButtonElement | null = $state(null);
+  let sectionRef: HTMLDivElement | null = $state(null);
 
   const VALID_IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
@@ -40,8 +40,8 @@
     let unlistenFn: (() => void) | null = null;
     import("@tauri-apps/api/webviewWindow").then(({ getCurrentWebviewWindow }) => {
       getCurrentWebviewWindow().onDragDropEvent((event) => {
-        if (!dropTargetRef) return;
-        const rect = dropTargetRef.getBoundingClientRect();
+        if (!sectionRef) return;
+        const rect = sectionRef.getBoundingClientRect();
         const payload = event.payload;
 
         if (payload.type === "over") {
@@ -118,7 +118,7 @@
   }
 </script>
 
-<div class="px-3 pb-3">
+<div class="px-3 pb-3 pt-2" bind:this={sectionRef}>
   <div class="grid grid-cols-3 gap-1.5">
     {#each images as img, i (img.filename)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -145,7 +145,6 @@
     <!-- Faux-thumbnail add button with drag-and-drop -->
     <button
       type="button"
-      bind:this={dropTargetRef}
       class="relative aspect-video rounded border-2 border-dashed overflow-hidden flex items-center justify-center cursor-pointer transition-colors
         {isDragOver
           ? 'border-[var(--th-accent,#0ea5e9)] bg-[color-mix(in_srgb,var(--th-accent,#0ea5e9)_10%,transparent)]'

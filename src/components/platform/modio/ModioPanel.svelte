@@ -30,6 +30,7 @@
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import LinkIcon from "@lucide/svelte/icons/link";
+  import Unlink from "@lucide/svelte/icons/unlink";
   import X from "@lucide/svelte/icons/x";
 
   // Section components
@@ -37,6 +38,7 @@
   import ModioMediaSection from "./ModioMediaSection.svelte";
   import ModioTagSection from "./ModioTagSection.svelte";
   import ModioDependencies from "./ModioDependencies.svelte";
+
   import CreateModDialog from "./CreateModDialog.svelte";
   import UploadProgressModal from "../UploadProgressModal.svelte";
   import ExplorerDrawer from "../../ExplorerDrawer.svelte";
@@ -127,11 +129,12 @@
   );
 
   // ── Drawer visibility & pinning (matches Nexus/Git pane pattern) ──
-  const allModioDrawerIds = ["modio-file-versions", "modio-media", "modio-dependencies"];
+  const allModioDrawerIds = ["modio-file-versions", "modio-media", "modio-dependencies", "modio-reports"];
   const modioDrawerTitles: Record<string, string> = $derived({
     "modio-file-versions": m.modio_file_versions_header(),
     "modio-media": m.modio_media_header(),
     "modio-dependencies": m.modio_dependencies_header(),
+    "modio-reports": "Reports",
   });
   let visibleDrawerIds = $derived.by(() => {
     const visible = allModioDrawerIds.filter(id => !uiStore.isDrawerHidden(id));
@@ -139,6 +142,9 @@
     const unpinned = visible.filter(id => !uiStore.isDrawerPinned(id));
     return [...pinned, ...unpinned];
   });
+
+  /** True when every visible drawer is collapsed — hides the resize handle */
+  let allDrawersCollapsed = $derived(visibleDrawerIds.length === 0 || visibleDrawerIds.every(id => uiStore.isDrawerCollapsed(id)));
 
   // Detect if summary text is actually truncated by line-clamp
   $effect(() => {
@@ -437,6 +443,17 @@
           {/if}
         </button>
       {/if}
+
+      <!-- Unlink mod button -->
+      <button
+        type="button"
+        class="rounded p-1 text-[var(--th-text-500)] hover:bg-[var(--th-bg-800)] hover:text-red-400"
+        onclick={handleUnlink}
+        aria-label="Unlink mod"
+        title="Unlink mod"
+      >
+        <Unlink size={14} />
+      </button>
     {/if}
 
     <!-- Connection indicator button — always visible -->
@@ -649,7 +666,7 @@
       </div>
     {:else}
       <!-- Mod info card (shown when upload form is hidden, like Nexus) -->
-      <div class="modio-info-section" bind:this={infoSectionRef} style={infoHeight != null ? `height: ${infoHeight}px` : ''}>
+      <div class="modio-info-section" bind:this={infoSectionRef} style={allDrawersCollapsed ? 'flex: 1' : infoHeight != null ? `height: ${infoHeight}px` : ''}>
         <div class="p-3">
         <!-- Thumbnail -->
         {#if selectedModData?.logo_url}
@@ -809,12 +826,14 @@
       </div>
     {/if}
 
-    <!-- Resize handle between info and drawers -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="modio-resize-handle"
-      onmousedown={handleResizeStart}
-    ></div>
+    <!-- Resize handle between info and drawers (hidden when all drawers collapsed) -->
+    {#if !allDrawersCollapsed}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="modio-resize-handle"
+        onmousedown={handleResizeStart}
+      ></div>
+    {/if}
 
     <!-- Drawers (ExplorerDrawer pattern – matches Nexus/Git pane) -->
     <div class="modio-drawer-layout">
@@ -846,6 +865,15 @@
               {#snippet headerActions()}
                 <button
                   class="drawer-action-btn"
+                  title={m.modio_refresh()}
+                  aria-label={m.modio_refresh()}
+                  disabled={isRefreshing}
+                  onclick={(e: MouseEvent) => { e.stopPropagation(); handleRefresh(); }}
+                >
+                  <RefreshCw size={14} class={isRefreshing && !getPrefersReducedMotion() ? "animate-spin" : ""} aria-hidden="true" />
+                </button>
+                <button
+                  class="drawer-action-btn"
                   title={m.modio_add_image()}
                   aria-label={m.modio_add_image()}
                   onclick={(e: MouseEvent) => { e.stopPropagation(); mediaSectionRef?.browseAndAdd(); }}
@@ -872,6 +900,23 @@
               {/snippet}
               {#snippet children()}
                 <ModioDependencies modId={modioStore.selectedModId!} gameId={modioStore.GAME_ID} bind:showAddForm={showDepAddForm} />
+              {/snippet}
+            </ExplorerDrawer>
+          {:else if drawerId === "modio-reports"}
+            <ExplorerDrawer id="modio-reports" title="Reports" isFirst={i === 0} defaultOpen={false} allDrawerIds={allModioDrawerIds} drawerTitles={modioDrawerTitles}>
+              {#snippet children()}
+                <div class="px-3 py-4 text-center">
+                  <p class="text-[10px] text-[var(--th-text-500)]">Reports are managed on the mod.io dashboard.</p>
+                  {#if modioStore.selectedModUrl}
+                    <button
+                      class="mt-2 inline-flex items-center gap-1 text-[10px] text-[var(--th-accent,#0ea5e9)] hover:underline"
+                      onclick={() => shellOpen(modioStore.selectedModUrl + '/report')}
+                    >
+                      <ExternalLink size={10} />
+                      View reports on mod.io
+                    </button>
+                  {/if}
+                </div>
               {/snippet}
             </ExplorerDrawer>
           {/if}

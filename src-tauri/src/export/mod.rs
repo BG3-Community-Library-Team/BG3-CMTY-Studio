@@ -254,7 +254,7 @@ pub fn build_export_plan(
 // ---------------------------------------------------------------------------
 
 /// File extensions considered export artifacts when walking the mod directory.
-const EXPORT_EXTENSIONS: &[&str] = &["lsx", "txt", "xml", "lua", "json"];
+const EXPORT_EXTENSIONS: &[&str] = &["lsx", "txt", "xml", "xaml", "lua", "json"];
 
 /// Filenames excluded from orphan detection (managed externally).
 const ORPHAN_EXCLUSIONS: &[&str] = &[];

@@ -34,7 +34,7 @@
 
   /** File extensions eligible for script content search */
   const SCRIPT_EXTENSIONS = new Set([
-    "lua", "khn", "txt", "xml",
+    "lua", "khn", "txt", "xml", "xaml",
     "anc", "ann", "anm",
     "clc", "cln", "clm",
     "json", "yaml",

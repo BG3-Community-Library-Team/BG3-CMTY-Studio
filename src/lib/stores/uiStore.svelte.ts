@@ -306,6 +306,7 @@ class UiStore {
       case "json": return "json";
       case "yaml": case "yml": return "yaml";
       case "xml": case "lsx": case "lsefx": return "xml";
+      case "xaml": return "xaml";
       case "md": case "markdown": return "markdown";
       case "txt": return "plaintext";
       default: return "plaintext";
