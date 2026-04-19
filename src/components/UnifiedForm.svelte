@@ -15,7 +15,8 @@
   import type { VanillaCategory } from "../lib/data/vanillaRegistry.js";
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import type { NodeSchema } from "../lib/utils/tauri.js";
-  import { autoLayoutFromSchema, autoLayoutFromCaps } from "../lib/data/autoLayout.js";
+  import { autoLayoutFromSchema, autoLayoutFromCaps, autoLayoutFromMetadata } from "../lib/data/autoLayout.js";
+  import { STAT_TYPE_METADATA } from "../lib/data/statFieldMetadata.js";
   import { classifyLsxType, renderTypeToFieldType, inferComboboxDescriptor } from "../lib/utils/lsxTypes.js";
 
   import {
@@ -394,7 +395,12 @@
   let effectiveCaps = $derived.by((): SectionCapabilities => {
     if (_hasSectionCaps) {
       if (baseCaps.isSpell && statsSchema) {
-        return { ...capsFromSchema(statsSchema), isSpell: true };
+        const schemaCaps = capsFromSchema(statsSchema);
+        const meta = STAT_TYPE_METADATA[_statsEntryType!];
+        if (meta && Object.keys(meta.fieldCombobox).length > 0) {
+          return { ...schemaCaps, isSpell: true, fieldCombobox: { ...schemaCaps.fieldCombobox, ...meta.fieldCombobox } };
+        }
+        return { ...schemaCaps, isSpell: true };
       }
       return baseCaps;
     }
@@ -407,7 +413,11 @@
   let baseLayout = $derived.by((): FormLayout | undefined => {
     if (staticLayout) return staticLayout;
     if (_hasSectionCaps) {
-      if (baseCaps.isSpell && statsSchema) return autoLayoutFromSchema(statsSchema);
+      if (baseCaps.isSpell && statsSchema) {
+        const meta = STAT_TYPE_METADATA[_statsEntryType!];
+        if (meta) return autoLayoutFromMetadata(meta, statsSchema);
+        return autoLayoutFromSchema(statsSchema);
+      }
       return autoLayoutFromCaps(SECTION_CAPS[_section]);
     }
     if (activeSchema) return autoLayoutFromSchema(activeSchema);
@@ -906,7 +916,7 @@
     if (layout?.subsections) {
       for (const sub of layout.subsections) {
         if (sub.component) continue;
-        const id = `section-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
+        const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
         sections.push({ id, label: sub.title });
       }
     }
@@ -958,7 +968,7 @@
         // Error belongs to a layout subsection — find which one
         for (const sub of layout?.subsections ?? []) {
           if (sub.rows?.some(r => r.items.some(i => i.key === fieldKey))) {
-            const id = `section-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
+            const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
             counts[id] = (counts[id] ?? 0) + 1;
             break;
           }

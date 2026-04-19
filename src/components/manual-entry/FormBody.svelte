@@ -112,7 +112,7 @@
 {#if layout.subsections}
   {#each layout.subsections as sub}
     {#if !sub.component}
-    <FormSectionCard title={sub.title} id="section-{sub.title.toLowerCase().replace(/\s+/g, '-')}" open={!sub.collapsed}>
+    <FormSectionCard title={sub.title} id="section-sub-{sub.title.toLowerCase().replace(/\s+/g, '-')}" open={!sub.collapsed}>
       {#snippet headerActions()}
         {#if sub.headerBooleans}
           {#each sub.headerBooleans as bKey}

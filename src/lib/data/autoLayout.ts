@@ -1,6 +1,7 @@
 import type { FormLayout, LayoutRow, LayoutField, LayoutSubsection } from "./formLayouts.js";
 import type { SectionCapabilities } from "./sectionCaps.js";
 import type { NodeSchema } from "../utils/tauri.js";
+import type { StatTypeMetadata } from "./statFieldMetadata.js";
 
 // ─── Identity attribute names excluded from layout (handled by FormIdentity) ──
 const IDENTITY_ATTRS = new Set(["UUID", "MapKey"]);
@@ -187,6 +188,91 @@ export function autoLayoutFromCaps(caps: SectionCapabilities): FormLayout {
 
   if (handledFieldKeys.length > 0) layout.handledFieldKeys = handledFieldKeys;
   if (handledBooleanKeys.length > 0) layout.handledBooleanKeys = handledBooleanKeys;
+
+  return layout;
+}
+
+export function autoLayoutFromMetadata(
+  meta: StatTypeMetadata,
+  schema: NodeSchema,
+): FormLayout {
+  // Build set of all field keys mentioned in metadata groups
+  const metaFieldSet = new Set<string>();
+  for (const group of meta.groups) {
+    for (const f of group.fields) {
+      metaFieldSet.add(f);
+    }
+  }
+
+  // Build set of all boolean keys from schema
+  const schemaBoolSet = new Set<string>();
+  const schemaFieldSet = new Set<string>();
+  for (const attr of schema.attributes) {
+    if (IDENTITY_ATTRS.has(attr.name)) continue;
+    if (attr.attr_type === "bool") {
+      schemaBoolSet.add(attr.name);
+    } else {
+      schemaFieldSet.add(attr.name);
+    }
+  }
+
+  // Build subsections from metadata groups
+  const subsections: LayoutSubsection[] = [];
+  for (const group of meta.groups) {
+    const rows = chunkRows(group.fields, 3);
+    const sub: LayoutSubsection = {
+      title: group.title,
+      rows,
+    };
+    if (group.collapsed) sub.collapsed = true;
+    // "Inheritance" group should not be collapsed
+    subsections.push(sub);
+  }
+
+  // Booleans NOT in any metadata group → side column
+  const sideColumnBooleans: string[] = [];
+  for (const bk of schemaBoolSet) {
+    if (!metaFieldSet.has(bk)) {
+      sideColumnBooleans.push(bk);
+    }
+  }
+
+  // Non-boolean schema fields NOT in any metadata group → "Other Fields" subsection
+  const otherFieldKeys: string[] = [];
+  for (const fk of schemaFieldSet) {
+    if (!metaFieldSet.has(fk)) {
+      otherFieldKeys.push(fk);
+    }
+  }
+
+  if (otherFieldKeys.length > 0) {
+    subsections.push({
+      title: "Other Fields",
+      rows: chunkRows(otherFieldKeys, 3),
+      collapsed: true,
+    });
+  }
+
+  // All handled keys
+  const allMetaFields = [...metaFieldSet];
+  const handledFieldKeys = [...allMetaFields, ...otherFieldKeys];
+  const handledBooleanKeys = [...schemaBoolSet];
+
+  // Child groups from schema children
+  const childGroups = schema.children.map((child) => ({
+    title: child.group_id,
+    types: [child.child_node_id],
+  }));
+
+  const layout: FormLayout = {
+    maxFieldColumns: 3,
+    handledFieldKeys,
+    handledBooleanKeys,
+    subsections,
+  };
+
+  if (sideColumnBooleans.length > 0) layout.sideColumnBooleans = sideColumnBooleans;
+  if (childGroups.length > 0) layout.childGroups = childGroups;
 
   return layout;
 }
