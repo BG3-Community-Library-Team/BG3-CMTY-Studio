@@ -16,7 +16,7 @@
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import type { NodeSchema } from "../lib/utils/tauri.js";
   import { autoLayoutFromSchema, autoLayoutFromCaps, autoLayoutFromMetadata } from "../lib/data/autoLayout.js";
-  import { STAT_TYPE_METADATA } from "../lib/data/statFieldMetadata.js";
+  import { STAT_TYPE_METADATA, type FieldGate } from "../lib/data/statFieldMetadata.js";
   import { classifyLsxType, renderTypeToFieldType, inferComboboxDescriptor } from "../lib/utils/lsxTypes.js";
 
   import {
@@ -54,6 +54,8 @@
     computeValidationErrors,
   } from "../lib/utils/formOptions.js";
   import Search from "@lucide/svelte/icons/search";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
 
   let {
     section,
@@ -101,6 +103,30 @@
     autoEntryId,
     generateUuid,
   }));
+
+  // svelte-ignore state_referenced_locally — intentional one-time snapshot (defaults apply on creation only)
+  {
+    const isNew = editIndex === -1 && !autoEntryId;
+    if (isNew) {
+      const caps = SECTION_CAPS[section] as SectionCapabilities | undefined;
+      const entryType = caps?.isSpell
+        ? (nodeId ?? (entryFilter?.field === "node_id" ? entryFilter.value : null))
+        : null;
+      if (entryType) {
+        const meta = STAT_TYPE_METADATA[entryType];
+        if (meta?.defaults) {
+          for (const [key, value] of Object.entries(meta.defaults)) {
+            const existing = _init.fields.find(f => f.key === key);
+            if (existing && !existing.value) {
+              existing.value = value;
+            } else if (!existing) {
+              _init.fields.push({ key, value });
+            }
+          }
+        }
+      }
+    }
+  }
 
   // Auto-populate selectors from raw LSX Selectors attribute
   const _rawAttrs = untrack(() => snapshot(rawAttributes));
@@ -494,6 +520,16 @@
   });
 
   let allowedTagTypes = $derived(caps.tagTypes ?? ["Tags", "ReallyTags", "AppearanceTags"]);
+
+  /** Field gating rules from stat type metadata (empty for non-stats sections). */
+  let fieldGating: Record<string, FieldGate> = $derived.by(() => {
+    if (baseCaps.isSpell && _statsEntryType) {
+      const meta = STAT_TYPE_METADATA[_statsEntryType];
+      if (meta && Object.keys(meta.fieldGating).length > 0) return meta.fieldGating;
+    }
+    return {};
+  });
+  let hasFieldGating = $derived(Object.keys(fieldGating).length > 0);
 
   /** Set of field keys handled by layout (should not render in legacy FieldsFieldset). */
   let layoutHandledFieldKeys = $derived(new Set(layout?.handledFieldKeys ?? []));
@@ -1200,15 +1236,38 @@
       <div class="form-content">
 
     <!-- Search filter for large sections (50+ attrs) -->
-    {#if totalAttrCount > 50}
-      <div class="relative mb-1">
-        <Search size={12} class="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--th-text-500)]" />
-        <input
-          type="text"
-          class="form-input w-full pl-7 text-xs h-7"
-          placeholder="Filter fields..."
-          bind:value={formFieldFilter}
-        />
+    {#if totalAttrCount > 50 || hasFieldGating}
+      <div class="flex items-center gap-2 mb-1">
+        {#if totalAttrCount > 50}
+        <div class="relative flex-1">
+          <Search size={12} class="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--th-text-500)]" />
+          <input
+            type="text"
+            class="form-input w-full pl-7 text-xs h-7"
+            placeholder="Filter fields..."
+            bind:value={formFieldFilter}
+          />
+        </div>
+        {/if}
+        {#if hasFieldGating}
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 px-2.5 h-7 text-[11px] rounded-md border transition-colors whitespace-nowrap
+            {uiStore.showAllStatsFields
+              ? 'border-sky-500/50 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20'
+              : 'border-[var(--th-bg-600,#52525b)] bg-[var(--th-bg-800,#27272a)] text-[var(--th-text-500)] hover:text-[var(--th-text-300)] hover:border-[var(--th-bg-500,#71717a)]'}"
+          onclick={() => uiStore.toggleShowAllStatsFields()}
+          aria-pressed={uiStore.showAllStatsFields}
+        >
+          {#if uiStore.showAllStatsFields}
+            <Eye size={13} />
+            <span>All fields</span>
+          {:else}
+            <EyeOff size={13} />
+            <span>Relevant fields</span>
+          {/if}
+        </button>
+        {/if}
       </div>
     {/if}
 
@@ -1261,6 +1320,7 @@
         {getChildValueOptions}
         {allowedTagTypes}
         {getTagOptionsForType}
+        {fieldGating}
       />
     {/if}
 

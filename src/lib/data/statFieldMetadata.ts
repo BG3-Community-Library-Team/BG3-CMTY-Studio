@@ -12,10 +12,35 @@ export interface StatTypeMetadata {
   groups: StatFieldGroup[];
   /** Field → combobox descriptor overrides (merged with schema inference) */
   fieldCombobox: Record<string, string>;
-  /** Field → gating condition (Sprint 4 — leave empty for now) */
-  fieldGating: Record<string, unknown>;
+  /** Field → gating condition that controls visibility */
+  fieldGating: Record<string, FieldGate>;
   /** Field → default value on creation (Sprint 4 — leave empty for now) */
   defaults: Record<string, string>;
+}
+
+export interface FieldGate {
+  /** Field whose value determines visibility */
+  trigger: string;
+  /** How to evaluate the trigger value */
+  condition:
+    | { type: 'equals'; value: string }
+    | { type: 'includes'; value: string }
+    | { type: 'notEmpty' }
+    | { type: 'notEquals'; value: string };
+}
+
+export function evaluateGate(gate: FieldGate, formData: Record<string, string>): boolean {
+  const triggerValue = formData[gate.trigger] ?? '';
+  switch (gate.condition.type) {
+    case 'equals':
+      return triggerValue === gate.condition.value;
+    case 'notEquals':
+      return triggerValue !== gate.condition.value;
+    case 'includes':
+      return triggerValue.split(';').includes(gate.condition.value);
+    case 'notEmpty':
+      return triggerValue.trim() !== '';
+  }
 }
 
 export const DAMAGE_TYPES = 'static:Bludgeoning,Piercing,Slashing,Fire,Cold,Lightning,Thunder,Poison,Acid,Necrotic,Radiant,Psychic,Force,None';
@@ -123,8 +148,23 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       SpellActionType: 'static:None,Bonus,Reaction,Main',
       PreviewCursor: 'static:Cast,Melee,Ranged,Throw,Cone,AOE',
     },
-    fieldGating: {},
-    defaults: {},
+    fieldGating: {
+      ProjectileCount: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
+      ProjectileDelay: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
+      ProjectileSpread: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
+      AreaRadius: { trigger: 'SpellType', condition: { type: 'equals', value: 'Zone' } },
+      Duration: { trigger: 'SpellType', condition: { type: 'equals', value: 'Zone' } },
+      TickFunctors: { trigger: 'SpellType', condition: { type: 'equals', value: 'Zone' } },
+      ZoneLifetime: { trigger: 'SpellType', condition: { type: 'equals', value: 'Zone' } },
+      RushDistance: { trigger: 'SpellType', condition: { type: 'equals', value: 'Rush' } },
+      StopAtFirst: { trigger: 'SpellType', condition: { type: 'equals', value: 'Rush' } },
+      TeleportSelf: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
+      TeleportSurface: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
+      ContainerSpells: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsLinkedSpellContainer' } },
+      ConcentrationSpellID: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsConcentration' } },
+      CooldownType: { trigger: 'Cooldown', condition: { type: 'notEquals', value: 'None' } },
+    },
+    defaults: { Level: '1' },
   },
 
   PassiveData: {
@@ -172,7 +212,13 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       ToggleGroup: "statType:PassiveData",
       Properties: "multiStatic:IsHidden,Highlighted,OncePerTurn,ForceShowInCC,IsToggled,ToggledDefaultAddToHotbar,ToggleForParty",
     },
-    fieldGating: {},
+    fieldGating: {
+      ToggleOnFunctors: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
+      ToggleOffFunctors: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
+      ToggleGroup: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
+      ToggledDefaultAddToHotbar: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
+      StatsFunctors: { trigger: 'StatsFunctorContext', condition: { type: 'notEmpty' } },
+    },
     defaults: {},
   },
 
@@ -227,8 +273,17 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       StillAnimationType: 'static:Dazed,Idle,Prone,Sleeping,Sitting,None',
       StillAnimationPriority: 'static:Low,Medium,High',
     },
-    fieldGating: {},
-    defaults: {},
+    fieldGating: {
+      Boosts: { trigger: 'StatusType', condition: { type: 'equals', value: 'BOOST' } },
+      HealValue: { trigger: 'StatusType', condition: { type: 'equals', value: 'HEAL' } },
+      HealStat: { trigger: 'StatusType', condition: { type: 'equals', value: 'HEAL' } },
+      HealType: { trigger: 'StatusType', condition: { type: 'equals', value: 'HEAL' } },
+      PolymorphResult: { trigger: 'StatusType', condition: { type: 'equals', value: 'POLYMORPHED' } },
+      DisableInteractions: { trigger: 'StatusType', condition: { type: 'equals', value: 'POLYMORPHED' } },
+      TickFunctors: { trigger: 'TickType', condition: { type: 'notEquals', value: 'None' } },
+      StackPriority: { trigger: 'StackType', condition: { type: 'equals', value: 'Stack' } },
+    },
+    defaults: { StackType: 'Overwrite', TickType: 'None' },
   },
 
   Armor: {
@@ -289,7 +344,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       RootTemplate: 'section:RootTemplates',
     },
     fieldGating: {},
-    defaults: {},
+    defaults: { Shield: 'No' },
   },
 
   Weapon: {
@@ -347,8 +402,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       InventoryTab: INVENTORY_TAB_VALUES,
       RootTemplate: 'section:RootTemplates',
     },
-    fieldGating: {},
-    defaults: {},
+    fieldGating: {
+      VersatileDamage: { trigger: 'Weapon Properties', condition: { type: 'includes', value: 'Versatile' } },
+      Ammunition: { trigger: 'Weapon Properties', condition: { type: 'includes', value: 'Ammunition' } },
+      ThrowRange: { trigger: 'Weapon Properties', condition: { type: 'includes', value: 'Thrown' } },
+    },
+    defaults: { UseCosts: 'ActionPoint:1' },
   },
 
   InterruptData: {

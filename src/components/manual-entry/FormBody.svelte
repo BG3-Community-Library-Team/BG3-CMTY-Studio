@@ -3,6 +3,8 @@
   import type { SectionCapabilities } from "../../lib/data/sectionCaps.js";
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { StringItem, ChildItem } from "../../lib/utils/fieldCodec.js";
+  import { evaluateGate, type FieldGate } from "../../lib/data/statFieldMetadata.js";
+  import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import X from "@lucide/svelte/icons/x";
   import LayoutCell from "./LayoutCell.svelte";
   import FormSectionCard from "./FormSectionCard.svelte";
@@ -28,6 +30,7 @@
     tags = $bindable(),
     allowedTagTypes = [],
     getTagOptionsForType,
+    fieldGating = {},
   }: {
     layout: FormLayout;
     caps: SectionCapabilities;
@@ -46,7 +49,34 @@
     tags?: { uuids: string[]; action: string; type: string; modGuid: string }[];
     allowedTagTypes?: string[];
     getTagOptionsForType?: (tagType: string) => ComboboxOption[];
+    fieldGating?: Record<string, FieldGate>;
   } = $props();
+
+  /** Check whether a field's gate condition is currently met. */
+  function isGateMet(key: string): boolean {
+    const gate = fieldGating[key];
+    if (!gate) return true;
+    return evaluateGate(gate, { [gate.trigger]: getFieldValue(gate.trigger) });
+  }
+
+  /** Determine whether a field should be rendered. */
+  function shouldShowField(key: string): boolean {
+    if (isGateMet(key)) return true;
+    if (uiStore.showAllStatsFields) return true;
+    if (getFieldValue(key).trim() !== '') return true;
+    return false;
+  }
+
+  /** Get visual state for a gated field: 'normal' | 'warn' | 'dim'. */
+  function getFieldGateState(key: string): 'normal' | 'warn' | 'dim' {
+    const gate = fieldGating[key];
+    if (!gate) return 'normal';
+    if (isGateMet(key)) return 'normal';
+    // Gate not met — field has a value → warning indicator
+    if (getFieldValue(key).trim() !== '') return 'warn';
+    // Gate not met, no value — only visible via "show all" → dimmed
+    return 'dim';
+  }
 
   function removeChild(i: number) { childItems = childItems.filter((_, idx) => idx !== i); }
 
@@ -65,12 +95,18 @@
     <div class="flex gap-4 items-start">
       <div class="flex-1 space-y-2 min-w-0">
         {#each layout.rows as row}
-          {@const colCount = layout.maxFieldColumns ? Math.max(Math.min(row.items.length, layout.maxFieldColumns), layout.maxFieldColumns) : row.items.length}
+          {@const visibleItems = row.items.filter(item => shouldShowField(item.key))}
+          {#if visibleItems.length > 0}
+          {@const colCount = layout.maxFieldColumns ? Math.max(Math.min(visibleItems.length, layout.maxFieldColumns), layout.maxFieldColumns) : visibleItems.length}
           <div class="grid gap-2" style="grid-template-columns: repeat({colCount}, minmax(0, 1fr));">
-            {#each row.items as item}
-              <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+            {#each visibleItems as item}
+              {@const gateState = getFieldGateState(item.key)}
+              <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
+                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+              </div>
             {/each}
           </div>
+          {/if}
         {/each}
       </div>
       <!-- Side column: stacked booleans (right-aligned) -->
@@ -87,21 +123,28 @@
     </div>
   {:else}
   {#each layout.rows as row}
+    {@const visibleItems = row.items.filter(item => shouldShowField(item.key))}
+    {#if visibleItems.length > 0}
     {#if row.wrap}
     <div class="flex flex-wrap gap-2">
-      {#each row.items as item}
-        <div class="flex-1 min-w-[180px]" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
+      {#each visibleItems as item}
+        {@const gateState = getFieldGateState(item.key)}
+        <div class="flex-1 min-w-[180px] {gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
           <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
         </div>
       {/each}
     </div>
     {:else}
-    {@const colCount = layout.maxFieldColumns ? Math.min(row.items.length, layout.maxFieldColumns) : row.items.length}
+    {@const colCount = layout.maxFieldColumns ? Math.min(visibleItems.length, layout.maxFieldColumns) : visibleItems.length}
     <div class="grid gap-2" style="grid-template-columns: repeat({colCount}, minmax(0, 1fr));">
-      {#each row.items as item}
-        <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+      {#each visibleItems as item}
+        {@const gateState = getFieldGateState(item.key)}
+        <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
+          <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+        </div>
       {/each}
     </div>
+    {/if}
     {/if}
   {/each}
   {/if}
@@ -111,7 +154,9 @@
 <!-- Named subsections -->
 {#if layout.subsections}
   {#each layout.subsections as sub}
-    {#if !sub.component}
+    {@const hasVisibleRowItems = sub.rows.some(row => row.items.some(item => shouldShowField(item.key)))}
+    {@const hasOtherContent = !!(sub.stringKeys?.length || sub.tagKeys?.length || sub.inlineChildGroups?.length)}
+    {#if !sub.component && (hasVisibleRowItems || hasOtherContent)}
     <FormSectionCard title={sub.title} id="section-sub-{sub.title.toLowerCase().replace(/\s+/g, '-')}" open={!sub.collapsed}>
       {#snippet headerActions()}
         {#if sub.headerBooleans}
@@ -134,21 +179,28 @@
       {/snippet}
       <div class="space-y-2">
         {#each sub.rows as row}
+          {@const visibleItems = row.items.filter(item => shouldShowField(item.key))}
+          {#if visibleItems.length > 0}
           {#if row.wrap}
           <div class="flex flex-wrap gap-2">
-            {#each row.items as item}
-              <div class="flex-1 min-w-[180px]" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
+            {#each visibleItems as item}
+              {@const gateState = getFieldGateState(item.key)}
+              <div class="flex-1 min-w-[180px] {gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
                 <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
               </div>
             {/each}
           </div>
           {:else}
-          {@const subColCount = sub.maxFieldColumns ? Math.min(row.items.length, sub.maxFieldColumns) : row.items.length}
+          {@const subColCount = sub.maxFieldColumns ? Math.min(visibleItems.length, sub.maxFieldColumns) : visibleItems.length}
           <div class="grid gap-2" style="grid-template-columns: repeat({subColCount}, minmax(0, 1fr));">
-            {#each row.items as item}
-              <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+            {#each visibleItems as item}
+              {@const gateState = getFieldGateState(item.key)}
+              <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
+                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+              </div>
             {/each}
           </div>
+          {/if}
           {/if}
         {/each}
       </div>

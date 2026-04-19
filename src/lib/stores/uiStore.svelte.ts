@@ -677,6 +677,13 @@ class UiStore {
       this.settingsSection = "theme";
     }
   }
+
+  /** Whether gated stats fields are force-shown regardless of gate evaluation */
+  showAllStatsFields: boolean = $state(false);
+
+  toggleShowAllStatsFields(): void {
+    this.showAllStatsFields = !this.showAllStatsFields;
+  }
 }
 
 export const uiStore = new UiStore();
