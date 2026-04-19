@@ -31,6 +31,7 @@
     allowedTagTypes = [],
     getTagOptionsForType,
     fieldGating = {},
+    statType = '',
   }: {
     layout: FormLayout;
     caps: SectionCapabilities;
@@ -50,6 +51,7 @@
     allowedTagTypes?: string[];
     getTagOptionsForType?: (tagType: string) => ComboboxOption[];
     fieldGating?: Record<string, FieldGate>;
+    statType?: string;
   } = $props();
 
   /** Check whether a field's gate condition is currently met. */
@@ -102,7 +104,7 @@
             {#each visibleItems as item}
               {@const gateState = getFieldGateState(item.key)}
               <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
-                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} reversed />
               </div>
             {/each}
           </div>
@@ -130,7 +132,7 @@
       {#each visibleItems as item}
         {@const gateState = getFieldGateState(item.key)}
         <div class="flex-1 min-w-[180px] {gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
-          <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+          <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} reversed />
         </div>
       {/each}
     </div>
@@ -140,7 +142,7 @@
       {#each visibleItems as item}
         {@const gateState = getFieldGateState(item.key)}
         <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
-          <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+          <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} reversed />
         </div>
       {/each}
     </div>
@@ -186,7 +188,7 @@
             {#each visibleItems as item}
               {@const gateState = getFieldGateState(item.key)}
               <div class="flex-1 min-w-[180px] {gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}" style={row.maxItemWidth ? `max-width: ${row.maxItemWidth}` : ''}>
-                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} reversed />
               </div>
             {/each}
           </div>
@@ -196,7 +198,7 @@
             {#each visibleItems as item}
               {@const gateState = getFieldGateState(item.key)}
               <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
-                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} reversed />
+                <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} reversed />
               </div>
             {/each}
           </div>

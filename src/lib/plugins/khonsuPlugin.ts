@@ -1,38 +1,12 @@
 import type { CompletionPlugin, CompletionContext, CompletionItem } from './completionTypes.js';
+import { CONDITION_FUNCTIONS as CONDITION_CATALOG } from '../data/conditionFunctions.js';
 
-const CONDITION_FUNCTIONS: CompletionItem[] = [
-  { label: 'ConditionResult', insertText: 'ConditionResult()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasPassive', insertText: 'HasPassive()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasStatus', insertText: 'HasStatus()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasAppliedStatus', insertText: 'HasAppliedStatus()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasSpell', insertText: 'HasSpell()', detail: 'Condition function', kind: 'function' },
-  { label: 'IsClass', insertText: 'IsClass()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasFlag', insertText: 'HasFlag()', detail: 'Condition function', kind: 'function' },
-  { label: 'Tagged', insertText: 'Tagged()', detail: 'Condition function', kind: 'function' },
-  { label: 'GetDistanceTo', insertText: 'GetDistanceTo()', detail: 'Condition function', kind: 'function' },
-  { label: 'WieldingWeapon', insertText: 'WieldingWeapon()', detail: 'Condition function', kind: 'function' },
-  { label: 'SpellId', insertText: 'SpellId()', detail: 'Condition function', kind: 'function' },
-  { label: 'IsSpellOfSchool', insertText: 'IsSpellOfSchool()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasSpellFlag', insertText: 'HasSpellFlag()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasUseCosts', insertText: 'HasUseCosts()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasFunctor', insertText: 'HasFunctor()', detail: 'Condition function', kind: 'function' },
-  { label: 'Distance', insertText: 'Distance()', detail: 'Condition function', kind: 'function' },
-  { label: 'Self', insertText: 'Self()', detail: 'Condition function', kind: 'function' },
-  { label: 'Ally', insertText: 'Ally()', detail: 'Condition function', kind: 'function' },
-  { label: 'Enemy', insertText: 'Enemy()', detail: 'Condition function', kind: 'function' },
-  { label: 'Character', insertText: 'Character()', detail: 'Condition function', kind: 'function' },
-  { label: 'Item', insertText: 'Item()', detail: 'Condition function', kind: 'function' },
-  { label: 'Dead', insertText: 'Dead()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasActionResource', insertText: 'HasActionResource()', detail: 'Condition function', kind: 'function' },
-  { label: 'GetLevel', insertText: 'GetLevel()', detail: 'Condition function', kind: 'function' },
-  { label: 'GetBaseAbility', insertText: 'GetBaseAbility()', detail: 'Condition function', kind: 'function' },
-  { label: 'StatusGetDescriptionParam', insertText: 'StatusGetDescriptionParam()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasProficiency', insertText: 'HasProficiency()', detail: 'Condition function', kind: 'function' },
-  { label: 'GetAbilityModifier', insertText: 'GetAbilityModifier()', detail: 'Condition function', kind: 'function' },
-  { label: 'GetProficiencyBonus', insertText: 'GetProficiencyBonus()', detail: 'Condition function', kind: 'function' },
-  { label: 'IsInCombat', insertText: 'IsInCombat()', detail: 'Condition function', kind: 'function' },
-  { label: 'HasAnyStatus', insertText: 'HasAnyStatus()', detail: 'Condition function', kind: 'function' },
-];
+const CONDITION_FUNCTIONS: CompletionItem[] = CONDITION_CATALOG.map(fn => ({
+  label: fn.name,
+  insertText: `${fn.name}()`,
+  detail: 'Condition function',
+  kind: 'function' as const,
+}));
 
 const CONTEXT_ACCESSORS: CompletionItem[] = [
   { label: 'context.Source', insertText: 'context.Source', detail: 'Context', kind: 'property' },

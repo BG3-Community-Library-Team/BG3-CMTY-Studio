@@ -7,11 +7,20 @@ export interface StatFieldGroup {
   collapsed?: boolean;
 }
 
+export type ExpressionType = 
+  | 'roll'       // SpellRoll, Roll — dice roll expressions
+  | 'effect'     // SpellSuccess, SpellFail, Boosts, OnApplyFunctors, etc.
+  | 'condition'  // Conditions, TargetConditions, BoostConditions, etc.
+  | 'cost'       // UseCosts, DualWieldingUseCosts
+  | 'display';   // DescriptionParams, TooltipDamageList, etc.
+
 export interface StatTypeMetadata {
   /** Ordered field groups for form layout */
   groups: StatFieldGroup[];
   /** Field → combobox descriptor overrides (merged with schema inference) */
   fieldCombobox: Record<string, string>;
+  /** Field → expression type tag (for functor/expression fields only) */
+  fieldExpressionType?: Record<string, ExpressionType>;
   /** Field → gating condition that controls visibility */
   fieldGating: Record<string, FieldGate>;
   /** Field → default value on creation (Sprint 4 — leave empty for now) */
@@ -148,6 +157,18 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       SpellActionType: 'static:None,Bonus,Reaction,Main',
       PreviewCursor: 'static:Cast,Melee,Ranged,Throw,Cone,AOE',
     },
+    fieldExpressionType: {
+      SpellRoll: 'roll',
+      SpellSuccess: 'effect',
+      SpellFail: 'effect',
+      SpellProperties: 'effect',
+      TargetConditions: 'condition',
+      DescriptionParams: 'display',
+      TooltipDamageList: 'display',
+      TooltipStatusApply: 'display',
+      UseCosts: 'cost',
+      DualWieldingUseCosts: 'cost',
+    },
     fieldGating: {
       ProjectileCount: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
       ProjectileDelay: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
@@ -212,6 +233,14 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       ToggleGroup: "statType:PassiveData",
       Properties: "multiStatic:IsHidden,Highlighted,OncePerTurn,ForceShowInCC,IsToggled,ToggledDefaultAddToHotbar,ToggleForParty",
     },
+    fieldExpressionType: {
+      Boosts: 'effect',
+      BoostConditions: 'condition',
+      Conditions: 'condition',
+      StatsFunctors: 'effect',
+      ToggleOnFunctors: 'effect',
+      ToggleOffFunctors: 'effect',
+    },
     fieldGating: {
       ToggleOnFunctors: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
       ToggleOffFunctors: { trigger: 'Properties', condition: { type: 'includes', value: 'IsToggled' } },
@@ -272,6 +301,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       FormatColor: 'static:White,Orange,Red,Green,Blue,Purple,Yellow',
       StillAnimationType: 'static:Dazed,Idle,Prone,Sleeping,Sitting,None',
       StillAnimationPriority: 'static:Low,Medium,High',
+    },
+    fieldExpressionType: {
+      Boosts: 'effect',
+      OnApplyFunctors: 'effect',
+      OnRemoveFunctors: 'effect',
+      TickFunctors: 'effect',
     },
     fieldGating: {
       Boosts: { trigger: 'StatusType', condition: { type: 'equals', value: 'BOOST' } },
@@ -343,6 +378,9 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       InventoryTab: INVENTORY_TAB_VALUES,
       RootTemplate: 'section:RootTemplates',
     },
+    fieldExpressionType: {
+      Boosts: 'effect',
+    },
     fieldGating: {},
     defaults: { Shield: 'No' },
   },
@@ -402,6 +440,11 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       InventoryTab: INVENTORY_TAB_VALUES,
       RootTemplate: 'section:RootTemplates',
     },
+    fieldExpressionType: {
+      BoostsOnEquipMainHand: 'effect',
+      BoostsOnEquipOffHand: 'effect',
+      UseCosts: 'cost',
+    },
     fieldGating: {
       VersatileDamage: { trigger: 'Weapon Properties', condition: { type: 'includes', value: 'Versatile' } },
       Ammunition: { trigger: 'Weapon Properties', condition: { type: 'includes', value: 'Ammunition' } },
@@ -449,6 +492,14 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       InterruptContextScope: 'static:Self,Nearby,Global',
       InterruptDefaultValue: 'static:Ask,Enabled,Disabled',
       Container: 'static:YesNoDecision,Choice,None',
+    },
+    fieldExpressionType: {
+      Roll: 'roll',
+      Success: 'effect',
+      Failure: 'effect',
+      Conditions: 'condition',
+      EnableCondition: 'condition',
+      Cost: 'cost',
     },
     fieldGating: {},
     defaults: {},

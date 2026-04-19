@@ -13,20 +13,12 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { CONDITION_FUNCTIONS as CONDITION_CATALOG } from "../../data/conditionFunctions.js";
 
 /* ── Khonsu-specific identifiers ─────────────────────────────── */
 
 /** Condition functions recognized by the Khonsu runtime. */
-const CONDITION_FUNCTIONS = new Set([
-  "ConditionResult",
-  "HasPassive", "HasStatus", "HasAppliedStatus", "HasSpell", "IsClass",
-  "HasFlag", "Tagged", "GetDistanceTo", "WieldingWeapon", "SpellId",
-  "IsSpellOfSchool", "HasSpellFlag", "HasUseCosts", "HasFunctor",
-  "Distance", "Self", "Ally", "Enemy", "Character", "Item", "Dead",
-  "HasActionResource", "GetLevel", "GetBaseAbility",
-  "StatusGetDescriptionParam", "HasProficiency", "GetAbilityModifier",
-  "GetProficiencyBonus", "IsInCombat", "HasAnyStatus",
-]);
+const CONDITION_FUNCTIONS = new Set(CONDITION_CATALOG.map(fn => fn.name));
 
 /** Build a single regex that matches all condition function names at word boundaries. */
 const conditionFnPattern = new RegExp(

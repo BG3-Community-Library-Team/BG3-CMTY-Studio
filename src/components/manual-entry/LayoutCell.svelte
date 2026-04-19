@@ -7,10 +7,13 @@
   import { isContentHandle, parseHandleVersion, autoLocalize } from "../../lib/utils/localizationManager.js";
   import { projectStore } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
+  import { STAT_TYPE_METADATA } from "../../lib/data/statFieldMetadata.js";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
+  import HelpCircle from "@lucide/svelte/icons/help-circle";
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
+  import InlineCodeEditor from "./InlineCodeEditor.svelte";
 
   let {
     item,
@@ -23,6 +26,7 @@
     resolveLocaText,
     generateUuid,
     reversed = false,
+    statType = '',
   }: {
     item: LayoutField;
     caps: SectionCapabilities;
@@ -34,6 +38,7 @@
     resolveLocaText: (handle: string | undefined) => string | undefined;
     generateUuid: () => string;
     reversed?: boolean;
+    statType?: string;
   } = $props();
 
   // --- Auto-localization support for loca: fields ---
@@ -98,10 +103,26 @@
   {@const badgeText = ft === 'string' || ft === 'str' ? 'Text' : ft === 'int' ? 'Number' : ft === 'float' ? 'Decimal' : (ft === 'string (UUID)' || ft === 'guid' || ft === 'uuid') ? 'UUID' : ft ?? ''}
   {@const comboPlaceholder = badgeText ? `${badgeText} — Search…` : 'Search…'}
   {@const isLoca = caps.fieldCombobox?.[item.key]?.startsWith('loca:')}
+  {@const expressionType = statType ? STAT_TYPE_METADATA[statType]?.fieldExpressionType?.[item.key] : undefined}
   <div class="flex flex-col gap-1.5 text-xs min-w-0">
     <label for="field-{item.key}" class="font-medium text-[var(--th-text-400)]">{item.label ?? item.key}
       {#if hasBadge}
         <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full {badgeClass}">{badgeText}</span>
+      {/if}
+      {#if expressionType}
+        <span class="expression-badge" data-expr-type={expressionType}>
+          {expressionType === 'roll' ? 'Roll' : expressionType === 'effect' ? 'Functor' : expressionType === 'condition' ? 'Condition' : expressionType === 'cost' ? 'Cost' : 'Display'}
+        </span>
+        <button type="button"
+          class="inline-flex items-center justify-center w-4 h-4 rounded text-[var(--th-text-500)]
+                 hover:text-[var(--th-text-200)] transition-colors cursor-help"
+          use:tooltip={expressionType === 'roll' ? 'Dice roll expression. Example: Attack(AttackType.MeleeWeaponAttack) or SavingThrow(Ability.Dexterity, 15)'
+            : expressionType === 'effect' ? 'Functor expression (semicolon-separated). Example: DealDamage(1d6,Fire) or ApplyStatus(BURNING,2)'
+            : expressionType === 'condition' ? "Condition expression. Example: HasStatus('BURNING') or WieldingWeapon('Melee')"
+            : expressionType === 'cost' ? 'Resource cost (colon+semicolon format). Example: ActionPoint:1 or SpellSlot:1:1;BonusActionPoint:1'
+            : 'Display parameter for tooltip interpolation. Example: DealDamage(1d6,Fire) resolves in description text.'}
+          aria-label="Expression syntax help"
+        ><HelpCircle size={12} /></button>
       {/if}
       {#if item.generateUuid}
         <button type="button"
@@ -171,6 +192,12 @@
           />
         {/if}
       {/if}
+    {:else if expressionType}
+      <InlineCodeEditor
+        value={getFieldValue(item.key)}
+        {expressionType}
+        onchange={(v) => setFieldValue(item.key, v)}
+      />
     {:else if item.colorField}
       <div class="flex items-center gap-2">
         <input
@@ -309,5 +336,48 @@
   .loca-copy-btn:hover {
     color: var(--th-text-200);
     background: var(--th-bg-600, rgba(255,255,255,0.06));
+  }
+
+  /* Expression field textarea */
+  .expression-field {
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    resize: vertical;
+    min-height: 4.5rem;
+    height: auto;
+  }
+
+  /* Expression type badges */
+  .expression-badge {
+    display: inline-flex;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    vertical-align: middle;
+  }
+  .expression-badge[data-expr-type="roll"] {
+    background-color: rgba(56, 189, 248, 0.15);
+    color: var(--th-text-sky-400, #38bdf8);
+  }
+  .expression-badge[data-expr-type="effect"] {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: var(--th-text-purple-400, #a855f7);
+  }
+  .expression-badge[data-expr-type="condition"] {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: var(--th-text-amber-400, #fbbf24);
+  }
+  .expression-badge[data-expr-type="cost"] {
+    background-color: rgba(52, 211, 153, 0.15);
+    color: var(--th-text-emerald-400, #34d399);
+  }
+  .expression-badge[data-expr-type="display"] {
+    background-color: rgba(148, 163, 184, 0.15);
+    color: var(--th-text-400, #94a3b8);
   }
 </style>

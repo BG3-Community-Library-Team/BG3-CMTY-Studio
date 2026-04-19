@@ -7,7 +7,7 @@
  *         into a FormLayout. Skips automatically if T3 is not yet implemented.
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { STAT_TYPE_METADATA, DAMAGE_TYPES, COOLDOWN_VALUES, INVENTORY_TAB_VALUES } from "../lib/data/statFieldMetadata";
+import { STAT_TYPE_METADATA, DAMAGE_TYPES, COOLDOWN_VALUES, INVENTORY_TAB_VALUES, type ExpressionType } from "../lib/data/statFieldMetadata";
 import type { FormLayout } from "../lib/data/formLayouts";
 import type { NodeSchema, AttrSchema, ChildSchema } from "../lib/utils/tauri";
 
@@ -99,6 +99,61 @@ describe("STAT_TYPE_METADATA", () => {
 
   it("InterruptData has 6 groups", () => {
     expect(STAT_TYPE_METADATA.InterruptData.groups).toHaveLength(6);
+  });
+
+  // ─── Part 5: Expression Type Metadata Tests ──────────────────────────
+
+  describe("fieldExpressionType", () => {
+    const VALID_EXPRESSION_TYPES: ExpressionType[] = ['roll', 'effect', 'condition', 'cost', 'display'];
+
+    for (const typeName of EXPECTED_TYPES) {
+      describe(typeName, () => {
+        it("all expression type values are valid", () => {
+          const meta = STAT_TYPE_METADATA[typeName];
+          const exprTypes = meta.fieldExpressionType;
+          if (!exprTypes) return; // optional property
+          for (const [field, type] of Object.entries(exprTypes)) {
+            expect(VALID_EXPRESSION_TYPES).toContain(type);
+          }
+        });
+
+        it("expression type fields exist in at least one group", () => {
+          const meta = STAT_TYPE_METADATA[typeName];
+          const exprTypes = meta.fieldExpressionType;
+          if (!exprTypes) return;
+          const allFields = new Set(meta.groups.flatMap(g => g.fields));
+          for (const field of Object.keys(exprTypes)) {
+            expect(allFields.has(field)).toBe(true);
+          }
+        });
+
+        it("no field has both fieldCombobox and fieldExpressionType", () => {
+          const meta = STAT_TYPE_METADATA[typeName];
+          const exprTypes = meta.fieldExpressionType;
+          if (!exprTypes) return;
+          const comboboxKeys = new Set(Object.keys(meta.fieldCombobox));
+          for (const field of Object.keys(exprTypes)) {
+            expect(comboboxKeys.has(field)).toBe(false);
+          }
+        });
+      });
+    }
+
+    it("SpellData has expression types for key fields", () => {
+      const exprTypes = STAT_TYPE_METADATA.SpellData.fieldExpressionType!;
+      expect(exprTypes.SpellRoll).toBe('roll');
+      expect(exprTypes.SpellSuccess).toBe('effect');
+      expect(exprTypes.TargetConditions).toBe('condition');
+      expect(exprTypes.UseCosts).toBe('cost');
+      expect(exprTypes.DescriptionParams).toBe('display');
+    });
+
+    it("InterruptData has expression types for key fields", () => {
+      const exprTypes = STAT_TYPE_METADATA.InterruptData.fieldExpressionType!;
+      expect(exprTypes.Roll).toBe('roll');
+      expect(exprTypes.Conditions).toBe('condition');
+      expect(exprTypes.Cost).toBe('cost');
+    });
   });
 });
 

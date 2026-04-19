@@ -1664,5 +1664,16 @@
   "settings_editor_view_panel_title": "View Options",
   "settings_editor_script_tools_title": "Script Tools",
 
-  "readme_editor_cm6_label": "Markdown Editor"
+  "readme_editor_cm6_label": "Markdown Editor",
+
+  "stats_expression_help_roll": "Dice roll expression. Example: Attack(AttackType.MeleeWeaponAttack) or SavingThrow(Ability.Dexterity, 15)",
+  "stats_expression_help_effect": "Functor expression (semicolon-separated). Example: DealDamage(1d6,Fire) or ApplyStatus(BURNING,2)",
+  "stats_expression_help_condition": "Condition expression. Example: HasStatus('BURNING') or WieldingWeapon('Melee')",
+  "stats_expression_help_cost": "Resource cost (colon+semicolon format). Example: ActionPoint:1 or SpellSlot:1:1;BonusActionPoint:1",
+  "stats_expression_help_display": "Display parameter for tooltip interpolation. Example: DealDamage(1d6,Fire) resolves in description text.",
+  "stats_expression_badge_roll": "Roll",
+  "stats_expression_badge_effect": "Functor",
+  "stats_expression_badge_condition": "Condition",
+  "stats_expression_badge_cost": "Cost",
+  "stats_expression_badge_display": "Display"
 }

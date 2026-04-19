@@ -1298,6 +1298,7 @@
       {setBoolValue}
       {fieldComboboxOptions}
       {resolveLocaText}
+      statType={_statsEntryType ?? ''}
     />
     </FormIdentityCard>
 
@@ -1321,6 +1322,7 @@
         {allowedTagTypes}
         {getTagOptionsForType}
         {fieldGating}
+        statType={_statsEntryType ?? ''}
       />
     {/if}
 

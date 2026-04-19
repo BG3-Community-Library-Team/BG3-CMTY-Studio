@@ -36,6 +36,7 @@
     setBoolValue,
     fieldComboboxOptions,
     resolveLocaText,
+    statType = '',
   }: {
     caps: SectionCapabilities;
     uuids: string[];
@@ -62,6 +63,7 @@
     setBoolValue: (key: string, value: boolean) => void;
     fieldComboboxOptions: (key: string) => ComboboxOption[];
     resolveLocaText: (handle: string | undefined) => string | undefined;
+    statType?: string;
   } = $props();
 </script>
 
@@ -264,7 +266,7 @@
       {#each layout.identityExtras as row}
         <div class="grid gap-2" style="grid-template-columns: repeat({row.items.length}, minmax(0, 1fr));">
           {#each row.items as item}
-            <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} />
+            <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} />
           {/each}
         </div>
       {/each}
