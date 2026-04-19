@@ -7,7 +7,7 @@
  *         into a FormLayout. Skips automatically if T3 is not yet implemented.
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { STAT_TYPE_METADATA } from "../lib/data/statFieldMetadata";
+import { STAT_TYPE_METADATA, DAMAGE_TYPES, COOLDOWN_VALUES, INVENTORY_TAB_VALUES } from "../lib/data/statFieldMetadata";
 import type { FormLayout } from "../lib/data/formLayouts";
 import type { NodeSchema, AttrSchema, ChildSchema } from "../lib/utils/tauri";
 
@@ -229,5 +229,119 @@ describe("autoLayoutFromMetadata", () => {
     // "Other Fields" should also be handled
     expect(handled.has("UnlistedField")).toBe(true);
     expect(handled.has("AnotherUnlisted")).toBe(true);
+  });
+});
+
+// ─── Part 3: Descriptor Tests (Sprint 2) ────────────────────────────
+
+describe("Descriptor Tests (Sprint 2)", () => {
+  // 1. All enum fields have `static:` descriptors
+  describe("enum fields have static: descriptors", () => {
+    const enumFieldsByType: Record<string, string[]> = {
+      SpellData: [
+        "SpellType", "SpellSchool", "VerbalIntent", "SpellAnimationIntentType",
+        "CooldownType", "HitAnimationType", "Sheathing", "SpellActionType", "PreviewCursor",
+      ],
+      StatusData: [
+        "StatusType", "StackType", "TickType", "FormatColor",
+        "StillAnimationType", "StillAnimationPriority",
+      ],
+      Armor: ["ArmorType", "Slot", "Shield"],
+      Weapon: ["Slot", "Weapon Group"],
+      InterruptData: [
+        "InterruptContext", "InterruptContextScope", "InterruptDefaultValue", "Container",
+      ],
+    };
+
+    for (const [typeName, fields] of Object.entries(enumFieldsByType)) {
+      describe(typeName, () => {
+        for (const field of fields) {
+          it(`${field} has a static: descriptor`, () => {
+            const descriptor = STAT_TYPE_METADATA[typeName].fieldCombobox[field];
+            expect(descriptor).toBeDefined();
+            expect(descriptor).toMatch(/^static:/);
+          });
+        }
+      });
+    }
+  });
+
+  // 2. Shared enums are consistent
+  describe("shared enums are consistent", () => {
+    it("SpellData DamageType equals DAMAGE_TYPES", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["DamageType"]).toBe(DAMAGE_TYPES);
+    });
+
+    it("Weapon Damage Type equals DAMAGE_TYPES", () => {
+      expect(STAT_TYPE_METADATA.Weapon.fieldCombobox["Damage Type"]).toBe(DAMAGE_TYPES);
+    });
+
+    it("SpellData Cooldown equals COOLDOWN_VALUES", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["Cooldown"]).toBe(COOLDOWN_VALUES);
+    });
+
+    it("Armor InventoryTab equals INVENTORY_TAB_VALUES", () => {
+      expect(STAT_TYPE_METADATA.Armor.fieldCombobox["InventoryTab"]).toBe(INVENTORY_TAB_VALUES);
+    });
+
+    it("Weapon InventoryTab equals INVENTORY_TAB_VALUES", () => {
+      expect(STAT_TYPE_METADATA.Weapon.fieldCombobox["InventoryTab"]).toBe(INVENTORY_TAB_VALUES);
+    });
+  });
+
+  // 3. Cross-reference fields have descriptors
+  describe("cross-reference fields have descriptors", () => {
+    it("SpellData ConcentrationSpellID starts with statType:", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["ConcentrationSpellID"]).toMatch(/^statType:/);
+    });
+
+    it("SpellData RootSpellID starts with statType:", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["RootSpellID"]).toMatch(/^statType:/);
+    });
+
+    it("SpellData SpellContainerID starts with statType:", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["SpellContainerID"]).toMatch(/^statType:/);
+    });
+
+    it("PassiveData ToggleGroup starts with statType:", () => {
+      expect(STAT_TYPE_METADATA.PassiveData.fieldCombobox["ToggleGroup"]).toMatch(/^statType:/);
+    });
+
+    it("Armor RootTemplate starts with section:", () => {
+      expect(STAT_TYPE_METADATA.Armor.fieldCombobox["RootTemplate"]).toMatch(/^section:/);
+    });
+
+    it("Weapon RootTemplate starts with section:", () => {
+      expect(STAT_TYPE_METADATA.Weapon.fieldCombobox["RootTemplate"]).toMatch(/^section:/);
+    });
+  });
+
+  // 4. No fieldCombobox for unknown fields
+  // Already tested in Part 1 ("fieldCombobox keys appear in group fields").
+
+  // 5. static: values are non-empty
+  describe("static: values are non-empty", () => {
+    const EXPECTED_TYPES = [
+      "SpellData", "PassiveData", "StatusData", "Armor", "Weapon", "InterruptData",
+    ];
+
+    for (const typeName of EXPECTED_TYPES) {
+      it(`${typeName} static: descriptors have non-empty values`, () => {
+        const combobox = STAT_TYPE_METADATA[typeName].fieldCombobox;
+        for (const [field, descriptor] of Object.entries(combobox)) {
+          if (descriptor.startsWith("static:")) {
+            const values = descriptor.slice("static:".length);
+            expect(values.length, `${typeName}.${field} has empty static: value`).toBeGreaterThan(0);
+          }
+        }
+      });
+    }
+  });
+
+  // 6. Armor Class Ability uses valueList descriptor
+  describe("valueList descriptors", () => {
+    it("Armor 'Armor Class Ability' equals 'valueList:Ability'", () => {
+      expect(STAT_TYPE_METADATA.Armor.fieldCombobox["Armor Class Ability"]).toBe("valueList:Ability");
+    });
   });
 });

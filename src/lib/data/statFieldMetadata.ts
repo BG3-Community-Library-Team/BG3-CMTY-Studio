@@ -18,6 +18,10 @@ export interface StatTypeMetadata {
   defaults: Record<string, string>;
 }
 
+export const DAMAGE_TYPES = 'static:Bludgeoning,Piercing,Slashing,Fire,Cold,Lightning,Thunder,Poison,Acid,Necrotic,Radiant,Psychic,Force,None';
+export const COOLDOWN_VALUES = 'static:None,OncePerTurn,OncePerCombat,OncePerShortRest,OncePerLongRest';
+export const INVENTORY_TAB_VALUES = 'static:Equipment,Consumable,Scroll,Food,Key,Misc,Hidden';
+
 export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
   SpellData: {
     groups: [
@@ -106,6 +110,17 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       RootSpellID: "statType:SpellData",
       SpellContainerID: "statType:SpellData",
       ContainerSpells: "statType:SpellData",
+      SpellType: 'static:Zone,Projectile,Target,Rush,Shout,Teleportation,Throw,ProjectileStrike,Wall',
+      SpellSchool: 'static:Evocation,Abjuration,Necromancy,Divination,Enchantment,Illusion,Conjuration,Transmutation,None',
+      VerbalIntent: 'static:Damage,Heal,Buff,Debuff,Control,Utility,None',
+      SpellAnimationIntentType: 'static:Aggressive,Passive,Bonus',
+      DamageType: DAMAGE_TYPES,
+      Cooldown: COOLDOWN_VALUES,
+      CooldownType: 'static:GroupCooldown,IndividualCooldown,None',
+      HitAnimationType: 'static:PhysicalDamage,MagicalDamage_External,MagicalDamage_Internal,None',
+      Sheathing: 'static:Melee,Ranged,None',
+      SpellActionType: 'static:None,Bonus,Reaction,Main',
+      PreviewCursor: 'static:Cast,Melee,Ranged,Throw,Cone,AOE',
     },
     fieldGating: {},
     defaults: {},
@@ -201,6 +216,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:StatusData",
+      StatusType: 'static:BOOST,EFFECT,HEAL,INVISIBLE,POLYMORPHED,DOWNED,FEAR,INCAPACITATED,DEACTIVATED,SNEAKING',
+      StackType: 'static:Stack,Overwrite,Extend',
+      TickType: 'static:StartTurn,EndTurn,None',
+      FormatColor: 'static:White,Orange,Red,Green,Blue,Purple,Yellow',
+      StillAnimationType: 'static:Dazed,Idle,Prone,Sleeping,Sitting,None',
+      StillAnimationPriority: 'static:Low,Medium,High',
     },
     fieldGating: {},
     defaults: {},
@@ -254,6 +275,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:Armor",
+      ArmorType: 'static:None,Padded,Leather,StuddedLeather,Hide,ChainShirt,ScaleMail,Breastplate,HalfPlate,RingMail,ChainMail,Splint,Plate',
+      Slot: 'static:Breast,Gloves,Boots,Helmet,Amulet,Ring,Cloak,MeleeMainWeapon,MeleeOffHandWeapon,RangedMainWeapon,RangedOffHandWeapon,MusicalInstrument,Underwear,VanityBody,VanityBoots,Overhead',
+      'Armor Class Ability': 'valueList:Ability',
+      Shield: 'static:Yes,No',
+      InventoryTab: INVENTORY_TAB_VALUES,
+      RootTemplate: 'section:RootTemplates',
     },
     fieldGating: {},
     defaults: {},
@@ -305,6 +332,11 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:Weapon",
+      'Damage Type': DAMAGE_TYPES,
+      Slot: 'static:Melee Main Weapon,Ranged Main Weapon,Melee Offhand Weapon,Ranged Offhand Weapon',
+      'Weapon Group': 'static:SimpleMeleeWeapon,MartialMeleeWeapon,SimpleRangedWeapon,MartialRangedWeapon',
+      InventoryTab: INVENTORY_TAB_VALUES,
+      RootTemplate: 'section:RootTemplates',
     },
     fieldGating: {},
     defaults: {},
@@ -345,6 +377,10 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:InterruptData",
+      InterruptContext: 'static:OnSpellCast,OnPostRoll,OnAttack,OnDamaged,OnAfterAttack,OnHeal,OnStatusApply,OnStatusRemove,OnMoveStart,OnMoveEnd',
+      InterruptContextScope: 'static:Self,Nearby,Global',
+      InterruptDefaultValue: 'static:Ask,Enabled,Disabled',
+      Container: 'static:YesNoDecision,Choice,None',
     },
     fieldGating: {},
     defaults: {},
