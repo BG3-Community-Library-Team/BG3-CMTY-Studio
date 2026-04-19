@@ -651,6 +651,28 @@
     return map;
   });
 
+  /** multiStatic: — same as static: but signals multi-select rendering */
+  let _cbMultiStatic = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('multiStatic:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
   /** statType: — depends on stat entries from vanilla + mod */
   let _cbStatType = $derived.by(() => {
     const fc = caps.fieldCombobox;
@@ -670,6 +692,29 @@
     const map = new Map<string, ComboboxOption[]>();
     for (const [fk, desc] of Object.entries(fc)) {
       if (desc.startsWith('statType:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
+  /** multiStatType: — same as statType: but signals multi-select rendering */
+  let _cbMultiStatType = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: modStore.vanillaStatEntries,
+      modStatEntries: modStore.modStatEntries,
+      vanillaEquipment: [],
+      modName: modStore.scanResult?.mod_meta?.name,
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('multiStatType:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
     }
     return map;
   });
@@ -728,6 +773,8 @@
     if (descriptor.startsWith('folder:') || descriptor.startsWith('progressionTable:') || descriptor.startsWith('voiceTable:'))
       return _cbVanillaOnly.get(fieldKey) ?? [];
     if (descriptor.startsWith('valueList:')) return _cbValueList.get(fieldKey) ?? [];
+    if (descriptor.startsWith('multiStatic:')) return _cbMultiStatic.get(fieldKey) ?? [];
+    if (descriptor.startsWith('multiStatType:')) return _cbMultiStatType.get(fieldKey) ?? [];
     if (descriptor.startsWith('static:')) return _cbStatic.get(fieldKey) ?? [];
     if (descriptor.startsWith('statType:')) return _cbStatType.get(fieldKey) ?? [];
     if (descriptor.startsWith('equipment:')) return _cbEquipment.get(fieldKey) ?? [];

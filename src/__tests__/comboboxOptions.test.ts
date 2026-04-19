@@ -689,3 +689,147 @@ describe("getFieldComboboxOptions", () => {
     expect(getFieldComboboxOptions("Field", ctx)).toEqual([]);
   });
 });
+
+// ----- multi-select descriptor handlers -----
+
+describe("multi-select descriptor handlers", () => {
+  // --- multiStatic descriptor ---
+  it("multiStatic: descriptor returns options from comma-separated values", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { SpellFlags: "multiStatic:IsAttack,IsMelee,IsHarmful" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("SpellFlags", ctx);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({ value: "IsAttack", label: "IsAttack" });
+    expect(result[1]).toEqual({ value: "IsMelee", label: "IsMelee" });
+    expect(result[2]).toEqual({ value: "IsHarmful", label: "IsHarmful" });
+  });
+
+  it("multiStatic: supports value=label syntax", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { TestField: "multiStatic:0=None,1=Active,2=Disabled" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("TestField", ctx);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({ value: "0", label: "None" });
+    expect(result[1]).toEqual({ value: "1", label: "Active" });
+  });
+
+  it("multiStatic: returns empty array for empty suffix", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { TestField: "multiStatic:" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("TestField", ctx);
+    // split(",") on empty string gives [""] which maps to one item with empty value
+    expect(result).toHaveLength(1);
+    expect(result[0].value).toBe("");
+  });
+
+  // --- multiStatType descriptor ---
+  it("multiStatType: returns options from vanilla stat entries", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { ContainerSpells: "multiStatType:SpellData" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [
+        { name: "Target_Bless", entry_type: "SpellData" },
+        { name: "Projectile_ChromaticOrb", entry_type: "SpellData" },
+        { name: "SomePassive", entry_type: "PassiveData" },
+      ],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("ContainerSpells", ctx);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ value: "Target_Bless", label: "Target_Bless" });
+    expect(result[1]).toEqual({ value: "Projectile_ChromaticOrb", label: "Projectile_ChromaticOrb" });
+  });
+
+  it("multiStatType: includes mod entries with mod prefix", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { ContainerSpells: "multiStatType:SpellData" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [
+        { name: "Target_Bless", entry_type: "SpellData" },
+      ],
+      modStatEntries: [
+        { name: "MyCustomSpell", entry_type: "SpellData" },
+      ],
+      vanillaEquipment: [],
+      modName: "TestMod",
+    };
+    const result = getFieldComboboxOptions("ContainerSpells", ctx);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ value: "Target_Bless", label: "Target_Bless" });
+    expect(result[1]).toEqual({ value: "MyCustomSpell", label: "[TestMod] MyCustomSpell" });
+  });
+
+  it("multiStatType: deduplicates entries across vanilla and mod", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { ContainerSpells: "multiStatType:SpellData" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [
+        { name: "Target_Bless", entry_type: "SpellData" },
+      ],
+      modStatEntries: [
+        { name: "Target_Bless", entry_type: "SpellData" },
+      ],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("ContainerSpells", ctx);
+    expect(result).toHaveLength(1);
+  });
+
+  it("multiStatType: returns empty for no matching type", () => {
+    const ctx: FieldComboboxContext = {
+      caps: { fieldCombobox: { TestField: "multiStatType:NonexistentType" } } as any,
+      vanilla: {},
+      scanResult: null,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [
+        { name: "Target_Bless", entry_type: "SpellData" },
+      ],
+      modStatEntries: [],
+      vanillaEquipment: [],
+    };
+    const result = getFieldComboboxOptions("TestField", ctx);
+    expect(result).toHaveLength(0);
+  });
+});

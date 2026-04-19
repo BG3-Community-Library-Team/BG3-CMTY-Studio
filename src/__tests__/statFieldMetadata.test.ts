@@ -345,3 +345,41 @@ describe("Descriptor Tests (Sprint 2)", () => {
     });
   });
 });
+
+// ─── Part 4: Multi-Select Descriptor Tests (Sprint 3) ───────────────
+
+describe("Multi-Select Descriptor Tests (Sprint 3)", () => {
+  it("SpellData fieldCombobox has multiStatic descriptor for SpellFlags", () => {
+    const meta = STAT_TYPE_METADATA['SpellData'];
+    expect(meta.fieldCombobox['SpellFlags']).toMatch(/^multiStatic:/);
+  });
+
+  it("SpellData fieldCombobox has multiStatType descriptor for ContainerSpells", () => {
+    const meta = STAT_TYPE_METADATA['SpellData'];
+    expect(meta.fieldCombobox['ContainerSpells']).toBe('multiStatType:SpellData');
+  });
+
+  it("PassiveData fieldCombobox has multiStatic descriptor for Properties", () => {
+    const meta = STAT_TYPE_METADATA['PassiveData'];
+    expect(meta.fieldCombobox['Properties']).toMatch(/^multiStatic:/);
+  });
+
+  it("StatusData fieldCombobox has multiStatic descriptors for flags and groups", () => {
+    const meta = STAT_TYPE_METADATA['StatusData'];
+    expect(meta.fieldCombobox['StatusPropertyFlags']).toMatch(/^multiStatic:/);
+    expect(meta.fieldCombobox['StatusGroups']).toMatch(/^multiStatic:/);
+  });
+
+  it("Armor fieldCombobox has multi-select descriptors", () => {
+    const meta = STAT_TYPE_METADATA['Armor'];
+    expect(meta.fieldCombobox['Proficiency Group']).toMatch(/^multiStatic:/);
+    expect(meta.fieldCombobox['PersonalStatusImmunities']).toBe('multiStatType:StatusData');
+  });
+
+  it("Weapon fieldCombobox has multi-select descriptors", () => {
+    const meta = STAT_TYPE_METADATA['Weapon'];
+    expect(meta.fieldCombobox['Weapon Properties']).toMatch(/^multiStatic:/);
+    expect(meta.fieldCombobox['Proficiency Group']).toMatch(/^multiStatic:/);
+    expect(meta.fieldCombobox['PersonalStatusImmunities']).toBe('multiStatType:StatusData');
+  });
+});

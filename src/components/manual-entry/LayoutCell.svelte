@@ -10,6 +10,7 @@
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
+  import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
 
   let {
     item,
@@ -152,13 +153,23 @@
           ><ExternalLink size={12} /></button>
         </div>
       {:else}
-        <SingleSelectCombobox
-          options={fieldComboboxOptions(item.key)}
-          value={getFieldValue(item.key)}
-          placeholder={comboPlaceholder}
-          maxDisplayed={0}
-          onchange={(v) => setFieldValue(item.key, v)}
-        />
+        {@const isMulti = descriptor.startsWith('multi')}
+        {#if isMulti}
+          <MultiSelectCombobox
+            options={fieldComboboxOptions(item.key)}
+            selected={getFieldValue(item.key) ? getFieldValue(item.key).split(';').map(s => s.trim()).filter(Boolean) : []}
+            placeholder={comboPlaceholder}
+            onchange={(vals) => setFieldValue(item.key, vals.join(';'))}
+          />
+        {:else}
+          <SingleSelectCombobox
+            options={fieldComboboxOptions(item.key)}
+            value={getFieldValue(item.key)}
+            placeholder={comboPlaceholder}
+            maxDisplayed={0}
+            onchange={(v) => setFieldValue(item.key, v)}
+          />
+        {/if}
       {/if}
     {:else if item.colorField}
       <div class="flex items-center gap-2">

@@ -225,7 +225,37 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
       return { value: trimmed, label: trimmed };
     });
   },
+  "multiStatic": (suffix) => {
+    return suffix.split(",").map(v => {
+      const trimmed = v.trim();
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const val = trimmed.slice(0, eqIdx);
+        const lbl = trimmed.slice(eqIdx + 1);
+        return { value: val, label: lbl };
+      }
+      return { value: trimmed, label: trimmed };
+    });
+  },
   "statType": (suffix, ctx) => {
+    const seen = new Set<string>();
+    const result: ComboboxOption[] = [];
+    for (const e of ctx.vanillaStatEntries) {
+      if (e.entry_type === suffix && !seen.has(e.name)) {
+        seen.add(e.name);
+        result.push({ value: e.name, label: e.name });
+      }
+    }
+    const modLabel = ctx.modName || "Mod";
+    for (const e of ctx.modStatEntries) {
+      if (e.entry_type === suffix && !seen.has(e.name)) {
+        seen.add(e.name);
+        result.push({ value: e.name, label: `[${modLabel}] ${e.name}` });
+      }
+    }
+    return result;
+  },
+  "multiStatType": (suffix, ctx) => {
     const seen = new Set<string>();
     const result: ComboboxOption[] = [];
     for (const e of ctx.vanillaStatEntries) {
@@ -323,7 +353,9 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
  *   - "section:Races" → vanilla + scanned + additional mods entries
  *   - "valueList:Ability" → from ValueLists.txt
  *   - "static:val1,val2,val3" → static list
+ *   - "multiStatic:val1,val2,val3" → multi-select static list (semicolon-delimited storage)
  *   - "statType:SpellData" → stat entries by type
+ *   - "multiStatType:SpellData" → multi-select stat entries by type (semicolon-delimited storage)
  *   - "equipment:" → vanilla equipment names
  *   - "folder:X" → vanilla folder entries
  *   - "progressionTable:" → progression table UUIDs
