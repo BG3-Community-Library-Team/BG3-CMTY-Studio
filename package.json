@@ -62,7 +62,7 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
-    "@inlang/paraglide-js": "^2.15.3",
+    "@inlang/paraglide-js": "^2.16.0",
     "@lezer/common": "^1.5.2",
     "@lezer/highlight": "^1.2.3",
     "@lucide/svelte": "^1.8.0",
