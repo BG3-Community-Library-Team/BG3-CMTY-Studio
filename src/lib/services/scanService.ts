@@ -15,6 +15,7 @@ import { detectModFolders } from "../tauri/scanning.js";
 import { ensureCmtystudioDir } from "../tauri/project-settings.js";
 import { projectSettingsStore } from "../stores/projectSettingsStore.svelte.js";
 import { nexusStore } from "../stores/nexusStore.svelte.js";
+import { updateModKhonsuFunctions, clearModKhonsuFunctions } from "./khnFunctionDiscovery.js";
 import type { DetectedMod } from "../types/modSelection.js";
 
 /**
@@ -245,6 +246,7 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
   // duplicate-key errors and stale state when switching between mods.
   uiStore.reset();
   modStore.reset();
+  clearModKhonsuFunctions();
 
   modStore.isScanning = true;
   modStore.scanPhase = m.scan_phase_reading_files();
@@ -343,6 +345,13 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     // Load vanilla entries for combobox population
     modStore.scanPhase = m.scan_phase_loading_project();
     await loadVanillaData();
+
+    // Discover mod-added Khonsu condition functions for expression autocomplete
+    try {
+      await updateModKhonsuFunctions(modPath, modStore.modFolder);
+    } catch (err) {
+      console.warn("Failed to discover mod .khn functions:", err);
+    }
 
     // Fire completion toast after ALL async operations have finished
     const totalEntries = result.sections.reduce((sum, s) => sum + s.entries.length, 0);

@@ -1,19 +1,19 @@
 /**
  * Completion plugin for inline stats expression fields (functors, boosts,
- * conditions, costs, rolls). Provides context-aware autocompletion based
+ * conditions, rolls, display parameters). Provides context-aware autocompletion based
  * on the expression type of the field being edited.
  *
  * Responds to virtual language IDs: expr:condition, expr:effect, expr:roll,
- * expr:cost, expr:display — set by InlineCodeEditor based on the field's
+ * expr:display — set by InlineCodeEditor based on the field's
  * ExpressionType metadata.
  */
 import type { CompletionPlugin, CompletionContext, CompletionItem } from './completionTypes.js';
 import { CONDITION_FUNCTIONS } from '../data/conditionFunctions.js';
+import { getModKhonsuFunctions } from '../services/khnFunctionDiscovery.js';
 import {
   STATS_FUNCTORS,
   STATS_BOOSTS,
   TARGETING_KEYWORDS,
-  COST_RESOURCES,
   ROLL_FUNCTIONS,
   DAMAGE_TYPE_ENUM,
   ATTACK_TYPE_ENUM,
@@ -101,12 +101,6 @@ const ROLL_ITEMS: CompletionItem[] = [
   ...CONDITION_OPERATORS.map(op => kwItem(op, 'Operator', 60)),
 ];
 
-// ─── Cost completions ──────────────────────────────────────────
-
-const COST_ITEMS: CompletionItem[] = [
-  ...COST_RESOURCES.map(r => valItem(r, 'Resource', 10)),
-];
-
 // ─── Display completions ───────────────────────────────────────
 
 const DISPLAY_ITEMS: CompletionItem[] = [
@@ -120,7 +114,6 @@ const ITEMS_BY_LANGUAGE: Record<string, CompletionItem[]> = {
   'expr:condition': CONDITION_ITEMS,
   'expr:effect': EFFECT_ITEMS,
   'expr:roll': ROLL_ITEMS,
-  'expr:cost': COST_ITEMS,
   'expr:display': DISPLAY_ITEMS,
 };
 
@@ -132,7 +125,7 @@ function filterByPrefix(items: CompletionItem[], prefix: string): CompletionItem
 export const statsExpressionPlugin: CompletionPlugin = {
   id: 'bg3-stats-expression',
   name: 'BG3 Stats Expression',
-  languages: ['expr:condition', 'expr:effect', 'expr:roll', 'expr:cost', 'expr:display'],
+  languages: ['expr:condition', 'expr:effect', 'expr:roll', 'expr:display'],
   priority: 40,
   getCompletions(ctx: CompletionContext): CompletionItem[] {
     const prefix = ctx.typedPrefix;
@@ -141,6 +134,14 @@ export const statsExpressionPlugin: CompletionPlugin = {
     const items = ITEMS_BY_LANGUAGE[ctx.language];
     if (!items) return [];
 
+    // Append mod .khn functions dynamically — valid in condition fields directly
+    // and in effect/roll fields via IF(condition) wrappers
+    const modFns = getModKhonsuFunctions();
+    const allItems = modFns.length > 0
+      && (ctx.language === 'expr:condition' || ctx.language === 'expr:effect' || ctx.language === 'expr:roll')
+      ? [...items, ...modFns]
+      : items;
+
     // Special handling for condition context accessors
     if (ctx.language === 'expr:condition') {
       if (prefix.startsWith('context.HitDescription.')) {
@@ -148,13 +149,13 @@ export const statsExpressionPlugin: CompletionPlugin = {
         return sub.length === 0 ? HIT_DESCRIPTION_ITEMS : filterByPrefix(HIT_DESCRIPTION_ITEMS, sub);
       }
       if (prefix.startsWith('context.')) {
-        const contextItems = items.filter(i => i.label.startsWith('context.'));
+        const contextItems = allItems.filter(i => i.label.startsWith('context.'));
         const sub = prefix.slice('context.'.length);
         return sub.length === 0 ? contextItems : filterByPrefix(contextItems, 'context.' + sub);
       }
     }
 
-    return filterByPrefix(items, prefix);
+    return filterByPrefix(allItems, prefix);
   },
 };
 
@@ -163,6 +164,5 @@ export const _CATALOG_COUNTS = {
   condition: CONDITION_ITEMS.length,
   effect: EFFECT_ITEMS.length,
   roll: ROLL_ITEMS.length,
-  cost: COST_ITEMS.length,
   display: DISPLAY_ITEMS.length,
 } as const;

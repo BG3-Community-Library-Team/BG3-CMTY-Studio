@@ -57,7 +57,7 @@ import {
 import { getDbPaths } from "../lib/tauri/db-management.js";
 import { toastStore } from "../lib/stores/toastStore.svelte.js";
 
-const { projectStore } = await import("../lib/stores/projectStore.svelte.js");
+const { projectStore, sectionToTable } = await import("../lib/stores/projectStore.svelte.js");
 
 // ── Fixture Data ────────────────────────────────────────────────────
 
@@ -88,6 +88,28 @@ const MOCK_SECTIONS: StagingSectionSummary[] = [
     source_type: "lsx",
     total_rows: 10,
     active_rows: 10,
+    new_rows: 0,
+    modified_rows: 0,
+    deleted_rows: 0,
+  },
+  {
+    table_name: "lsx__ActionResourceDefinitions__ActionResourceDefinition",
+    region_id: "ActionResourceDefinitions",
+    node_id: "ActionResourceDefinition",
+    source_type: "lsx",
+    total_rows: 3,
+    active_rows: 3,
+    new_rows: 0,
+    modified_rows: 0,
+    deleted_rows: 0,
+  },
+  {
+    table_name: "lsx__ActionResourceGroupDefinitions__ActionResourceGroupDefinition",
+    region_id: "ActionResourceGroupDefinitions",
+    node_id: "ActionResourceGroupDefinition",
+    source_type: "lsx",
+    total_rows: 2,
+    active_rows: 2,
     new_rows: 0,
     modified_rows: 0,
     deleted_rows: 0,
@@ -207,6 +229,18 @@ describe("loadSection", () => {
     expect(entries[2]._is_new).toBe(true);
     // race-004 has _is_deleted: 1
     expect(entries[3]._is_deleted).toBe(true);
+  });
+});
+
+describe("sectionToTable", () => {
+  it("maps ActionResources to the ActionResourceDefinition staging table", async () => {
+    await hydrateWithDefaults();
+    expect(sectionToTable("ActionResources")).toBe("lsx__ActionResourceDefinitions__ActionResourceDefinition");
+  });
+
+  it("maps ActionResourceGroups to the ActionResourceGroupDefinition staging table", async () => {
+    await hydrateWithDefaults();
+    expect(sectionToTable("ActionResourceGroups")).toBe("lsx__ActionResourceGroupDefinitions__ActionResourceGroupDefinition");
   });
 });
 

@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { statsExpressionPlugin, _CATALOG_COUNTS } from "../lib/plugins/statsExpressionPlugin";
 import type { CompletionContext } from "../lib/plugins/completionTypes";
+import * as khnDiscovery from "../lib/services/khnFunctionDiscovery";
+
+// Spy on getModKhonsuFunctions so we can inject mod functions in tests
+const getModFnsSpy = vi.spyOn(khnDiscovery, 'getModKhonsuFunctions');
 
 function makeCtx(language: string, typedPrefix: string): CompletionContext {
   return {
@@ -13,18 +17,24 @@ function makeCtx(language: string, typedPrefix: string): CompletionContext {
 }
 
 describe("statsExpressionPlugin", () => {
+  beforeEach(() => {
+    getModFnsSpy.mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    getModFnsSpy.mockReset();
+  });
   it("has correct id and name", () => {
     expect(statsExpressionPlugin.id).toBe("bg3-stats-expression");
     expect(statsExpressionPlugin.name).toBe("BG3 Stats Expression");
   });
 
-  it("responds to all 5 expression languages", () => {
+  it("responds to expression languages backed by the inline editor", () => {
     expect(statsExpressionPlugin.languages).toContain("expr:condition");
     expect(statsExpressionPlugin.languages).toContain("expr:effect");
     expect(statsExpressionPlugin.languages).toContain("expr:roll");
-    expect(statsExpressionPlugin.languages).toContain("expr:cost");
     expect(statsExpressionPlugin.languages).toContain("expr:display");
-    expect(statsExpressionPlugin.languages).toHaveLength(5);
+    expect(statsExpressionPlugin.languages).toHaveLength(4);
   });
 
   it("has priority lower than default (40)", () => {
@@ -144,26 +154,6 @@ describe("statsExpressionPlugin", () => {
     });
   });
 
-  describe("cost completions", () => {
-    it("returns resources for prefix 'Ac'", () => {
-      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:cost", "Ac"));
-      const labels = results.map(r => r.label);
-      expect(labels).toContain("ActionPoint");
-    });
-
-    it("returns SpellSlot for prefix 'Sp'", () => {
-      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:cost", "Sp"));
-      const labels = results.map(r => r.label);
-      expect(labels).toContain("SpellSlot");
-    });
-
-    it("resources do NOT insert parens", () => {
-      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:cost", "Ac"));
-      const ap = results.find(r => r.label === "ActionPoint");
-      expect(ap?.insertText).toBe("ActionPoint");
-    });
-  });
-
   describe("display completions", () => {
     it("returns functors for prefix 'Deal'", () => {
       const results = statsExpressionPlugin.getCompletions(makeCtx("expr:display", "Deal"));
@@ -204,8 +194,54 @@ describe("statsExpressionPlugin", () => {
       expect(_CATALOG_COUNTS.effect).toBeGreaterThan(80);
     });
 
-    it("cost items match COST_RESOURCES count", () => {
-      expect(_CATALOG_COUNTS.cost).toBe(20);
+  });
+
+  describe("mod .khn function integration", () => {
+    const MOD_FUNCTIONS = [
+      { label: 'XR_IsStunned', insertText: 'XR_IsStunned()', detail: 'Mod condition — MyConditions.khn', kind: 'function' as const, sortOrder: 15 },
+      { label: 'XR_IsBlinded', insertText: 'XR_IsBlinded()', detail: 'Mod condition — MyConditions.khn', kind: 'function' as const, sortOrder: 15 },
+    ];
+
+    beforeEach(() => {
+      getModFnsSpy.mockReturnValue(MOD_FUNCTIONS);
+    });
+
+    it("includes mod functions in condition completions", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:condition", "XR"));
+      const labels = results.map(r => r.label);
+      expect(labels).toContain("XR_IsStunned");
+      expect(labels).toContain("XR_IsBlinded");
+    });
+
+    it("includes mod functions in effect completions", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:effect", "XR"));
+      const labels = results.map(r => r.label);
+      expect(labels).toContain("XR_IsStunned");
+    });
+
+    it("includes mod functions in roll completions", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:roll", "XR"));
+      const labels = results.map(r => r.label);
+      expect(labels).toContain("XR_IsStunned");
+    });
+
+    it("does NOT include mod functions in display completions", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:display", "XR"));
+      expect(results).toHaveLength(0);
+    });
+
+    it("mod functions insert with parens", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:condition", "XR_IsS"));
+      const fn = results.find(r => r.label === "XR_IsStunned");
+      expect(fn?.insertText).toBe("XR_IsStunned()");
+    });
+
+    it("mod functions merge with built-in condition functions", () => {
+      const results = statsExpressionPlugin.getCompletions(makeCtx("expr:condition", "Has"));
+      const labels = results.map(r => r.label);
+      // Built-in should still be present
+      expect(labels).toContain("HasStatus");
+      expect(labels).toContain("HasPassive");
     });
   });
 });

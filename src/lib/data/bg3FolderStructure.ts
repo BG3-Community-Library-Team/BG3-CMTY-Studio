@@ -173,7 +173,7 @@ export const BG3_CORE_FOLDERS: FolderNode[] = [
       {
         name: "ActionResourceGroupDefinitions",
         label: "Action Resource Groups",
-        nodeTypes: ["ActionResourceGroup"],
+        nodeTypes: ["ActionResourceGroupDefinition"],
         Section: "ActionResourceGroups",
         regionId: "ActionResourceGroupDefinitions",
         defaultFile: "ActionResourceGroupDefinitions.lsx",

@@ -2,6 +2,7 @@ export { completionRegistry } from './completionRegistry.js';
 export type { CompletionItem, CompletionContext, CompletionPlugin } from './completionTypes.js';
 export { updateModSymbols, clearModSymbols } from './activeModPlugin.js';
 export { loadIdeHelpers, reloadIdeHelpers } from './ideHelpersPlugin.js';
+export { updateModKhonsuFunctions, clearModKhonsuFunctions, getModKhonsuFunctions } from '../services/khnFunctionDiscovery.js';
 
 import { completionRegistry } from './completionRegistry.js';
 import { seApiPlugin } from './seApiPlugin.js';

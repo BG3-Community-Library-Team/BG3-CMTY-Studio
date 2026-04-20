@@ -14,6 +14,7 @@
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
   import InlineCodeEditor from "./InlineCodeEditor.svelte";
+  import CostFieldGroup from "./CostFieldGroup.svelte";
 
   let {
     item,
@@ -192,6 +193,11 @@
           />
         {/if}
       {/if}
+    {:else if expressionType === 'cost'}
+      <CostFieldGroup
+        value={getFieldValue(item.key)}
+        onchange={(v) => setFieldValue(item.key, v)}
+      />
     {:else if expressionType}
       <InlineCodeEditor
         value={getFieldValue(item.key)}

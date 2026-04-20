@@ -3,7 +3,6 @@ import {
   STATS_FUNCTORS,
   STATS_BOOSTS,
   TARGETING_KEYWORDS,
-  COST_RESOURCES,
   ROLL_FUNCTIONS,
   DAMAGE_TYPE_ENUM,
   ATTACK_TYPE_ENUM,
@@ -102,26 +101,6 @@ describe("Stats Expression Catalog", () => {
       expect(names).toContain("OBSERVER_SOURCE");
       expect(names).toContain("OBSERVER_TARGET");
       expect(names).toContain("OBSERVER_OBSERVER");
-    });
-  });
-
-  describe("COST_RESOURCES", () => {
-    expectNonEmpty(COST_RESOURCES, "COST_RESOURCES");
-
-    it("includes common resources", () => {
-      const names = COST_RESOURCES.map(r => r.name);
-      expect(names).toContain("ActionPoint");
-      expect(names).toContain("BonusActionPoint");
-      expect(names).toContain("SpellSlot");
-    });
-
-    it("includes class-specific resources", () => {
-      const names = COST_RESOURCES.map(r => r.name);
-      expect(names).toContain("KiPoint");
-      expect(names).toContain("SorceryPoint");
-      expect(names).toContain("RageCharge");
-      expect(names).toContain("BardicInspiration");
-      expect(names).toContain("WildShape");
     });
   });
 

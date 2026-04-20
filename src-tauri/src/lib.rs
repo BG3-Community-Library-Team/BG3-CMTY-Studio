@@ -297,6 +297,18 @@ pub struct ListItemsInfo {
     pub item_key: String,
 }
 
+/// ActionResource metadata used by stats cost editors.
+#[derive(serde::Serialize, Clone)]
+#[cfg_attr(test, derive(TS))]
+#[cfg_attr(test, ts(export))]
+pub struct CostResourceInfo {
+    pub name: String,
+    pub display_name: String,
+    pub max_level: i32,
+    /// Either "resource" or "group".
+    pub kind: String,
+}
+
 /// Look up the items contained in a vanilla List entry by UUID.
 #[tauri::command]
 async fn cmd_get_list_items(app: tauri::AppHandle, uuids: Vec<String>) -> Result<Vec<ListItemsInfo>, AppError> {
@@ -304,6 +316,28 @@ async fn cmd_get_list_items(app: tauri::AppHandle, uuids: Vec<String>) -> Result
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_list_items(&db_paths.base, &uuids)
+    }).await
+}
+
+/// Load ActionResource definitions/groups with the fields needed by stats cost editors.
+#[tauri::command]
+async fn cmd_get_cost_resources(app: tauri::AppHandle) -> Result<Vec<CostResourceInfo>, AppError> {
+    blocking(move || {
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths: {e}"))?;
+
+        let mut merged = std::collections::BTreeMap::<String, CostResourceInfo>::new();
+
+        for item in reference_db::queries::query_cost_resources(&db_paths.base)? {
+            merged.insert(item.name.to_lowercase(), item);
+        }
+
+        for item in reference_db::queries::query_cost_resources(&db_paths.mods)? {
+            // ref_mods should override ref_base for duplicate names.
+            merged.insert(item.name.to_lowercase(), item);
+        }
+
+        Ok(merged.into_values().collect())
     }).await
 }
 
@@ -2173,6 +2207,7 @@ pub fn run() {
             cmd_read_existing_config,
             cmd_get_vanilla_entries,
             cmd_get_list_items,
+            cmd_get_cost_resources,
             cmd_get_entries_by_folder,
             cmd_get_stat_entries,
             cmd_get_mod_stat_entries,

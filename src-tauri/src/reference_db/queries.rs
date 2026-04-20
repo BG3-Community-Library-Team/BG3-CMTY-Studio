@@ -496,6 +496,99 @@ pub fn query_list_items(
     Ok(results)
 }
 
+/// Query ActionResource definitions and groups for stats cost field editing.
+pub fn query_cost_resources(
+    db_path: &Path,
+) -> Result<Vec<crate::CostResourceInfo>, String> {
+    let conn = open_ro(db_path)?;
+    let mut results = Vec::new();
+
+    let mut push_region = |region_id: &str, kind: &str, include_max_level: bool| -> Result<(), String> {
+        let table_name: String = match conn.query_row(
+            &format!(
+                "SELECT table_name FROM _table_meta \
+                 WHERE region_id = ?1 AND source_type = 'lsx' AND row_count > 0 {ROOT_TABLE_ORDER}"
+            ),
+            [region_id],
+            |row| row.get(0),
+        ) {
+            Ok(tn) => tn,
+            Err(_) => return Ok(()),
+        };
+
+        validate_table_name(&table_name)?;
+        let columns = table_columns(&conn, &table_name)?;
+        let has = |name: &str| columns.iter().any(|c| c.name == name);
+        if !has("Name") {
+            return Ok(());
+        }
+
+        let mut select_cols = vec!["\"Name\"".to_string()];
+        if include_max_level && has("MaxLevel") {
+            select_cols.push("\"MaxLevel\"".to_string());
+        }
+        if has("DisplayName") {
+            select_cols.push("\"DisplayName\"".to_string());
+        }
+        if has("Comment") {
+            select_cols.push("\"Comment\"".to_string());
+        }
+
+        let sql = format!(
+            "SELECT {} FROM \"{}\" ORDER BY \"Name\"",
+            select_cols.join(", "),
+            table_name,
+        );
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+
+                let get_opt = |col_name: &str| -> Option<String> {
+                    let idx = select_cols
+                        .iter()
+                        .position(|c| c == &format!("\"{col_name}\""))?;
+                    row.get::<_, Option<String>>(idx).ok().flatten()
+                };
+
+                let max_level = get_opt("MaxLevel")
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(0);
+                let display_name = get_opt("DisplayName")
+                    .filter(|v| !v.is_empty())
+                    .or_else(|| get_opt("Comment").filter(|v| !v.is_empty()))
+                    .unwrap_or_else(|| name.clone());
+
+                Ok(crate::CostResourceInfo {
+                    name,
+                    display_name,
+                    max_level,
+                    kind: kind.to_string(),
+                })
+            })
+            .map_err(|e| format!("Query: {e}"))?;
+
+        for row in rows {
+            results.push(row.map_err(|e| format!("Row: {e}"))?);
+        }
+
+        Ok(())
+    };
+
+    push_region("ActionResourceDefinitions", "resource", true)?;
+    push_region("ActionResourceGroupDefinitions", "group", false)?;
+
+    results.sort_by(|a, b| {
+        a.kind
+            .cmp(&b.kind)
+            .then_with(|| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    Ok(results)
+}
+
 // ── Progression table UUIDs ─────────────────────────────────────────────────
 
 /// Collect unique ProgressionTableUUIDs from Progressions, ClassDescriptions,

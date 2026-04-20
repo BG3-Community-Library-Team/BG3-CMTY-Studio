@@ -1,5 +1,6 @@
 import type { CompletionPlugin, CompletionContext, CompletionItem } from './completionTypes.js';
 import { CONDITION_FUNCTIONS as CONDITION_CATALOG } from '../data/conditionFunctions.js';
+import { getModKhonsuFunctions } from '../services/khnFunctionDiscovery.js';
 
 const CONDITION_FUNCTIONS: CompletionItem[] = CONDITION_CATALOG.map(fn => ({
   label: fn.name,
@@ -48,6 +49,12 @@ const LUA_KEYWORDS: CompletionItem[] = [
 
 const ALL_ITEMS = [...CONDITION_FUNCTIONS, ...CONTEXT_ACCESSORS, ...LUA_KEYWORDS];
 
+/** Return combined static + mod-dynamic items for filtering. */
+function getAllItems(): CompletionItem[] {
+  const modFns = getModKhonsuFunctions();
+  return modFns.length > 0 ? [...ALL_ITEMS, ...modFns] : ALL_ITEMS;
+}
+
 function filterByPrefix(items: CompletionItem[], prefix: string): CompletionItem[] {
   const lower = prefix.toLowerCase();
   return items.filter(item => item.label.toLowerCase().startsWith(lower));
@@ -76,6 +83,6 @@ export const khonsuPlugin: CompletionPlugin = {
       return sub.length === 0 ? CONTEXT_ACCESSORS : filterByPrefix(CONTEXT_ACCESSORS, 'context.' + sub);
     }
 
-    return filterByPrefix(ALL_ITEMS, prefix);
+    return filterByPrefix(getAllItems(), prefix);
   },
 };

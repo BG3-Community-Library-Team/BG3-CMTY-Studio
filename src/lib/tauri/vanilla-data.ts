@@ -45,11 +45,23 @@ export interface ListItemsInfo {
   item_key: string;
 }
 
+export interface CostResourceInfo {
+  name: string;
+  display_name: string;
+  max_level: number;
+  kind: string;
+}
+
 /** Look up the items contained in vanilla List entries by their UUIDs. */
 export async function getListItems(
   uuids: string[]
 ): Promise<ListItemsInfo[]> {
   return invoke("cmd_get_list_items", { uuids });
+}
+
+/** Load ActionResource definitions and group definitions used by stats cost fields. */
+export async function getCostResources(): Promise<CostResourceInfo[]> {
+  return invoke("cmd_get_cost_resources");
 }
 
 // ---- Equipment ----

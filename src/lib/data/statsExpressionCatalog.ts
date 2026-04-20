@@ -1,5 +1,5 @@
 /**
- * Catalogs of functors, boosts, targeting keywords, cost resources, roll
+ * Catalogs of functors, boosts, targeting keywords, roll
  * functions, and enum values used in BG3 stats expression fields.
  *
  * Consumed by the statsExpressionPlugin to provide context-aware
@@ -116,31 +116,6 @@ export const TARGETING_KEYWORDS: StatsExpressionDef[] = [
   { name: 'OBSERVER_SOURCE', description: 'Interrupt: source entity' },
   { name: 'OBSERVER_TARGET', description: 'Interrupt: target entity' },
   { name: 'OBSERVER_OBSERVER', description: 'Interrupt: observer entity' },
-];
-
-// ─── Cost Resources ────────────────────────────────────────────
-
-export const COST_RESOURCES: StatsExpressionDef[] = [
-  { name: 'ActionPoint', description: 'Action point' },
-  { name: 'BonusActionPoint', description: 'Bonus action point' },
-  { name: 'SpellSlot', description: 'Spell slot', params: 'level' },
-  { name: 'SpellSlotsGroup', description: 'Spell slots group' },
-  { name: 'ChannelDivinity', description: 'Channel Divinity charge' },
-  { name: 'ChannelOath', description: 'Channel Oath charge' },
-  { name: 'BardicInspiration', description: 'Bardic Inspiration charge' },
-  { name: 'SuperiorityDie', description: 'Superiority Die charge' },
-  { name: 'KiPoint', description: 'Ki Point charge' },
-  { name: 'SorceryPoint', description: 'Sorcery Point charge' },
-  { name: 'RageCharge', description: 'Rage charge' },
-  { name: 'WildShape', description: 'Wild Shape charge' },
-  { name: 'LayOnHandsCharge', description: 'Lay On Hands charge' },
-  { name: 'NaturalRecoveryPoint', description: 'Natural Recovery point' },
-  { name: 'FungalInfestationCharge', description: 'Fungal Infestation charge' },
-  { name: 'WarlockSpellSlot', description: 'Warlock Pact Magic slot' },
-  { name: 'ShortRestPoint', description: 'Short Rest point' },
-  { name: 'ArcaneRecoveryPoint', description: 'Arcane Recovery point' },
-  { name: 'MovementFull', description: 'Full movement' },
-  { name: 'MovementHalf', description: 'Half movement' },
 ];
 
 // ─── Roll Functions ────────────────────────────────────────────
