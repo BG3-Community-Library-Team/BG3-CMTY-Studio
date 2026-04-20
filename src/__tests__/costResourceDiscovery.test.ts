@@ -103,6 +103,26 @@ describe('costResourceDiscovery', () => {
         kind: 'group',
       });
     });
+
+    it('sorts action resource groups before resources and alphabetizes within each type', () => {
+      const merged = mergeCostResourceOptions(
+        [
+          { name: 'RagePoint', label: 'RagePoint', maxLevel: 0, kind: 'resource' },
+          { name: 'ActionPoint', label: 'ActionPoint', maxLevel: 0, kind: 'resource' },
+          { name: 'ZetaGroup', label: 'ZetaGroup (Group)', maxLevel: 0, kind: 'group' },
+          { name: 'AlphaGroup', label: 'AlphaGroup (Group)', maxLevel: 0, kind: 'group' },
+        ],
+        [],
+        [],
+      );
+
+      expect(merged.map(option => option.name)).toEqual([
+        'AlphaGroup',
+        'ZetaGroup',
+        'ActionPoint',
+        'RagePoint',
+      ]);
+    });
   });
 
   describe('getCostResourceMaxLevel', () => {

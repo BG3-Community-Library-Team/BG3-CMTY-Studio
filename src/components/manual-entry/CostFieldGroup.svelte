@@ -160,7 +160,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6.5rem 5.5rem auto;
     gap: 0.5rem;
-    align-items: start;
+    align-items: centers;
   }
 
   .cost-entry-resource {
@@ -170,7 +170,7 @@
   .cost-input {
     box-sizing: border-box;
     width: 100%;
-    height: 2.25rem;
+    height: 1rem;
     background-color: var(--th-input-bg);
     border: 1px solid var(--th-input-border);
     border-radius: 0.25rem;
@@ -211,24 +211,29 @@
   }
 
   .cost-remove-btn {
-    width: 2.25rem;
-    min-width: 2.25rem;
-    min-height: 2.25rem;
+    width: 2rem;
+    height: 2rem;
     padding: 0;
-    border: 1px solid var(--th-input-border);
-    border-radius: 0.25rem;
-    background: var(--th-input-bg);
+    border: none;
+    border-radius: 0.1875rem;
+    background: transparent;
     color: var(--th-text-500);
   }
 
   .cost-remove-btn:hover {
-    border-color: rgb(14 165 233);
-    color: var(--th-text-200);
+    background: var(--th-bg-700);
+    color: var(--th-error, #f87171);
+  }
+
+  .cost-remove-btn:focus-visible {
+    outline: none;
+    background: var(--th-bg-700);
+    color: var(--th-error, #f87171);
   }
 
   @media (max-width: 720px) {
     .cost-entry-row {
-      grid-template-columns: minmax(0, 1fr) 5.5rem 4.75rem auto;
+      grid-template-columns: minmax(0, 1fr) 5.5rem 4.75rem 2rem;
     }
   }
 </style>

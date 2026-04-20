@@ -1,6 +1,7 @@
 import { projectStore, sectionToTable } from '../stores/projectStore.svelte.js';
 import { getCostResources, type CostResourceInfo } from '../tauri/vanilla-data.js';
 import type { EntryRow } from '../types/entryRow.js';
+import { localeCompare } from '../utils/localeSort.js';
 
 export interface CostResourceOption {
   name: string;
@@ -49,10 +50,18 @@ export function rowToCostResourceOption(row: EntryRow, kind: 'resource' | 'group
 
 function sortOptions(options: CostResourceOption[]): CostResourceOption[] {
   return [...options].sort((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === 'resource' ? -1 : 1;
+    const kindOrder = (option: CostResourceOption): number => option.kind === 'group' ? 0 : 1;
+    const kindDiff = kindOrder(left) - kindOrder(right);
+    if (kindDiff !== 0) {
+      return kindDiff;
     }
-    return left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
+
+    const nameDiff = localeCompare(left.name, right.name);
+    if (nameDiff !== 0) {
+      return nameDiff;
+    }
+
+    return localeCompare(left.label, right.label);
   });
 }
 
