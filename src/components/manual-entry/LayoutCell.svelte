@@ -4,17 +4,34 @@
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import { tooltip } from "../../lib/actions/tooltip.js";
   import { cssToBg3Color, bg3ToCssColor } from "../../lib/utils/fieldCodec.js";
+  import { getInheritanceFieldStatus } from "../../lib/utils/inheritanceComparison.js";
   import { isContentHandle, parseHandleVersion, autoLocalize } from "../../lib/utils/localizationManager.js";
-  import { projectStore } from "../../lib/stores/projectStore.svelte.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
   import { STAT_TYPE_METADATA } from "../../lib/data/statFieldMetadata.js";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import HelpCircle from "@lucide/svelte/icons/help-circle";
+  import Pencil from "@lucide/svelte/icons/pencil";
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
   import InlineCodeEditor from "./InlineCodeEditor.svelte";
   import CostFieldGroup from "./CostFieldGroup.svelte";
+
+  interface Props {
+    item: LayoutField;
+    caps: SectionCapabilities;
+    getFieldValue: (key: string) => string;
+    setFieldValue: (key: string, value: string) => void;
+    getBoolValue: (key: string) => boolean;
+    setBoolValue: (key: string, value: boolean) => void;
+    fieldComboboxOptions: (key: string) => ComboboxOption[];
+    resolveLocaText: (handle: string | undefined) => string | undefined;
+    generateUuid: () => string;
+    parentFields?: Record<string, string>;
+    childFields?: Record<string, string>;
+    reversed?: boolean;
+    statType?: string;
+  }
 
   let {
     item,
@@ -26,28 +43,18 @@
     fieldComboboxOptions,
     resolveLocaText,
     generateUuid,
+    parentFields = {},
+    childFields = {},
     reversed = false,
     statType = '',
-  }: {
-    item: LayoutField;
-    caps: SectionCapabilities;
-    getFieldValue: (key: string) => string;
-    setFieldValue: (key: string, value: string) => void;
-    getBoolValue: (key: string) => boolean;
-    setBoolValue: (key: string, value: boolean) => void;
-    fieldComboboxOptions: (key: string) => ComboboxOption[];
-    resolveLocaText: (handle: string | undefined) => string | undefined;
-    generateUuid: () => string;
-    reversed?: boolean;
-    statType?: string;
-  } = $props();
+  }: Props = $props();
 
-  // --- Auto-localization support for loca: fields ---
+  let localOverrideEnabled = $state(false);
+  let localSyncLocked = $state(false);
 
   function handleLocaChange(fieldKey: string, inputValue: string) {
     if (!inputValue) return;
 
-    // 1. Check for explicit loca: or # prefix → use raw handle
     const locaPrefix = inputValue.startsWith('loca:') ? 5 : inputValue.startsWith('#') ? 1 : 0;
     if (locaPrefix > 0) {
       const rawHandle = inputValue.slice(locaPrefix).trim();
@@ -64,13 +71,11 @@
       }
     }
 
-    // 2. Check if user selected an existing contentuid from the dropdown
     if (isContentHandle(inputValue) || parseHandleVersion(inputValue)) {
       setFieldValue(fieldKey, inputValue);
       return;
     }
 
-    // 3. Plain text — auto-localize
     const currentFieldValue = getFieldValue(fieldKey);
     const { fieldValue, handle } = autoLocalize(
       inputValue,
@@ -78,7 +83,6 @@
       modStore.autoLocaEntries,
     );
 
-    // Make the generated text immediately resolvable via global loca map
     const updated = new Map(modStore.localizationMap);
     updated.set(handle, inputValue);
     modStore.localizationMap = updated;
@@ -93,10 +97,67 @@
     }, 50);
   }
 
+  function hasExplicitChildValue(): boolean {
+    return Object.prototype.hasOwnProperty.call(childFields, item.key);
+  }
+
+  function getDisplayTokens(rawValue: string): string[] {
+    if (!rawValue) return [];
+
+    const descriptor = caps.fieldCombobox?.[item.key] ?? '';
+    const optionLabelMap = new Map(fieldComboboxOptions(item.key).map((option) => [option.value, option.label]));
+    const values = descriptor.startsWith('multi')
+      ? rawValue.split(';').map((value) => value.trim()).filter(Boolean)
+      : [rawValue];
+
+    return values.map((value) => optionLabelMap.get(value) ?? value);
+  }
+
+  function getDisplayValue(rawValue: string): string {
+    return getDisplayTokens(rawValue).join('; ');
+  }
+
+  function handleOverrideToggle(enabled: boolean): void {
+    if (enabled) {
+      localOverrideEnabled = true;
+      return;
+    }
+
+    localOverrideEnabled = false;
+    setFieldValue(item.key, '');
+  }
+
+  $effect(() => {
+    if (!Object.prototype.hasOwnProperty.call(parentFields, item.key)) {
+      localOverrideEnabled = false;
+    }
+  });
+
+  $effect(() => {
+    if (!localSyncLocked) return;
+    const syncKey = statType ? STAT_TYPE_METADATA[statType]?.fieldSyncMap?.[item.key] : undefined;
+    if (!syncKey) return;
+    const sourceValue = getFieldValue(syncKey);
+    if (getFieldValue(item.key) !== sourceValue) {
+      setFieldValue(item.key, sourceValue);
+    }
+  });
 </script>
 
 {#if item.type === 'field'}
   {@const ft = caps.fieldTypes?.[item.key]}
+  {@const fieldValue = getFieldValue(item.key)}
+  {@const hasInheritanceData = Object.keys(parentFields).length > 0}
+  {@const hasExplicitValue = hasExplicitChildValue()}
+  {@const inheritanceStatus = hasInheritanceData ? getInheritanceFieldStatus(item.key, parentFields, childFields) : null}
+  {@const hasParentValue = Object.prototype.hasOwnProperty.call(parentFields, item.key)}
+  {@const parentValue = hasParentValue ? parentFields[item.key] : ''}
+  {@const overrideEnabled = hasExplicitValue || localOverrideEnabled}
+  {@const effectiveFieldValue = hasExplicitValue ? fieldValue : (overrideEnabled && hasParentValue ? parentValue : fieldValue)}
+  {@const displayTokens = getDisplayTokens(parentValue)}
+  {@const showInheritedValue = inheritanceStatus === 'inherited' && hasParentValue && !overrideEnabled}
+  {@const showOverrideToggle = inheritanceStatus !== null && hasParentValue}
+  {@const showOverrideBadge = showOverrideToggle && overrideEnabled && !showInheritedValue}
   {@const isNum = ft === 'int'}
   {@const isFloat = ft === 'float'}
   {@const hasBadge = ft && ft !== 'bool' && !caps.fieldCombobox?.[item.key]}
@@ -105,18 +166,47 @@
   {@const comboPlaceholder = badgeText ? `${badgeText} — Search…` : 'Search…'}
   {@const isLoca = caps.fieldCombobox?.[item.key]?.startsWith('loca:')}
   {@const expressionType = statType ? STAT_TYPE_METADATA[statType]?.fieldExpressionType?.[item.key] : undefined}
+  {@const boolToggleDef = statType ? STAT_TYPE_METADATA[statType]?.fieldBoolToggle?.[item.key] : undefined}
+  {@const syncSourceKey = statType ? STAT_TYPE_METADATA[statType]?.fieldSyncMap?.[item.key] : undefined}
+  {@const fieldDisabled = !!syncSourceKey && localSyncLocked}
+  {@const showReadOnlyMultiline = item.textarea || !!expressionType || (caps.fieldCombobox?.[item.key]?.startsWith('multi') ?? false) || parentValue.includes(';') || parentValue.length > 60}
+  {#if boolToggleDef}
+    {@const isOn = effectiveFieldValue === boolToggleDef.onValue}
+    {#if reversed}
+      <div class="flex items-center justify-end gap-2 text-xs min-w-0 self-end pb-1">
+        <span class="text-[11px] cursor-pointer select-none transition-colors duration-200 {isOn ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue); } }}>{item.label ?? item.key}</span>
+        <button type="button" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {isOn ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}" role="switch" aria-checked={isOn} aria-label={item.label ?? item.key} onclick={() => setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue)}>
+          <span class="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 {isOn ? 'translate-x-4.5' : 'translate-x-0.5'}"></span>
+        </button>
+      </div>
+    {:else}
+      <div class="flex items-center gap-2 text-xs min-w-0 self-end pb-1">
+        <button type="button" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {isOn ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}" role="switch" aria-checked={isOn} aria-label={item.label ?? item.key} onclick={() => setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue)}>
+          <span class="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 {isOn ? 'translate-x-4.5' : 'translate-x-0.5'}"></span>
+        </button>
+        <span class="text-[11px] cursor-pointer select-none transition-colors duration-200 {isOn ? 'text-sky-400' : 'text-[var(--th-text-500)]'}" role="button" tabindex="0" onclick={() => setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFieldValue(item.key, isOn ? boolToggleDef!.offValue : boolToggleDef!.onValue); } }}>{item.label ?? item.key}</span>
+      </div>
+    {/if}
+  {:else}
   <div class="flex flex-col gap-1.5 text-xs min-w-0">
     <label for="field-{item.key}" class="font-medium text-[var(--th-text-400)]">{item.label ?? item.key}
       {#if hasBadge}
         <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full {badgeClass}">{badgeText}</span>
+      {:else if isLoca}
+        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full badge-loca">LOCA</span>
+      {/if}
+      {#if showInheritedValue}
+        <span class="inheritance-status-badge">Inherited</span>
+      {/if}
+      {#if showOverrideBadge}
+        <span class="override-status-badge">Override</span>
       {/if}
       {#if expressionType}
         <span class="expression-badge" data-expr-type={expressionType}>
           {expressionType === 'roll' ? 'Roll' : expressionType === 'effect' ? 'Functor' : expressionType === 'condition' ? 'Condition' : expressionType === 'cost' ? 'Cost' : 'Display'}
         </span>
         <button type="button"
-          class="inline-flex items-center justify-center w-4 h-4 rounded text-[var(--th-text-500)]
-                 hover:text-[var(--th-text-200)] transition-colors cursor-help"
+          class="inline-flex items-center justify-center w-4 h-4 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] transition-colors cursor-help"
           use:tooltip={expressionType === 'roll' ? 'Dice roll expression. Example: Attack(AttackType.MeleeWeaponAttack) or SavingThrow(Ability.Dexterity, 15)'
             : expressionType === 'effect' ? 'Functor expression (semicolon-separated). Example: DealDamage(1d6,Fire) or ApplyStatus(BURNING,2)'
             : expressionType === 'condition' ? "Condition expression. Example: HasStatus('BURNING') or WieldingWeapon('Melee')"
@@ -127,108 +217,187 @@
       {/if}
       {#if item.generateUuid}
         <button type="button"
-          class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)]
-                 hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-600)] transition-colors cursor-pointer"
+          class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)] hover:text-[var(--th-text-200)] hover:bg-[var(--th-bg-600)] transition-colors cursor-pointer"
           onclick={() => setFieldValue(item.key, generateUuid())}
           use:tooltip={"Generate random UUID"}
           aria-label="Generate random UUID"
         ><Shuffle size={12} /></button>
       {/if}
     </label>
-    {#if isLoca}
-      <div class="loca-field">
-        <SingleSelectCombobox
-          options={fieldComboboxOptions(item.key)}
-          value={getFieldValue(item.key)}
-          placeholder="Type loca: or # for handles, text: or $ for text…"
-          maxDisplayed={25}
-          requirePrefix={['loca:', '#', 'text:', '$']}
-          textOnlyPrefixes={['text:', '$']}
-          displayValueOnly={true}
-          locaResolver={resolveLocaText}
-          onchange={(v) => handleLocaChange(item.key, v)}
-        />
-      </div>
-    {:else if caps.fieldCombobox?.[item.key]}
-      {@const descriptor = caps.fieldCombobox[item.key]}
-      {@const isSectionRef = descriptor.startsWith('section:')}
-      {@const targetSection = isSectionRef ? descriptor.split(':')[1] : ''}
-      {@const fieldValue = getFieldValue(item.key)}
-      {@const refDisplayName = isSectionRef && fieldValue ? modStore.lookupDisplayName(fieldValue) : undefined}
-      {#if isSectionRef && refDisplayName}
-        <div class="flex items-center gap-1">
-          <div class="flex-1 min-w-0">
+
+    <div class:inheritance-field-shell={showOverrideToggle} class:cost-override-shell={showOverrideToggle && expressionType === 'cost'}>
+      <div class:inheritance-field-main={showOverrideToggle}>
+        {#if showInheritedValue}
+          {#if item.colorField}
+            <div class="inheritance-readonly inheritance-readonly-color">
+              <span class="shrink-0 w-5 h-5 rounded border border-white/20" style="background-color: {bg3ToCssColor(parentValue || '#000000')}"></span>
+              <span class="truncate">{parentValue}</span>
+            </div>
+          {:else if isLoca}
+            <div class="inheritance-readonly inheritance-readonly-loca">{parentValue}</div>
+          {:else if expressionType === 'cost'}
+            <CostFieldGroup value={parentValue} disabled={true} />
+          {:else if displayTokens.length > 1}
+            <div class="inheritance-readonly inheritance-readonly-multiline inheritance-token-list">
+              {#each displayTokens as token}
+                <span class="inheritance-token">{token}</span>
+              {/each}
+            </div>
+          {:else if showReadOnlyMultiline}
+            <div class="inheritance-readonly inheritance-readonly-multiline">{getDisplayValue(parentValue)}</div>
+          {:else}
+            <div class="inheritance-readonly">{getDisplayValue(parentValue)}</div>
+          {/if}
+        {:else if isLoca}
+          <div class="loca-field">
             <SingleSelectCombobox
               options={fieldComboboxOptions(item.key)}
-              value={fieldValue}
-              placeholder={comboPlaceholder}
-              maxDisplayed={0}
-              onchange={(v) => setFieldValue(item.key, v)}
+              value={effectiveFieldValue}
+              placeholder="Type loca: or # for handles, text: or $ for text…"
+              maxDisplayed={25}
+              requirePrefix={['loca:', '#', 'text:', '$']}
+              textOnlyPrefixes={['text:', '$']}
+              displayValueOnly={true}
+              locaResolver={resolveLocaText}
+              onchange={(v) => handleLocaChange(item.key, v)}
             />
           </div>
-          <button
-            type="button"
-            class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)] hover:text-sky-400 hover:bg-[var(--th-bg-600)] transition-colors cursor-pointer"
-            onclick={() => jumpToReference(targetSection, fieldValue)}
-            use:tooltip={`Jump to ${refDisplayName} in ${targetSection}`}
-            aria-label={`Jump to ${refDisplayName} in ${targetSection}`}
-          ><ExternalLink size={12} /></button>
-        </div>
-      {:else}
-        {@const isMulti = descriptor.startsWith('multi')}
-        {#if isMulti}
-          <MultiSelectCombobox
-            options={fieldComboboxOptions(item.key)}
-            selected={getFieldValue(item.key) ? getFieldValue(item.key).split(';').map(s => s.trim()).filter(Boolean) : []}
-            placeholder={comboPlaceholder}
-            onchange={(vals) => setFieldValue(item.key, vals.join(';'))}
-          />
-        {:else}
-          <SingleSelectCombobox
-            options={fieldComboboxOptions(item.key)}
-            value={getFieldValue(item.key)}
-            placeholder={comboPlaceholder}
-            maxDisplayed={0}
+        {:else if caps.fieldCombobox?.[item.key]}
+          {@const descriptor = caps.fieldCombobox[item.key]}
+          {@const isSectionRef = descriptor.startsWith('section:')}
+          {@const targetSection = isSectionRef ? descriptor.split(':')[1] : ''}
+          {@const refDisplayName = isSectionRef && effectiveFieldValue ? modStore.lookupDisplayName(effectiveFieldValue) : undefined}
+          {#if isSectionRef && refDisplayName}
+            <div class="flex items-center gap-1">
+              <div class="flex-1 min-w-0">
+                <SingleSelectCombobox
+                  options={fieldComboboxOptions(item.key)}
+                  value={effectiveFieldValue}
+                  placeholder={comboPlaceholder}
+                  maxDisplayed={0}
+                  disabled={fieldDisabled}
+                  onchange={(v) => setFieldValue(item.key, v)}
+                />
+              </div>
+              <button
+                type="button"
+                class="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--th-text-500)] hover:text-sky-400 hover:bg-[var(--th-bg-600)] transition-colors cursor-pointer"
+                onclick={() => jumpToReference(targetSection, effectiveFieldValue)}
+                use:tooltip={`Jump to ${refDisplayName} in ${targetSection}`}
+                aria-label={`Jump to ${refDisplayName} in ${targetSection}`}
+              ><ExternalLink size={12} /></button>
+            </div>
+          {:else}
+            {@const isMulti = descriptor.startsWith('multi')}
+            {#if isMulti}
+              <MultiSelectCombobox
+                options={fieldComboboxOptions(item.key)}
+                selected={effectiveFieldValue ? effectiveFieldValue.split(';').map((value) => value.trim()).filter(Boolean) : []}
+                placeholder={comboPlaceholder}
+                onchange={(vals) => setFieldValue(item.key, vals.join(';'))}
+              />
+            {:else}
+              <SingleSelectCombobox
+                options={fieldComboboxOptions(item.key)}
+                value={effectiveFieldValue}
+                placeholder={comboPlaceholder}
+                maxDisplayed={0}
+                disabled={fieldDisabled}
+                onchange={(v) => setFieldValue(item.key, v)}
+              />
+            {/if}
+          {/if}
+        {:else if expressionType === 'cost'}
+          <CostFieldGroup
+            value={effectiveFieldValue}
+            disabled={fieldDisabled}
             onchange={(v) => setFieldValue(item.key, v)}
           />
-        {/if}
-      {/if}
-    {:else if expressionType === 'cost'}
-      <CostFieldGroup
-        value={getFieldValue(item.key)}
-        onchange={(v) => setFieldValue(item.key, v)}
-      />
-    {:else if expressionType}
-      <InlineCodeEditor
-        value={getFieldValue(item.key)}
-        {expressionType}
-        onchange={(v) => setFieldValue(item.key, v)}
-      />
-    {:else if item.colorField}
-      <div class="flex items-center gap-2">
-        <input
-          type="color"
-          class="color-picker-swatch"
-          value={bg3ToCssColor(getFieldValue(item.key) || '#000000')}
-          oninput={(e) => setFieldValue(item.key, cssToBg3Color((e.target as HTMLInputElement).value))}
-        />
-        <input
-          type="text"
-          class="form-input flex-1"
-          value={getFieldValue(item.key)}
-          oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)}
-          placeholder="#AARRGGBB"
-        />
-        {#if getFieldValue(item.key)}
-          <span class="shrink-0 w-5 h-5 rounded border border-white/20" style="background-color: {bg3ToCssColor(getFieldValue(item.key))}"></span>
+        {:else if expressionType}
+          <InlineCodeEditor
+            value={effectiveFieldValue}
+            {expressionType}
+            onchange={(v) => setFieldValue(item.key, v)}
+          />
+        {:else if item.colorField}
+          <div class="flex items-center gap-2">
+            <input
+              type="color"
+              class="color-picker-swatch"
+              value={bg3ToCssColor(effectiveFieldValue || '#000000')}
+              oninput={(e) => setFieldValue(item.key, cssToBg3Color((e.target as HTMLInputElement).value))}
+            />
+            <input
+              type="text"
+              class="form-input flex-1"
+              value={effectiveFieldValue}
+              oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)}
+              placeholder="#AARRGGBB"
+            />
+            {#if effectiveFieldValue}
+              <span class="shrink-0 w-5 h-5 rounded border border-white/20" style="background-color: {bg3ToCssColor(effectiveFieldValue)}"></span>
+            {/if}
+          </div>
+        {:else if item.textarea}
+          <textarea class="form-input w-full" rows="2" disabled={fieldDisabled} value={effectiveFieldValue} oninput={(e) => setFieldValue(item.key, (e.target as HTMLTextAreaElement).value)}></textarea>
+        {:else}
+          <input id="field-{item.key}" type={(isNum || isFloat) ? 'number' : 'text'} step={isFloat ? 'any' : undefined} class="form-input w-full" disabled={fieldDisabled} value={effectiveFieldValue} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} />
         {/if}
       </div>
-    {:else if item.textarea}
-      <textarea class="form-input w-full" rows="2" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLTextAreaElement).value)}></textarea>
-    {:else}
-      <input id="field-{item.key}" type={(isNum || isFloat) ? 'number' : 'text'} step={isFloat ? 'any' : undefined} class="form-input w-full" value={getFieldValue(item.key)} oninput={(e) => setFieldValue(item.key, (e.target as HTMLInputElement).value)} />
+
+      {#if showOverrideToggle}
+        <label class="inheritance-toggle" data-active={overrideEnabled ? 'true' : 'false'}
+          use:tooltip={overrideEnabled ? 'Override active — uncheck to revert to inherited value' : 'Override inherited value'}
+        >
+          <input
+            type="checkbox"
+            checked={overrideEnabled}
+            aria-label={`Enable override for ${item.label ?? item.key}`}
+            onchange={(e) => handleOverrideToggle((e.target as HTMLInputElement).checked)}
+          />
+          <Pencil size={11} />
+        </label>
+      {/if}
+    </div>
+    {#if showInheritedValue && isLoca && parentValue}
+      {@const locaPreviewText = resolveLocaText?.(parentValue)}
+      {#if locaPreviewText && locaPreviewText !== parentValue}
+        <details class="loca-inherited-details">
+          <summary class="text-xs text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] px-2 py-1 select-none">Preview localized text</summary>
+          <div class="px-2 pb-1.5 pt-0.5 text-xs text-[var(--th-text-200)] whitespace-pre-wrap break-words">{locaPreviewText}</div>
+        </details>
+      {/if}
+    {/if}
+    {#if syncSourceKey}
+      <div class="flex items-center gap-2 mt-0.5">
+        <button
+          type="button"
+          class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 {localSyncLocked ? 'bg-sky-500' : 'bg-[var(--th-bg-600,#52525b)]'}"
+          role="switch"
+          aria-checked={localSyncLocked}
+          aria-label={`Auto-sync from ${syncSourceKey}`}
+          onclick={() => { localSyncLocked = !localSyncLocked; }}
+          use:tooltip={localSyncLocked ? `Auto-synced from ${syncSourceKey} — click to unlock` : `Click to auto-sync from ${syncSourceKey}`}
+        >
+          <span class="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 {localSyncLocked ? 'translate-x-3.5' : 'translate-x-0.5'}"></span>
+        </button>
+        <span class="text-[11px] {localSyncLocked ? 'text-sky-400' : 'text-[var(--th-text-500)]'}">Sync from {syncSourceKey}</span>
+      </div>
+    {/if}
+    {#if !isLoca && caps.fieldCombobox?.[item.key]?.startsWith('section:') && effectiveFieldValue}
+      {@const selectedSectionOpt = fieldComboboxOptions(item.key).find((o) => o.value === effectiveFieldValue)}
+      {#if selectedSectionOpt?._locaHandle}
+        {@const sectionLocaText = resolveLocaText?.(selectedSectionOpt._locaHandle)}
+        {#if sectionLocaText && sectionLocaText !== selectedSectionOpt._locaHandle}
+          <details class="loca-inherited-details">
+            <summary class="text-xs text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] px-2 py-1 select-none">Preview localized text</summary>
+            <div class="px-2 pb-1.5 pt-0.5 text-xs text-[var(--th-text-200)] whitespace-pre-wrap break-words">{sectionLocaText}</div>
+          </details>
+        {/if}
+      {/if}
     {/if}
   </div>
+  {/if}
 {:else}
   {#if reversed}
     <div class="flex items-center justify-end gap-2 text-xs min-w-0 self-end pb-1">
@@ -272,30 +441,178 @@
     font-size: 0.8125rem;
     color: var(--th-input-text);
   }
+
   .form-input:focus {
     outline: none;
     border-color: rgb(14 165 233);
   }
 
-  /* Type-hint badges for layout-rendered fields */
+  .inheritance-field-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .inheritance-field-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .inheritance-readonly {
+    box-sizing: border-box;
+    min-height: 2.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    background-color: rgba(39, 39, 42, 0.75);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--th-text-200, #e4e4e7);
+  }
+
+  .inheritance-readonly-loca {
+    min-height: 2rem;
+    height: 2rem;
+  }
+
+  .inheritance-readonly-multiline {
+    align-items: flex-start;
+    min-height: 4.5rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .inheritance-readonly-color {
+    justify-content: flex-start;
+  }
+
+  .inheritance-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    align-self: stretch;
+    border: 1px solid var(--th-input-border);
+    border-left: none;
+    border-radius: 0 0.25rem 0.25rem 0;
+    padding: 0 0.4rem;
+    min-width: fit-content;
+    color: var(--th-text-400);
+    background: var(--th-bg-800, rgba(39, 39, 42, 0.7));
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .inheritance-toggle[data-active="true"] {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: var(--th-text-sky-300, #7dd3fc);
+    background: rgba(14, 165, 233, 0.12);
+  }
+
+  .inheritance-toggle input {
+    margin: 0;
+    accent-color: var(--th-accent-500, #38bdf8);
+  }
+
+  .inheritance-field-shell > .inheritance-field-main :global(.combobox-trigger),
+  .inheritance-field-shell > .inheritance-field-main .form-input,
+  .inheritance-field-shell > .inheritance-field-main .inheritance-readonly {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .cost-override-shell {
+    /* Keep 2-column grid (toggle stays on right); toggle uses align-self: start to avoid growing */
+  }
+
+  .cost-override-shell .inheritance-toggle {
+    align-self: start;
+    border-left: 1px solid var(--th-input-border);
+    border-radius: 0.25rem;
+    width: fit-content;
+  }
+
+  .cost-override-shell > .inheritance-field-main :global(.combobox-trigger),
+  .cost-override-shell > .inheritance-field-main .form-input,
+  .cost-override-shell > .inheritance-field-main .inheritance-readonly {
+    border-top-right-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+  }
+
+  .inheritance-status-badge,
+  .override-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .inheritance-status-badge {
+    background: rgba(56, 189, 248, 0.16);
+    color: var(--th-text-sky-300, #7dd3fc);
+  }
+
+  .override-status-badge {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--th-badge-warn-text, #fbbf24);
+  }
+
+  .inheritance-token-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .inheritance-token {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: rgba(63, 63, 70, 0.7);
+    color: var(--th-text-200);
+    font-size: 0.75rem;
+  }
+
   .badge-uuid {
     background-color: var(--th-badge-new-bg);
     color: var(--th-badge-new-text);
   }
+
   .badge-number {
     background-color: var(--th-badge-info-bg);
     color: var(--th-badge-info-text);
   }
+
   .badge-text {
     background-color: var(--th-badge-muted-bg);
     color: var(--th-badge-muted-text);
   }
+
   .badge-decimal {
     background-color: var(--th-badge-warn-bg);
     color: var(--th-badge-warn-text);
   }
 
-  /* Color picker swatch (UIColor fields) */
+  .badge-loca {
+    background-color: var(--th-badge-success-bg, #14532d);
+    color: var(--th-badge-success-text, #86efac);
+  }
+
+  .loca-inherited-details {
+    background-color: var(--th-bg-800, rgba(39, 39, 42, 0.6));
+    border: 1px solid var(--th-input-border, rgba(63, 63, 70, 0.5));
+    border-radius: 0.25rem;
+    margin-top: 0.125rem;
+  }
+
   .color-picker-swatch {
     width: 2rem;
     height: 2rem;
@@ -306,15 +623,16 @@
     cursor: pointer;
     background: transparent;
   }
+
   .color-picker-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
   .color-picker-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
 
-  /* Auto-localization field layout */
   .loca-field {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
+
   .loca-handle-badge {
     display: inline-flex;
     align-items: center;
@@ -323,11 +641,13 @@
     color: var(--th-text-500);
     font-family: monospace;
   }
+
   .loca-handle-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .loca-copy-btn {
     display: inline-flex;
     align-items: center;
@@ -339,12 +659,12 @@
     padding: 1px;
     border-radius: 2px;
   }
+
   .loca-copy-btn:hover {
     color: var(--th-text-200);
     background: var(--th-bg-600, rgba(255,255,255,0.06));
   }
 
-  /* Expression field textarea */
   .expression-field {
     font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
     font-size: 0.8125rem;
@@ -355,7 +675,6 @@
     height: auto;
   }
 
-  /* Expression type badges */
   .expression-badge {
     display: inline-flex;
     font-size: 0.625rem;
@@ -366,22 +685,27 @@
     border-radius: 0.25rem;
     vertical-align: middle;
   }
+
   .expression-badge[data-expr-type="roll"] {
     background-color: rgba(56, 189, 248, 0.15);
     color: var(--th-text-sky-400, #38bdf8);
   }
+
   .expression-badge[data-expr-type="effect"] {
     background-color: rgba(168, 85, 247, 0.15);
     color: var(--th-text-purple-400, #a855f7);
   }
+
   .expression-badge[data-expr-type="condition"] {
     background-color: rgba(251, 191, 36, 0.15);
     color: var(--th-text-amber-400, #fbbf24);
   }
+
   .expression-badge[data-expr-type="cost"] {
     background-color: rgba(52, 211, 153, 0.15);
     color: var(--th-text-emerald-400, #34d399);
   }
+
   .expression-badge[data-expr-type="display"] {
     background-color: rgba(148, 163, 184, 0.15);
     color: var(--th-text-400, #94a3b8);

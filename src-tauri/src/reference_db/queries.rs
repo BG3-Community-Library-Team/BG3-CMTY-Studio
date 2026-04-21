@@ -147,6 +147,7 @@ pub fn query_vanilla_entries(
                 Section::Races => parent_guid.filter(|v| !v.is_empty()),
                 _ => None,
             },
+            text_handle: None,
         });
     }
 
@@ -381,6 +382,69 @@ pub fn query_stat_field_names(
     }
 
     Ok(names.into_iter().collect())
+}
+
+pub fn query_stat_entry_fields(
+    db_path: &Path,
+    entry_name: &str,
+    entry_type: &str,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let conn = open_ro(db_path)?;
+    let table_name = format!("stats__{entry_type}");
+    validate_table_name(&table_name)?;
+
+    let columns = table_columns(&conn, &table_name)?;
+    if columns.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let select_expr = columns
+        .iter()
+        .map(|c| format!("\"{}\"", c.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT {select_expr} FROM \"{table_name}\" WHERE \"_entry_name\" = ?1 LIMIT 1"
+    );
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(stmt) => stmt,
+        Err(_) => return Ok(std::collections::HashMap::new()),
+    };
+
+    let result = stmt.query_row([entry_name], |row| {
+        let mut fields = std::collections::HashMap::new();
+
+        for (index, column) in columns.iter().enumerate() {
+            if matches!(column.name.as_str(), "_entry_name" | "_file_id" | "_type" | "_using")
+                || column.name.ends_with("_version")
+            {
+                continue;
+            }
+
+            let value = match row.get_ref(index)? {
+                rusqlite::types::ValueRef::Null => None,
+                rusqlite::types::ValueRef::Integer(n) => Some(n.to_string()),
+                rusqlite::types::ValueRef::Real(f) => Some(f.to_string()),
+                rusqlite::types::ValueRef::Text(s) => {
+                    Some(std::str::from_utf8(s).unwrap_or("").to_string())
+                }
+                rusqlite::types::ValueRef::Blob(_) => None,
+            };
+
+            if let Some(value) = value {
+                fields.insert(column.name.clone(), value);
+            }
+        }
+
+        Ok(fields)
+    });
+
+    match result {
+        Ok(fields) => Ok(fields),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(std::collections::HashMap::new()),
+        Err(e) => Err(format!("Query {table_name}: {e}")),
+    }
 }
 
 // ── List items query ────────────────────────────────────────────────────────
@@ -668,6 +732,7 @@ pub fn query_progression_table_uuids(
                     node_id: "ProgressionTable".to_string(),
                     color: None,
                     parent_guid: None,
+                    text_handle: None,
                 });
             }
         }
@@ -756,6 +821,7 @@ pub fn query_voice_table_uuids(
                 node_id: "VoiceTable".to_string(),
                 color: None,
                 parent_guid: None,
+                text_handle: None,
             });
         }
     }
@@ -863,6 +929,7 @@ pub fn query_entries_by_folder(
                 node_id: node_id.clone(),
                 color,
                 parent_guid: None,
+                text_handle: None,
             });
         }
     }
@@ -1570,7 +1637,7 @@ pub fn query_section_entries(
 
     // Select PK + all display-relevant columns
     let mut select_cols = vec![pk_select_expr];
-    for col in &["Name", "Level", "Comment", "DisplayName", "ParentGuid", "Color", "UIColor"] {
+    for col in &["Name", "Level", "Comment", "DisplayName", "ParentGuid", "Color", "UIColor", "Text"] {
         if has(col) {
             select_cols.push(format!("\"{col}\""));
         }
@@ -1605,14 +1672,15 @@ pub fn query_section_entries(
             let display_name_val = get_opt("DisplayName");
             let parent_guid_val = get_opt("ParentGuid");
             let color_raw = get_opt("UIColor").or_else(|| get_opt("Color"));
+            let text_handle_val = get_opt("Text");
 
-            Ok((uuid, name_val, level_val, comment_val, display_name_val, parent_guid_val, color_raw))
+            Ok((uuid, name_val, level_val, comment_val, display_name_val, parent_guid_val, color_raw, text_handle_val))
         })
         .map_err(|e| format!("Query: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
-        let (uuid, name, level, comment, display_name_attr, parent_guid, color_raw) =
+        let (uuid, name, level, comment, display_name_attr, parent_guid, color_raw, text_handle_raw) =
             row.map_err(|e| format!("Row: {e}"))?;
 
         // Intelligent display name: prefer DisplayName, then "Name LvN", then Comment, then Name, then UUID
@@ -1636,6 +1704,11 @@ pub fn query_section_entries(
 
         let color = color_raw.and_then(|v| crate::parse_bgra_color(&v));
         let parent_guid = parent_guid.filter(|v| !v.is_empty());
+        // Extract loca handle from Text attribute (TranslatedString format: "handle;version")
+        let text_handle = text_handle_raw
+            .as_deref()
+            .filter(|v| !v.is_empty())
+            .map(|v| v.split(';').next().unwrap_or(v).to_string());
 
         entries.push(VanillaEntryInfo {
             uuid,
@@ -1643,6 +1716,7 @@ pub fn query_section_entries(
             node_id: node_id.clone(),
             color,
             parent_guid,
+            text_handle,
         });
     }
 
@@ -2118,13 +2192,16 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE \"stats__SpellData\" (
                 \"_entry_name\" TEXT PRIMARY KEY,
+                \"_file_id\" INTEGER,
+                \"_type\" TEXT,
+                \"_using\" TEXT,
                 \"SpellType\" TEXT,
                 \"Level\" TEXT,
                 \"DisplayName\" TEXT
             );
             INSERT INTO \"stats__SpellData\" VALUES
-                ('Fireball', 'Projectile', '3', 'Fireball'),
-                ('MagicMissile', 'Projectile', '1', 'Magic Missile');
+                ('Fireball', 1, 'SpellData', 'Projectile_MainHandAttack', 'Projectile', '3', 'Fireball'),
+                ('MagicMissile', 2, 'SpellData', NULL, 'Projectile', '1', 'Magic Missile');
             INSERT INTO _table_meta VALUES
                 ('stats__SpellData', 'stats', NULL, NULL, NULL, 2);",
         )
@@ -2344,6 +2421,30 @@ mod tests {
         assert!(names.contains(&"Level".to_string()));
         assert!(names.contains(&"DisplayName".to_string()));
         assert!(!names.contains(&"_entry_name".to_string()));
+    }
+
+    #[test]
+    fn query_stat_entry_fields_returns_known_entry_fields() {
+        let (_tmp, path) = create_test_db();
+        seed_stats(&path);
+
+        let fields = query_stat_entry_fields(&path, "Fireball", "SpellData").unwrap();
+        assert_eq!(fields.get("SpellType").map(String::as_str), Some("Projectile"));
+        assert_eq!(fields.get("Level").map(String::as_str), Some("3"));
+        assert_eq!(fields.get("DisplayName").map(String::as_str), Some("Fireball"));
+        assert!(!fields.contains_key("_entry_name"));
+        assert!(!fields.contains_key("_file_id"));
+        assert!(!fields.contains_key("_type"));
+        assert!(!fields.contains_key("_using"));
+    }
+
+    #[test]
+    fn query_stat_entry_fields_unknown_entry_returns_empty() {
+        let (_tmp, path) = create_test_db();
+        seed_stats(&path);
+
+        let fields = query_stat_entry_fields(&path, "UnknownSpell", "SpellData").unwrap();
+        assert!(fields.is_empty());
     }
 
     #[test]

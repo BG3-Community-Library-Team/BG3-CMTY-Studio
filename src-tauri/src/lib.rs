@@ -95,6 +95,10 @@ pub struct VanillaEntryInfo {
     /// Optional parent GUID (e.g. ParentGuid for Race entries).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_guid: Option<String>,
+    /// Optional loca handle from a `Text` (TranslatedString) attribute.
+    /// Present for TooltipExtraTexts, TooltipUpcastDescriptions, etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_handle: Option<String>,
 }
 
 /// Describes a data section available in the reference DB.
@@ -1003,6 +1007,25 @@ async fn cmd_get_stat_field_names(app: tauri::AppHandle, entry_type: String) -> 
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths: {e}"))?;
         reference_db::queries::query_stat_field_names(&db_paths.base, &entry_type)
+    }).await
+}
+
+#[tauri::command]
+async fn cmd_get_stat_entry_fields(
+    app: tauri::AppHandle,
+    entry_name: String,
+    entry_type: String,
+) -> Result<HashMap<String, String>, AppError> {
+    blocking(move || {
+        use crate::commands::rediff::get_scanned_stat_entry_fields;
+
+        if let Some(fields) = get_scanned_stat_entry_fields(&entry_name, &entry_type) {
+            return Ok(fields);
+        }
+
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths: {e}"))?;
+        reference_db::queries::query_stat_entry_fields(&db_paths.base, &entry_name, &entry_type)
     }).await
 }
 
@@ -2212,6 +2235,7 @@ pub fn run() {
             cmd_get_stat_entries,
             cmd_get_mod_stat_entries,
             cmd_get_stat_field_names,
+            cmd_get_stat_entry_fields,
             cmd_write_stats,
             cmd_get_progression_table_uuids,
             cmd_get_voice_table_uuids,

@@ -60,8 +60,11 @@ export default defineConfig({
     // Tauri loads bundles from local disk — network transfer size is irrelevant.
     // The main chunk is all app code (Svelte components + utilities); vendors are
     // already split into yaml/icons/tauri chunks via manualChunks below.
-    chunkSizeWarningLimit: 700,
-    rollupOptions: {
+    chunkSizeWarningLimit: 1500,
+    rolldownOptions: {
+      checks: {
+        pluginTimings: false,
+      },
       output: {
         manualChunks(id) {
           if (id.includes("node_modules/@codemirror") || id.includes("node_modules/@lezer")) return "codemirror";

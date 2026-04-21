@@ -22,6 +22,10 @@ function fieldItem(key: string): LayoutField {
   return { key, type: "field" };
 }
 
+function spacerItem(): LayoutField {
+  return { key: '', type: "spacer" };
+}
+
 function boolItem(key: string): LayoutField {
   return { key, type: "boolean" };
 }
@@ -219,13 +223,45 @@ export function autoLayoutFromMetadata(
   // Build subsections from metadata groups
   const subsections: LayoutSubsection[] = [];
   for (const group of meta.groups) {
-    const rows = chunkRows(group.fields, 3);
+    let rows: LayoutRow[];
+    if (group.customRows) {
+      rows = group.customRows.map((rowFields, i) => ({
+        items: rowFields.map(k => k === null ? spacerItem() : fieldItem(k)),
+        gridTemplate: group.customRowTemplates?.[i],
+      }));
+    } else if (group.innerCards) {
+      // Groups with inner cards only; rows stays empty
+      rows = [];
+    } else if (group.flagGroupKeys) {
+      // Rows contain only the non-flag fields; flag fields render via FlagGroupBadges
+      const flagSet = new Set(group.flagGroupKeys);
+      const nonFlagFields = group.fields.filter(f => !flagSet.has(f));
+      rows = chunkRows(nonFlagFields, 3);
+    } else {
+      rows = chunkRows(group.fields, 3);
+    }
+
     const sub: LayoutSubsection = {
       title: group.title,
       rows,
     };
     if (group.collapsed) sub.collapsed = true;
-    // "Inheritance" group should not be collapsed
+    if (group.maxFieldColumns) sub.maxFieldColumns = group.maxFieldColumns;
+    if (group.flagGroupKeys) sub.flagGroupKeys = group.flagGroupKeys;
+    if (group.innerCards) {
+      sub.innerCards = group.innerCards.map((card) => ({
+        title: card.title,
+        width: card.width,
+        collapsed: card.collapsed,
+        fullRow: card.fullRow,
+        col: card.col,
+        rows: card.customRows
+          ? card.customRows.map(rowFields => ({
+              items: rowFields.map(k => k === null ? spacerItem() : fieldItem(k)),
+            }))
+          : chunkRows(card.fields, card.fieldsPerRow ?? 1),
+      }));
+    }
     subsections.push(sub);
   }
 

@@ -35,6 +35,13 @@ export async function getStatFieldNames(
   return invoke("cmd_get_stat_field_names", { entryType });
 }
 
+export async function getStatEntryFields(
+  entryName: string,
+  entryType: string,
+): Promise<Record<string, string>> {
+  return invoke("cmd_get_stat_entry_fields", { entryName, entryType });
+}
+
 export interface StatsEntry {
   name: string;
   entry_type: string;

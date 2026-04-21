@@ -14,9 +14,10 @@
   interface Props {
     value: string;
     onchange?: (value: string) => void;
+    disabled?: boolean;
   }
 
-  let { value, onchange }: Props = $props();
+  let { value, onchange, disabled = false }: Props = $props();
 
   let entries = $state<CostFieldEntry[]>([]);
   let options = $state<CostResourceOption[]>([]);
@@ -88,12 +89,14 @@
   });
 </script>
 
-<div class="cost-field-group">
-  {#if entries.length === 0}
+<div class="cost-field-group" class:cost-field-group-disabled={disabled}>
+  {#if entries.length === 0 && !disabled}
     <button type="button" class="cost-add-btn" onclick={addEntry}>
       <Plus size={14} />
       <span>Add Cost</span>
     </button>
+  {:else if entries.length === 0 && disabled}
+    <div class="cost-empty-inherited">No costs set</div>
   {:else}
     <div class="cost-entry-list">
       {#each entries as entry, index}
@@ -104,7 +107,8 @@
               value={entry.resource}
               placeholder={loading ? 'Loading resources…' : 'Action resource or group'}
               maxDisplayed={0}
-              onchange={(nextValue) => updateEntry(index, { resource: nextValue })}
+              onchange={disabled ? () => {} : (nextValue) => updateEntry(index, { resource: nextValue })}
+              disabled={disabled}
             />
           </div>
           <input
@@ -113,7 +117,8 @@
             value={entry.quantity}
             placeholder="Quantity"
             aria-label="Cost quantity"
-            oninput={(e) => updateEntry(index, { quantity: (e.target as HTMLInputElement).value })}
+            disabled={disabled}
+            oninput={disabled ? undefined : (e) => updateEntry(index, { quantity: (e.target as HTMLInputElement).value })}
           />
           {#if showLevelField(entry)}
             <input
@@ -122,24 +127,29 @@
               value={entry.level}
               placeholder="Level"
               aria-label="Cost level"
-              oninput={(e) => updateEntry(index, { level: (e.target as HTMLInputElement).value })}
+              disabled={disabled}
+              oninput={disabled ? undefined : (e) => updateEntry(index, { level: (e.target as HTMLInputElement).value })}
             />
           {/if}
-          <button
-            type="button"
-            class="cost-remove-btn"
-            onclick={() => removeEntry(index)}
-            aria-label="Remove cost entry"
-          >
-            <Trash2 size={14} />
-          </button>
+          {#if !disabled}
+            <button
+              type="button"
+              class="cost-remove-btn"
+              onclick={() => removeEntry(index)}
+              aria-label="Remove cost entry"
+            >
+              <Trash2 size={14} />
+            </button>
+          {/if}
         </div>
       {/each}
     </div>
-    <button type="button" class="cost-add-btn" onclick={addEntry}>
-      <Plus size={14} />
-      <span>Add Cost</span>
-    </button>
+    {#if !disabled}
+      <button type="button" class="cost-add-btn" onclick={addEntry}>
+        <Plus size={14} />
+        <span>Add Cost</span>
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -235,5 +245,16 @@
     .cost-entry-row {
       grid-template-columns: minmax(0, 1fr) 5.5rem 4.75rem 2rem;
     }
+  }
+
+  .cost-field-group-disabled {
+    opacity: 0.75;
+  }
+
+  .cost-empty-inherited {
+    font-size: 0.6875rem;
+    color: var(--th-text-500);
+    font-style: italic;
+    padding: 0.25rem 0;
   }
 </style>

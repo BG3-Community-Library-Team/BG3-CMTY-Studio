@@ -27,4 +27,12 @@ author: string,
 /**
  * Whether the effective project_path contains a `.git/` directory.
  */
-has_git: boolean, };
+has_git: boolean, 
+/**
+ * Whether `.cmtystudio/nexus.json` exists with a mod ID.
+ */
+has_nexus: boolean, 
+/**
+ * Whether `.cmtystudio/modio.json` exists with a selected mod ID.
+ */
+has_modio: boolean, };

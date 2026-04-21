@@ -825,6 +825,28 @@ input[type="number"] {
   box-sizing: border-box;
 }
 
+/* --- Disabled form inputs: visually distinct background across all themes --- */
+.form-input:disabled,
+input[type="text"]:disabled,
+input[type="number"]:disabled,
+select:disabled {
+  background-color: var(--th-bg-700, #3f3f46) !important;
+  color: var(--th-text-500, #71717a) !important;
+  border-color: var(--th-border-700, #3f3f46) !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+:root:not(.dark) .form-input:disabled,
+:root:not(.dark) input[type="text"]:disabled,
+:root:not(.dark) input[type="number"]:disabled,
+:root:not(.dark) select:disabled {
+  background-color: color-mix(in srgb, var(--th-input-bg) 70%, #808080) !important;
+  color: var(--th-text-500, #71717a) !important;
+  border-color: var(--th-border-700, #ccc) !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 /* Global themed scrollbars — applied to all scrollable containers */
 * { scrollbar-width: thin; scrollbar-color: var(--th-scroll-thumb, #4b5563) transparent; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }

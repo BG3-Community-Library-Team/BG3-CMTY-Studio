@@ -42,6 +42,31 @@ pub fn get_mod_stat_entries(mod_path: &str) -> Vec<crate::StatEntryInfo> {
     results
 }
 
+pub fn get_scanned_stat_entry_fields(
+    entry_name: &str,
+    entry_type: &str,
+) -> Option<HashMap<String, String>> {
+    let cache = MOD_ENTRY_CACHE.lock().ok()?;
+    let mut mod_paths: Vec<&String> = cache.keys().collect();
+    mod_paths.sort();
+
+    for mod_path in mod_paths {
+        let Some(entries) = cache.get(mod_path) else {
+            continue;
+        };
+        let Some(entry) = entries
+            .stats_entries
+            .iter()
+            .find(|entry| entry.name == entry_name && entry.entry_type == entry_type)
+        else {
+            continue;
+        };
+        return Some(entry.data.clone());
+    }
+
+    None
+}
+
 /// Store parsed entries for a mod in the global cache.
 /// Keeps all scanned mods so they can be used as comparison targets for re-diff.
 pub fn cache_mod_entries(

@@ -21,6 +21,7 @@
     locaResolver,
     onchange,
     warnClass = "",
+    disabled = false,
   }: {
     label?: string;
     options: { value: string; label: string }[];
@@ -40,6 +41,8 @@
     onchange: (value: string) => void;
     /** Extra CSS class applied to the trigger when a warning state is active */
     warnClass?: string;
+    /** When true, the combobox is non-interactive */
+    disabled?: boolean;
   } = $props();
 
   let searchText = $state("");
@@ -215,8 +218,8 @@
 >
   <!-- Trigger: shows selected value or search input -->
   <div
-    class="combobox-trigger flex items-center cursor-text pr-12 {warnClass} {locaIsUnresolved ? 'combobox-loca-error' : ''} {isOpen ? 'combobox-trigger-open' : ''}"
-    onclick={() => { searchText = value; isSearching = true; isOpen = requirePrefix ? prefixMet : !isOpen; inputEl?.focus(); }}
+    class="combobox-trigger flex items-center cursor-text pr-12 {warnClass} {locaIsUnresolved ? 'combobox-loca-error' : ''} {isOpen ? 'combobox-trigger-open' : ''} {disabled ? 'combobox-trigger-disabled' : ''}"
+    onclick={disabled ? undefined : () => { searchText = value; isSearching = true; isOpen = requirePrefix ? prefixMet : !isOpen; inputEl?.focus(); }}
     role="presentation"
   >
     {#if isSearching || !value}
@@ -345,6 +348,11 @@
   .combobox-trigger-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
+  }
+  .combobox-trigger-disabled {
+    cursor: default;
+    pointer-events: none;
+    opacity: 0.65;
   }
   .combobox-loca-error {
     border-color: var(--th-text-red-400, #f87171);

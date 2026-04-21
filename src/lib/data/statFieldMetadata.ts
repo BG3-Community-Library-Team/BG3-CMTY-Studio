@@ -1,10 +1,51 @@
+export interface StatFieldCardDef {
+  /** Card heading text */
+  title: string;
+  /** Ordered field keys in this card */
+  fields: string[];
+  /** CSS flex-basis / width for side-by-side layout, e.g. '60%', '40%' */
+  width?: string;
+  /** Start collapsed */
+  collapsed?: boolean;
+  /** Full-width card below the side-by-side group */
+  fullRow?: boolean;
+  /** Number of fields per row in this card (default 1) */
+  fieldsPerRow?: number;
+  /** Column placement for multi-column stacked card layouts (1 = left, 2 = right) */
+  col?: 1 | 2;
+  /**
+   * Custom row groupings within the card (overrides fieldsPerRow chunking).
+   * Use null for an empty grid spacer cell.
+   */
+  customRows?: (string | null)[][];
+}
+
 export interface StatFieldGroup {
   /** Group title displayed as section header */
   title: string;
-  /** Ordered field keys in this group */
+  /** Ordered field keys in this group (used for gating / Other-Fields detection) */
   fields: string[];
   /** Whether the group is collapsed by default */
   collapsed?: boolean;
+  /** Inner collapsible cards within this group's tab pane */
+  innerCards?: StatFieldCardDef[];
+  /**
+   * Custom row groupings that override auto-chunking.
+   * Each inner array is one row (field keys side-by-side). Use null for empty spacer cells.
+   */
+  customRows?: (string | null)[][];
+  /**
+   * CSS grid-template-columns for each customRow (parallel array).
+   * Use undefined for equal columns on a specific row.
+   */
+  customRowTemplates?: Array<string | undefined>;
+  /** Maximum number of grid columns for rows in this group */
+  maxFieldColumns?: number;
+  /**
+   * Field keys rendered as a combined FlagGroupBadges component instead of individual rows.
+   * These fields are excluded from normal row layout within this group.
+   */
+  flagGroupKeys?: string[];
 }
 
 export type ExpressionType = 
@@ -25,6 +66,16 @@ export interface StatTypeMetadata {
   fieldGating: Record<string, FieldGate>;
   /** Field → default value on creation (Sprint 4 — leave empty for now) */
   defaults: Record<string, string>;
+  /**
+   * Field → custom toggle on/off values (renders the field as a boolean toggle switch
+   * but uses string values instead of true native booleans).
+   */
+  fieldBoolToggle?: Record<string, { offValue: string; onValue: string }>;
+  /**
+   * Field → source field key to copy from (adds a "Sync" button next to the field
+   * that copies the source field's current value into this field).
+   */
+  fieldSyncMap?: Record<string, string>;
 }
 
 export interface FieldGate {
@@ -56,82 +107,202 @@ export const DAMAGE_TYPES = 'static:Bludgeoning,Piercing,Slashing,Fire,Cold,Ligh
 export const COOLDOWN_VALUES = 'static:None,OncePerTurn,OncePerCombat,OncePerShortRest,OncePerLongRest';
 export const INVENTORY_TAB_VALUES = 'static:Equipment,Consumable,Scroll,Food,Key,Misc,Hidden';
 
+export const CORE_STAT_TYPES = [
+  "SpellData",
+  "PassiveData",
+  "StatusData",
+  "Armor",
+  "Weapon",
+  "InterruptData",
+] as const;
+
+export type CoreStatType = (typeof CORE_STAT_TYPES)[number];
+
 export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
   SpellData: {
     groups: [
       {
-        title: "Identity",
-        fields: ["DisplayName", "Description", "ExtraDescription", "Icon", "DescriptionParams"],
+        title: "Localization",
+        fields: [
+          "DisplayName", "Icon", "Description", "ExtraDescription", "ShortDescription",
+          "DescriptionParams", "ExtraDescriptionParams", "ShortDescriptionParams",
+          "TooltipDamageList", "TooltipAttackSave", "TooltipStatusApply",
+          "TooltipOnMiss", "TooltipOnSave", "TooltipPermanentWarnings",
+          "TooltipSpellDCAbilities", "TooltipUpcastDescription", "TooltipUpcastDescriptionParams",
+        ],
+        innerCards: [
+          {
+            title: "Identity",
+            fields: ["DisplayName", "Icon", "Description", "ExtraDescription", "ShortDescription"],
+            width: "60%",
+          },
+          {
+            title: "Description Parameters",
+            fields: ["DescriptionParams", "ExtraDescriptionParams", "ShortDescriptionParams"],
+            width: "40%",
+          },
+          {
+            title: "Tooltips",
+            fields: [
+              "TooltipDamageList", "TooltipStatusApply",
+              "TooltipUpcastDescriptionParams",
+              "TooltipAttackSave", "TooltipSpellDCAbilities",
+              "TooltipOnMiss", "TooltipOnSave",
+              "TooltipPermanentWarnings", "TooltipUpcastDescription",
+            ],
+            fullRow: true,
+            collapsed: true,
+            customRows: [
+              ["TooltipDamageList", "TooltipStatusApply"],
+              ["TooltipUpcastDescriptionParams", null],
+              ["TooltipAttackSave", "TooltipSpellDCAbilities"],
+              ["TooltipOnMiss", "TooltipOnSave"],
+              ["TooltipPermanentWarnings", "TooltipUpcastDescription"],
+            ],
+          },
+        ],
       },
       {
         title: "Classification",
-        fields: ["SpellType", "Level", "SpellSchool", "VerbalIntent", "SpellAnimationIntentType"],
+        fields: [
+          "SpellType", "SpellSchool", "Level",
+          "SpellActionType", "Cooldown", "PowerLevel",
+          "CooldownType", "MemoryCost",
+          "UseCosts", "TooltipUseCosts", "HitCosts", "DualWieldingUseCosts", "RitualCosts",
+        ],
+        customRows: [
+          ["SpellType", "SpellSchool", "Level"],
+          ["SpellActionType", "Cooldown", "PowerLevel"],
+          [null, "CooldownType", "MemoryCost"],
+        ],
+        customRowTemplates: [
+          "1fr 1fr 8rem",
+          "1fr 1fr 8rem",
+          "1fr 1fr 8rem",
+        ],
+        maxFieldColumns: 3,
+        innerCards: [
+          {
+            title: "Costs",
+            fullRow: true,
+            collapsed: true,
+            fields: ["UseCosts", "TooltipUseCosts", "RitualCosts", "HitCosts", "DualWieldingUseCosts"],
+            customRows: [
+              ["UseCosts", "TooltipUseCosts"],
+              ["RitualCosts", "HitCosts"],
+              ["DualWieldingUseCosts", null],
+            ],
+          },
+        ],
       },
       {
         title: "Targeting",
         fields: [
-          "TargetRadius",
-          "AreaRadius",
-          "TargetConditions",
-          "TargetCeiling",
-          "TargetFloor",
-          "MaximumTargets",
-          "PreviewCursor",
-          "CycleConditions",
+          "TargetRadius", "AreaRadius", "AmountOfTargets",
+          "TargetCeiling", "TargetFloor", "MaximumTargets",
+          "MaxDistance", "HitRadius", "StrikeCount", "MaximumTotalTargetHP",
+          "TargetConditions", "CycleConditions", "ForkingConditions",
+          "MaxForkCount", "ForkLevels", "ForkChance",
+          "Height", "Angle", "Range", "Base",
+          "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay",
+          "ProjectileCount", "Trajectories", "PreviewCursor",
+          "TargetGroundEffect", "TargetHitEffect", "TargetProjectiles",
+        ],
+        innerCards: [
+          {
+            title: "Targeting",
+            col: 1,
+            fields: ["TargetRadius", "AreaRadius", "AmountOfTargets", "TargetCeiling", "TargetFloor", "MaximumTargets", "MaxDistance", "HitRadius", "StrikeCount", "MaximumTotalTargetHP"],
+            fieldsPerRow: 1,
+          },
+          {
+            title: "Forking",
+            col: 2,
+            fields: ["MaxForkCount", "ForkLevels", "ForkChance"],
+            fieldsPerRow: 3,
+          },
+          {
+            title: "Projectiles",
+            fullRow: true,
+            fields: ["Height", "Angle", "Range", "Base", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay", "ProjectileCount", "Trajectories", "PreviewCursor", "TargetGroundEffect", "TargetHitEffect", "TargetProjectiles"],
+            fieldsPerRow: 1,
+          },
+          {
+            title: "Conditions",
+            col: 2,
+            fields: ["TargetConditions", "CycleConditions", "ForkingConditions"],
+            fieldsPerRow: 1,
+          },
         ],
       },
       {
         title: "Mechanics",
         fields: [
-          "SpellRoll",
-          "SpellSuccess",
-          "SpellFail",
-          "SpellProperties",
-          "Damage",
-          "DamageType",
-          "ToHitBonus",
+          "SpellRoll", "SpellSuccess", "SpellFail", "SpellProperties",
+          "Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension",
+          "OnlyHit1Target", "StopAtFirstContact", "Autocast",
+          "IgnoreTeleport", "TeleportSelf", "TeleportSurface",
         ],
-      },
-      {
-        title: "Resources & Cooldowns",
-        fields: [
-          "UseCosts",
-          "DualWieldingUseCosts",
-          "Cooldown",
-          "CooldownType",
-          "MemoryCost",
-          "SpellActionType",
+        innerCards: [
+          {
+            title: "Damage",
+            col: 1,
+            fields: ["Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension"],
+            fieldsPerRow: 1,
+          },
+          {
+            title: "Flags",
+            col: 2,
+            fields: ["OnlyHit1Target", "StopAtFirstContact", "Autocast", "IgnoreTeleport", "TeleportSelf", "TeleportSurface"],
+            fieldsPerRow: 1,
+          },
+          {
+            title: "Properties",
+            fullRow: true,
+            fields: ["SpellRoll", "SpellProperties", "SpellSuccess", "SpellFail"],
+            customRows: [
+              ["SpellRoll", "SpellProperties"],
+              ["SpellSuccess", "SpellFail"],
+            ],
+          },
         ],
-      },
-      {
-        title: "Tooltips",
-        fields: ["TooltipDamageList", "TooltipAttackSave", "TooltipStatusApply", "TooltipUseCosts"],
       },
       {
         title: "Containers & Links",
         fields: ["ContainerSpells", "SpellContainerID", "ConcentrationSpellID", "RootSpellID"],
+        customRows: [
+          ["ContainerSpells"],
+          ["SpellContainerID", "RootSpellID"],
+          ["ConcentrationSpellID"],
+        ],
       },
       {
         title: "Flags & Properties",
         fields: [
-          "SpellFlags",
-          "WeaponTypes",
-          "Sheathing",
-          "CastTextEvent",
-          "AlternativeCastTextEvents",
+          "SpellFlags", "AIFlags", "LineOfSightFlags", "CinematicArenaFlags",
+          "WeaponTypes", "Sheathing", "CastTextEvent", "AlternativeCastTextEvents",
         ],
+        flagGroupKeys: ["SpellFlags", "AIFlags", "LineOfSightFlags", "CinematicArenaFlags"],
       },
       {
         title: "Animation",
-        fields: ["SpellAnimation", "DualWieldingSpellAnimation", "HitAnimationType"],
+        fields: ["SpellAnimation", "DualWieldingSpellAnimation", "HitAnimationType", "SpellAnimationIntentType"],
       },
       {
         title: "Audio",
-        fields: ["PrepareSound", "PrepareLoopSound", "CastSound", "TargetSound"],
+        fields: ["PrepareSound", "PrepareLoopSound", "CastSound", "TargetSound", "VerbalIntent", "VocalComponentSound", "SpellSoundMagnitude", "InstrumentComponentCastSound", "InstrumentComponentLoopingSound", "InstrumentComponentImpactSound", "InstrumentComponentPrepareSound"],
       },
       {
         title: "VFX",
-        fields: ["CastEffect", "PrepareEffect", "HitEffect", "TargetEffect"],
+        fields: ["SpellEffect", "CastEffect", "PrepareEffect", "HitEffect", "TargetEffect", "PreviewEffect", "PositionEffect", "BeamEffect", "DisappearEffect", "ImpactEffect"],
+      },
+      {
+        title: "Surface",
+        fields: ["SurfaceRadius", "SurfaceGrowInterval", "SurfaceGrowStep", "SurfaceLifetime", "SurfaceType"],
+      },
+      {
+        title: "Requirements",
+        fields: ["Requirements", "RequirementConditions", "RequirementEvents"],
       },
       {
         title: "Inheritance",
@@ -145,6 +316,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       SpellContainerID: "statType:SpellData",
       ContainerSpells: "multiStatType:SpellData",
       SpellFlags: "multiStatic:IsAttack,IsMelee,IsHarmful,CanDualWield,HasSomaticComponent,HasVerbalComponent,IsLinkedSpellContainer,Temporary,IsConcentration,IsDefaultWeaponAction,AddFallDamageOnLand,ConcentrationIgnoresResting,IgnoreVisionBlock,Stealth,IgnoreSilence,ImmediateCast,RangeIgnoreVerticalThreshold",
+      AIFlags: "multiStatic:CanNotUse,IgnoreVisionBlock,LosBlockCheck,CannotTargetSelf,StandGroundRange",
       SpellType: 'static:Zone,Projectile,Target,Rush,Shout,Teleportation,Throw,ProjectileStrike,Wall',
       SpellSchool: 'static:Evocation,Abjuration,Necromancy,Divination,Enchantment,Illusion,Conjuration,Transmutation,None',
       VerbalIntent: 'static:Damage,Heal,Buff,Debuff,Control,Utility,None',
@@ -156,6 +328,16 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       Sheathing: 'static:Melee,Ranged,None',
       SpellActionType: 'static:None,Bonus,Reaction,Main',
       PreviewCursor: 'static:Cast,Melee,Ranged,Throw,Cone,AOE',
+      ExtraDescription: 'loca:',
+      ShortDescription: 'loca:',
+      TooltipSpellDCAbilities: 'multiStatic:Strength,Dexterity,Constitution,Intelligence,Wisdom,Charisma',
+      TooltipOnMiss: 'section:TooltipExtras',
+      TooltipOnSave: 'section:TooltipExtras',
+      TooltipPermanentWarnings: 'section:TooltipExtras',
+      TooltipUpcastDescription: 'section:TooltipUpcastDescriptions',
+      Trajectories: 'multiSection:RootTemplates',
+      LineOfSightFlags: 'multiStatic:HasBlocker,HasFog,MainCharacter,TargetUnder,SourceUnder,Cast',
+      CinematicArenaFlags: 'multiStatic:ActivateCinematicArenaOnCast,DisableCinematicArenaOnCast',
     },
     fieldExpressionType: {
       SpellRoll: 'roll',
@@ -163,11 +345,32 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       SpellFail: 'effect',
       SpellProperties: 'effect',
       TargetConditions: 'condition',
+      CycleConditions: 'condition',
+      ForkingConditions: 'condition',
       DescriptionParams: 'display',
+      ExtraDescriptionParams: 'display',
+      ShortDescriptionParams: 'display',
       TooltipDamageList: 'display',
       TooltipStatusApply: 'display',
+      TooltipUpcastDescriptionParams: 'display',
       UseCosts: 'cost',
       DualWieldingUseCosts: 'cost',
+      HitCosts: 'cost',
+      RitualCosts: 'cost',
+      TooltipUseCosts: 'cost',
+      RequirementConditions: 'condition',
+    },
+    fieldBoolToggle: {
+      OnlyHit1Target: { offValue: '0', onValue: '1' },
+      StopAtFirstContact: { offValue: '0', onValue: '1' },
+      Autocast: { offValue: 'No', onValue: 'Yes' },
+      IgnoreTeleport: { offValue: 'No', onValue: 'Yes' },
+      TeleportSelf: { offValue: 'No', onValue: 'Yes' },
+      TeleportSurface: { offValue: 'No', onValue: 'Yes' },
+    },
+    fieldSyncMap: {
+      TooltipUseCosts: 'UseCosts',
+      DualWieldingUseCosts: 'UseCosts',
     },
     fieldGating: {
       ProjectileCount: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
@@ -181,6 +384,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       StopAtFirst: { trigger: 'SpellType', condition: { type: 'equals', value: 'Rush' } },
       TeleportSelf: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
       TeleportSurface: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
+      IgnoreTeleport: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
       ContainerSpells: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsLinkedSpellContainer' } },
       ConcentrationSpellID: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsConcentration' } },
       CooldownType: { trigger: 'Cooldown', condition: { type: 'notEquals', value: 'None' } },
@@ -505,3 +709,28 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     defaults: {},
   },
 };
+
+export const COMMON_PARENTS = {
+  SpellData: [
+    '_BaseContainer',
+    'Projectile_MainHandAttack',
+    'Target_MainHandAttack',
+    'Throw_MainHandThrow',
+    'Shout_Dash',
+  ],
+  PassiveData: [],
+  StatusData: [],
+  Armor: [
+    '_Body',
+    '_Gloves',
+    '_Boots',
+    '_Helmet',
+    '_Shield',
+  ],
+  Weapon: [
+    '_BaseWeapon',
+    '_OneHandedWeapon',
+    '_TwoHandedWeapon',
+  ],
+  InterruptData: [],
+} satisfies Record<CoreStatType, readonly string[]>;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { m } from "../paraglide/messages.js";
+    import { m } from "../paraglide/messages.js";
   import { modStore } from "../lib/stores/modStore.svelte.js";
   import { projectStore, sectionToTable } from "../lib/stores/projectStore.svelte.js";
   import { uiStore } from "../lib/stores/uiStore.svelte.js";
@@ -8,7 +8,7 @@
   import { toastStore } from "../lib/stores/toastStore.svelte.js";
   import type { VanillaEntryInfo } from "../lib/types/index.js";
   import { parseRawSelectors } from "../lib/utils/selectorParser.js";
-  import { getListItems, type ListItemsInfo } from "../lib/utils/tauri.js";
+  import { getListItems, getStatEntryFields, type ListItemsInfo } from "../lib/utils/tauri.js";
   import { SECTION_CAPS, type SectionCapabilities } from "../lib/data/sectionCaps.js";
   import { FORM_LAYOUTS, type FormLayout } from "../lib/data/formLayouts.js";
   import { isLazyCategory, loadCategory } from "../lib/services/scanService.js";
@@ -16,7 +16,7 @@
   import { schemaStore } from "../lib/stores/schemaStore.svelte.js";
   import type { NodeSchema } from "../lib/utils/tauri.js";
   import { autoLayoutFromSchema, autoLayoutFromCaps, autoLayoutFromMetadata } from "../lib/data/autoLayout.js";
-  import { STAT_TYPE_METADATA, type FieldGate } from "../lib/data/statFieldMetadata.js";
+  import { COMMON_PARENTS, STAT_TYPE_METADATA, type FieldGate } from "../lib/data/statFieldMetadata.js";
   import { classifyLsxType, renderTypeToFieldType, inferComboboxDescriptor } from "../lib/utils/lsxTypes.js";
 
   import {
@@ -570,6 +570,80 @@
     }
   }
 
+  let usingValue = $derived.by(() => getFieldValue("Using").trim());
+  let explicitStatFields = $derived.by(() => {
+    const mapped: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.value.trim()) {
+        mapped[field.key] = field.value;
+      }
+    }
+    return mapped;
+  });
+  let inheritanceParentFields: Record<string, string> = $state({});
+  let inheritanceRequestId = 0;
+  let inheritanceSuggestions = $derived.by(() => {
+    if (!_statsEntryType) return [];
+    return COMMON_PARENTS[_statsEntryType as keyof typeof COMMON_PARENTS] ?? [];
+  });
+  let showInheritanceBanner = $derived(!!_statsEntryType && usingValue.length > 0);
+  let showInheritanceSuggestions = $derived(
+    !!_statsEntryType && usingValue.length === 0 && editIndex === -1 && !autoEntryId && inheritanceSuggestions.length > 0
+  );
+  let inheritanceUiProps = $derived.by(
+    () => ({
+      parentName: usingValue,
+      parentFields: inheritanceParentFields,
+      childFields: explicitStatFields,
+      showInheritanceBanner,
+      showInheritanceSuggestions,
+      inheritanceSuggestions,
+      onClearInheritance: handleClearInheritance,
+      onApplyInheritanceSuggestion: applyInheritanceSuggestion,
+    }) as Record<string, unknown>
+  );
+  let hiddenLayoutFieldKeys = $derived(_statsEntryType ? ["Using"] : []);
+
+  $effect(() => {
+    const parentName = usingValue;
+    const entryType = _statsEntryType;
+
+    inheritanceRequestId += 1;
+    const requestId = inheritanceRequestId;
+
+    if (!parentName || !entryType) {
+      inheritanceParentFields = {};
+      return;
+    }
+
+    let disposed = false;
+    getStatEntryFields(parentName, entryType)
+      .then((result) => {
+        if (disposed || requestId !== inheritanceRequestId) return;
+        inheritanceParentFields = result;
+      })
+      .catch((error) => {
+        if (disposed || requestId !== inheritanceRequestId) return;
+        inheritanceParentFields = {};
+        console.warn("Failed to load inherited stat fields:", error);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  });
+
+  async function handleClearInheritance(): Promise<void> {
+    if (!usingValue) return;
+    setFieldValue("Using", "");
+    inheritanceParentFields = {};
+    toastStore.info("Inheritance cleared", usingValue);
+  }
+
+  function applyInheritanceSuggestion(parentName: string): void {
+    setFieldValue("Using", parentName);
+  }
+
   // ---- Search filter for large sections ----
   let formFieldFilter = $state("");
   let totalAttrCount = $derived((layout?.handledFieldKeys?.length ?? 0) + (layout?.handledBooleanKeys?.length ?? 0));
@@ -993,14 +1067,35 @@
 
   // ---- Nav sections + error counts for FormNav ----
   let formContainerEl: HTMLElement | undefined = $state(undefined);
+  /** Tracks which stats subsection tab is currently active — bound to FormBody */
+  let activeStatsTabIdx = $state(0);
 
   let navSections = $derived.by(() => {
     const sections: { id: string; label: string; children?: { id: string; label: string }[] }[] = [{ id: 'section-identity', label: 'Basic Info' }];
     if (layout?.subsections) {
-      for (const sub of layout.subsections) {
-        if (sub.component) continue;
-        const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
-        sections.push({ id, label: sub.title });
+      const tabbedSubs = layout.subsections.filter(sub => !sub.component);
+      if (tabbedSubs.length > 1) {
+        // Tabbed mode: show only inner cards of the currently active tab
+        const clampedIdx = Math.min(activeStatsTabIdx, tabbedSubs.length - 1);
+        const activeSub = tabbedSubs[clampedIdx];
+        if (activeSub?.innerCards) {
+          for (const card of activeSub.innerCards) {
+            sections.push({
+              id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
+              label: card.title,
+            });
+          }
+        }
+      } else {
+        // Single subsection (accordion): show the subsection itself
+        for (const sub of tabbedSubs) {
+          const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
+          const children = sub.innerCards?.map(card => ({
+          id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
+          label: card.title,
+        }));
+        sections.push({ id, label: sub.title, children });
+        }
       }
     }
     if (caps.hasBooleans && unhandledBooleans.length > 0) sections.push({ id: 'section-booleans', label: 'Booleans' });
@@ -1050,9 +1145,20 @@
       if (fieldKey && layoutHandledFieldKeys.has(fieldKey)) {
         // Error belongs to a layout subsection — find which one
         for (const sub of layout?.subsections ?? []) {
-          if (sub.rows?.some(r => r.items.some(i => i.key === fieldKey))) {
+          const inRows = sub.rows?.some(r => r.items.some(i => i.key === fieldKey));
+          if (inRows) {
             const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
             counts[id] = (counts[id] ?? 0) + 1;
+            break;
+          }
+          if (sub.innerCards) {
+            for (const card of sub.innerCards) {
+              if (card.rows.some(r => r.items.some(i => i.key === fieldKey))) {
+                const id = `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`;
+                counts[id] = (counts[id] ?? 0) + 1;
+                break;
+              }
+            }
             break;
           }
         }
@@ -1299,6 +1405,7 @@
       {fieldComboboxOptions}
       {resolveLocaText}
       statType={_statsEntryType ?? ''}
+      {...inheritanceUiProps}
     />
     </FormIdentityCard>
 
@@ -1322,7 +1429,11 @@
         {allowedTagTypes}
         {getTagOptionsForType}
         {fieldGating}
+        hiddenFieldKeys={hiddenLayoutFieldKeys}
+        {...inheritanceUiProps}
         statType={_statsEntryType ?? ''}
+        bind:activeSubIdx={activeStatsTabIdx}
+        fieldFilter={formFieldFilter}
       />
     {/if}
 

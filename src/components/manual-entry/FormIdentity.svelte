@@ -4,11 +4,18 @@
   import { tooltip } from "../../lib/actions/tooltip.js";
   import SingleSelectCombobox from "../SingleSelectCombobox.svelte";
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
+  import InheritanceBanner from "../InheritanceBanner.svelte";
   import LayoutCell from "./LayoutCell.svelte";
   import type { SectionCapabilities } from "../../lib/data/sectionCaps.js";
   import type { FormLayout, LayoutField } from "../../lib/data/formLayouts.js";
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { ListItemsInfo } from "../../lib/utils/tauri.js";
+
+  const INHERITANCE_FIELD: LayoutField = {
+    type: 'field',
+    key: 'Using',
+    label: 'Inherits From',
+  };
 
   let {
     caps,
@@ -37,6 +44,14 @@
     fieldComboboxOptions,
     resolveLocaText,
     statType = '',
+    parentName = '',
+    parentFields = {},
+    childFields = {},
+    showInheritanceBanner = false,
+    showInheritanceSuggestions = false,
+    inheritanceSuggestions = [],
+    onClearInheritance = () => {},
+    onApplyInheritanceSuggestion = () => {},
   }: {
     caps: SectionCapabilities;
     uuids: string[];
@@ -64,19 +79,67 @@
     fieldComboboxOptions: (key: string) => ComboboxOption[];
     resolveLocaText: (handle: string | undefined) => string | undefined;
     statType?: string;
+    parentName?: string;
+    parentFields?: Record<string, string>;
+    childFields?: Record<string, string>;
+    showInheritanceBanner?: boolean;
+    showInheritanceSuggestions?: boolean;
+    inheritanceSuggestions?: string[];
+    onClearInheritance?: () => void;
+    onApplyInheritanceSuggestion?: (parentName: string) => void;
   } = $props();
+
+  let showStatInheritance = $derived(caps.isSpell && !!statType);
 </script>
 
 <!-- Identity fields -->
 {#if caps.isSpell}
-  <div class="flex flex-col gap-0.5 text-xs">
-    <span class="text-[var(--th-text-400)]">ID (Stat Entry Name) <span class="text-red-400">*</span></span>
-    <SingleSelectCombobox
-      options={combinedSpellIdOptions}
-      value={displayName}
-      placeholder="Shout_MySpell"
-      onchange={(v) => displayName = v}
-    />
+  <div class="space-y-3">
+    <!-- Two-column grid: ID field + Inherits From field on the same row -->
+    <div class="spell-identity-grid">
+      <div class="flex flex-col gap-1.5 text-xs">
+        <span class="font-medium text-[var(--th-text-400)]">ID (Stat Entry Name) <span class="text-red-400">*</span></span>
+        <SingleSelectCombobox
+          options={combinedSpellIdOptions}
+          value={displayName}
+          placeholder="Shout_MySpell"
+          onchange={(v) => displayName = v}
+        />
+      </div>
+
+      {#if showStatInheritance}
+        <LayoutCell
+          item={INHERITANCE_FIELD}
+          {caps}
+          {getFieldValue}
+          {setFieldValue}
+          {getBoolValue}
+          {setBoolValue}
+          {fieldComboboxOptions}
+          {resolveLocaText}
+          {generateUuid}
+          {parentFields}
+          {childFields}
+          {statType}
+        />
+      {/if}
+    </div>
+
+    <!-- Full-width: inheritance banner and common-parent suggestions -->
+    {#if showStatInheritance && showInheritanceBanner}
+      <InheritanceBanner {parentName} {parentFields} {childFields} {onClearInheritance} />
+    {/if}
+
+    {#if showStatInheritance && showInheritanceSuggestions}
+      <div class="inheritance-suggestions">
+        <span class="inheritance-suggestions-label">Common parents</span>
+        <div class="inheritance-suggestion-list">
+          {#each inheritanceSuggestions as suggestion}
+            <button type="button" class="inheritance-suggestion-btn" onclick={() => onApplyInheritanceSuggestion(suggestion)}>{suggestion}</button>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 {:else if caps.isList}
   <div class="space-y-2">
@@ -275,6 +338,50 @@
 {/if}
 
 <style>
+  .spell-identity-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    align-items: start;
+  }
+
+  .inheritance-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .inheritance-suggestions-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--th-text-500);
+  }
+
+  .inheritance-suggestion-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .inheritance-suggestion-btn {
+    border: 1px solid var(--th-border-700, rgba(63, 63, 70, 0.7));
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--th-text-300);
+    padding: 0.3125rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+  }
+
+  .inheritance-suggestion-btn:hover {
+    border-color: var(--th-accent-500, #38bdf8);
+    color: var(--th-text-100);
+    background: var(--th-bg-700, rgba(63, 63, 70, 0.45));
+  }
+
   .form-input {
     box-sizing: border-box;
     height: 2rem;

@@ -19,6 +19,8 @@ export interface ComboboxOption {
   _source?: string;
   /** Resolved display name for sorting. Avoids regex label parsing. */
   _displayName?: string;
+  /** Loca handle from a linked entry's Text attribute (for tooltip section fields). */
+  _locaHandle?: string;
 }
 
 // ---- Display name resolution -----------------------------------------------
@@ -118,6 +120,7 @@ export function buildSectionOptions(args: BuildSectionOptionsArgs): ComboboxOpti
       label: formatComboboxLabel("Vanilla", dn, e.uuid),
       _source: "Vanilla",
       _displayName: dn,
+      ...(e.text_handle ? { _locaHandle: e.text_handle } : {}),
     });
   }
 
@@ -203,6 +206,8 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
       lookupFn: ctx.lookupFn,
     });
   },
+  // multiSection uses the same lookup as section — the 'multi' prefix signals MultiSelectCombobox
+  "multiSection": (suffix, ctx) => DESCRIPTOR_HANDLERS["section"](suffix, ctx),
   "valueList": (suffix, ctx) => {
     const list = ctx.vanillaValueLists.find(l => l.key === suffix);
     if (!list) return [];

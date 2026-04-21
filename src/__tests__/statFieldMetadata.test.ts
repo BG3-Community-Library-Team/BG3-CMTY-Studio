@@ -7,7 +7,7 @@
  *         into a FormLayout. Skips automatically if T3 is not yet implemented.
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { STAT_TYPE_METADATA, DAMAGE_TYPES, COOLDOWN_VALUES, INVENTORY_TAB_VALUES, type ExpressionType } from "../lib/data/statFieldMetadata";
+import { STAT_TYPE_METADATA, DAMAGE_TYPES, COOLDOWN_VALUES, INVENTORY_TAB_VALUES, COMMON_PARENTS, type ExpressionType } from "../lib/data/statFieldMetadata";
 import type { FormLayout } from "../lib/data/formLayouts";
 import type { NodeSchema, AttrSchema, ChildSchema } from "../lib/utils/tauri";
 
@@ -226,11 +226,10 @@ describe("autoLayoutFromMetadata", () => {
     expect(layout.subsections).toBeDefined();
     const titles = layout.subsections!.map((s) => s.title);
     // At minimum, groups that have matching schema fields should appear
-    expect(titles).toContain("Identity");
+    expect(titles).toContain("Localization");
     expect(titles).toContain("Classification");
     expect(titles).toContain("Targeting");
     expect(titles).toContain("Mechanics");
-    expect(titles).toContain("Resources & Cooldowns");
     expect(titles).toContain("Inheritance");
   });
 
@@ -436,5 +435,55 @@ describe("Multi-Select Descriptor Tests (Sprint 3)", () => {
     expect(meta.fieldCombobox['Weapon Properties']).toMatch(/^multiStatic:/);
     expect(meta.fieldCombobox['Proficiency Group']).toMatch(/^multiStatic:/);
     expect(meta.fieldCombobox['PersonalStatusImmunities']).toBe('multiStatType:StatusData');
+  });
+});
+
+describe("COMMON_PARENTS", () => {
+  const EXPECTED_TYPES = [
+    "SpellData",
+    "PassiveData",
+    "StatusData",
+    "Armor",
+    "Weapon",
+    "InterruptData",
+  ];
+
+  it("defines suggestions for all 6 core stat types", () => {
+    expect(Object.keys(COMMON_PARENTS).sort()).toEqual([...EXPECTED_TYPES].sort());
+  });
+
+  it("uses unique suggestions within each stat type", () => {
+    for (const typeName of EXPECTED_TYPES) {
+      const suggestions = COMMON_PARENTS[typeName as keyof typeof COMMON_PARENTS];
+      expect(new Set(suggestions).size).toBe(suggestions.length);
+    }
+  });
+
+  it("matches the documented Sprint 6 defaults for spell, armor, and weapon stats", () => {
+    expect(COMMON_PARENTS.SpellData).toEqual([
+      '_BaseContainer',
+      'Projectile_MainHandAttack',
+      'Target_MainHandAttack',
+      'Throw_MainHandThrow',
+      'Shout_Dash',
+    ]);
+    expect(COMMON_PARENTS.Armor).toEqual([
+      '_Body',
+      '_Gloves',
+      '_Boots',
+      '_Helmet',
+      '_Shield',
+    ]);
+    expect(COMMON_PARENTS.Weapon).toEqual([
+      '_BaseWeapon',
+      '_OneHandedWeapon',
+      '_TwoHandedWeapon',
+    ]);
+  });
+
+  it("keeps passive, status, and interrupt suggestions empty", () => {
+    expect(COMMON_PARENTS.PassiveData).toEqual([]);
+    expect(COMMON_PARENTS.StatusData).toEqual([]);
+    expect(COMMON_PARENTS.InterruptData).toEqual([]);
   });
 });

@@ -11,8 +11,8 @@
 export interface LayoutField {
   /** Key in the fields or booleans array */
   key: string;
-  /** Whether this is a field or boolean */
-  type: 'field' | 'boolean';
+  /** Whether this is a field, boolean, or empty spacer grid cell */
+  type: 'field' | 'boolean' | 'spacer';
   /** Override the display label */
   label?: string;
   /** Show a "Generate random UUID" button beside the label */
@@ -30,6 +30,27 @@ export interface LayoutRow {
   wrap?: boolean;
   /** CSS max-width per item when wrap is enabled (e.g. '50%') */
   maxItemWidth?: string;
+  /** Custom CSS grid-template-columns (overrides the equal-columns default) */
+  gridTemplate?: string;
+}
+
+/**
+ * A collapsible card rendered inside a subsection tab pane.
+ * Multiple non-fullRow cards are laid out side-by-side in a flex row.
+ */
+export interface LayoutInnerCard {
+  /** Card heading text */
+  title: string;
+  /** CSS flex-basis / width value for side-by-side layout (e.g. '60%', '40%').
+   *  Omit for equal flex distribution. */
+  width?: string;
+  rows: LayoutRow[];
+  /** Start collapsed */
+  collapsed?: boolean;
+  /** Render in its own row below the side-by-side card group (full width) */
+  fullRow?: boolean;
+  /** Column placement for multi-column stacked card layouts (1 = left, 2 = right) */
+  col?: 1 | 2;
 }
 
 export interface LayoutSubsection {
@@ -66,6 +87,17 @@ export interface LayoutSubsection {
   component?: string;
   /** Start collapsed (closed) instead of open */
   collapsed?: boolean;
+  /**
+   * Collapsible inner cards rendered inside this subsection's tab pane.
+   * Non-fullRow cards are laid out side-by-side; fullRow cards get their own row below.
+   * When set, `rows` is typically empty (fields live in the cards).
+   */
+  innerCards?: LayoutInnerCard[];
+  /**
+   * Field keys rendered as a combined FlagGroupBadges component instead of individual rows.
+   * These fields are excluded from normal row layout.
+   */
+  flagGroupKeys?: string[];
 }
 
 export interface FormLayout {

@@ -353,6 +353,8 @@ export interface VanillaEntryInfo {
   color?: string;
   /** Optional parent GUID (e.g. ParentGuid for Race entries). */
   parent_guid?: string;
+  /** Loca handle from a Text (TranslatedString) attribute (e.g. TooltipExtraTexts, TooltipUpcastDescriptions). */
+  text_handle?: string;
 }
 
 export type OutputFormat = "Yaml" | "Json";

@@ -1545,9 +1545,13 @@
   "modio_media_empty": "No images uploaded yet.",
   "modio_error_file_too_large": "File is too large. Maximum size is 8 MB.",
   "modio_media_delete": "Delete screenshot {index}",
+  "modio_media_deleted": "Image deleted",
 
+  "modio_tags_add": "Add Tag",
+  "modio_tags_added": "Tag added",
   "modio_tags_empty": "No tags on this mod.",
   "modio_tags_refresh": "Refresh Tags",
+  "modio_tags_removed": "Tag removed",
   "modio_show_more": "Show more",
   "modio_show_less": "Show less",
   "modio_mod_version_label": "Version",
