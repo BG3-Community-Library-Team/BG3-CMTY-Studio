@@ -19,6 +19,7 @@
     textOnlyPrefixes,
     displayValueOnly = false,
     locaResolver,
+    hideLocaPreview = false,
     onchange,
     warnClass = "",
     disabled = false,
@@ -38,6 +39,8 @@
     displayValueOnly?: boolean;
     /** Resolve a loca handle to display text; enables built-in preview/error below the combobox */
     locaResolver?: (handle: string | undefined) => string | undefined;
+    /** When true, suppresses the built-in loca-preview <details> block (caller renders it). */
+    hideLocaPreview?: boolean;
     onchange: (value: string) => void;
     /** Extra CSS class applied to the trigger when a warning state is active */
     warnClass?: string;
@@ -306,7 +309,7 @@
   </ul>
 
   <!-- Loca preview / error (built into the combobox when locaResolver is provided) -->
-  {#if locaResolver && value?.trim()}
+  {#if locaResolver && value?.trim() && !hideLocaPreview}
     {#if locaResolved}
       <details class="loca-preview">
         <summary class="text-xs text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] px-2 py-1 select-none">

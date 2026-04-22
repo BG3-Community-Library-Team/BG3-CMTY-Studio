@@ -6,6 +6,8 @@
  * grouped rows, field–boolean pairings, and header-level toggles.
  */
 
+import type { FieldGate } from './statFieldMetadata.js';
+
 // ──────────────── Types ────────────────
 
 export interface LayoutField {
@@ -58,6 +60,16 @@ export interface LayoutInnerCard {
   columnGroups?: LayoutField[][];
   /** Override nav label (used to combine paired side-by-side cards into one FormNav entry) */
   navRowLabel?: string;
+  /**
+   * Maximum number of columns when rendering rows in this card.
+   * Overrides the default cap (2) for fullRow cards.
+   */
+  maxFieldColumns?: number;
+  /**
+   * Gate condition: hide this card when the condition is not met
+   * (still shown if any field has a value, or showAllStatsFields is on).
+   */
+  showWhen?: FieldGate;
 }
 
 export interface LayoutSubsection {

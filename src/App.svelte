@@ -841,6 +841,7 @@
   let globalCtxX = $state(0);
   let globalCtxY = $state(0);
   let globalCtxItems: ContextMenuItemDef[] = $state([]);
+  let globalCtxTarget: HTMLElement | null = $state(null);
 
   function isTextInput(el: HTMLElement): boolean {
     if (el instanceof HTMLInputElement) {
@@ -856,6 +857,7 @@
     e.preventDefault();
 
     const target = e.target as HTMLElement;
+    globalCtxTarget = target;
     const isInput = isTextInput(target);
     const hasSelection = !!window.getSelection()?.toString();
 
@@ -869,8 +871,26 @@
       items.push({ label: m.app_select_all(), shortcut: "Ctrl+A", action: () => { document.execCommand('selectAll'); hideGlobalCtx(); }, separator: "before" });
     }
 
-    // Don't show menu if all items are disabled
-    if (items.every(i => i.disabled)) return;
+    // Dev helper: expose right-clicked element in DevTools
+    items.push({
+      label: "Inspect Element",
+      separator: "before",
+      action: () => {
+        const el = globalCtxTarget;
+        if (!el) return;
+        // Expose in console so it's accessible in DevTools as a DOM node link
+        console.log('%c[CMTY Debug] Inspecting element:', 'font-weight:bold;color:#60a8ea', el);
+        // Try the DevTools inspect() command-line API (only available when DevTools is open)
+        try { (window as any).inspect?.(el); } catch { /* inspect() is DevTools-only */ }
+        hideGlobalCtx();
+      },
+    });
+
+    // Don't show menu if all items are disabled (edit items only)
+    const editItems = items.slice(0, items.length - 1); // exclude Inspect
+    if (editItems.length > 0 && editItems.every(i => i.disabled)) {
+      // Still show the menu for the Inspect option alone
+    }
 
     // TODO: Future plugin integration — allow menuRegistry to contribute items here
     globalCtxItems = items;
@@ -882,6 +902,7 @@
   function hideGlobalCtx() {
     globalCtxVisible = false;
     globalCtxItems = [];
+    globalCtxTarget = null;
   }
 </script>
 

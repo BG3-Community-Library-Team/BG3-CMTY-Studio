@@ -258,11 +258,14 @@ export function autoLayoutFromMetadata(
           fullRow: card.fullRow,
           col: card.col,
           navRowLabel: card.navRowLabel,
+          ...(card.maxFieldColumns !== undefined ? { maxFieldColumns: card.maxFieldColumns } : {}),
+          ...(card.showWhen !== undefined ? { showWhen: card.showWhen } : {}),
           rows: card.columnGroups
             ? []
             : card.customRows
-              ? card.customRows.map(rowFields => ({
+              ? card.customRows.map((rowFields, i) => ({
                   items: rowFields.map(k => k === null ? spacerItem() : fieldItem(k)),
+                  ...(card.customRowTemplates?.[i] ? { gridTemplate: card.customRowTemplates[i] } : {}),
                 }))
               : chunkRows(card.fields, card.fieldsPerRow ?? 1),
         };

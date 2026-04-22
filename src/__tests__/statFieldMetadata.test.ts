@@ -293,8 +293,8 @@ describe("Descriptor Tests (Sprint 2)", () => {
   describe("enum fields have static: descriptors", () => {
     const enumFieldsByType: Record<string, string[]> = {
       SpellData: [
-        "SpellType", "SpellSchool", "VerbalIntent", "SpellAnimationIntentType",
-        "CooldownType", "HitAnimationType", "Sheathing", "SpellActionType", "PreviewCursor",
+        "SpellType", "SpellSchool", "VerbalIntent",
+        "HitAnimationType", "SpellActionType",
       ],
       StatusData: [
         "StatusType", "StackType", "TickType", "FormatColor",
@@ -330,8 +330,32 @@ describe("Descriptor Tests (Sprint 2)", () => {
       expect(STAT_TYPE_METADATA.Weapon.fieldCombobox["Damage Type"]).toBe(DAMAGE_TYPES);
     });
 
-    it("SpellData Cooldown equals COOLDOWN_VALUES", () => {
-      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["Cooldown"]).toBe(COOLDOWN_VALUES);
+    it("SpellData Cooldown uses valueList:CooldownType", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["Cooldown"]).toBe('valueList:CooldownType');
+    });
+
+    it("SpellData SpellAnimationIntentType uses valueList", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["SpellAnimationIntentType"]).toBe('valueList:SpellAnimationIntentType');
+    });
+
+    it("SpellData PreviewCursor uses valueList:CursorMode", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["PreviewCursor"]).toBe('valueList:CursorMode');
+    });
+
+    it("SpellData Sheathing uses valueList:SpellSheathing", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["Sheathing"]).toBe('valueList:SpellSheathing');
+    });
+
+    it("SpellData DeathType uses valueList:Death Type", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["DeathType"]).toBe('valueList:Death Type');
+    });
+
+    it("SpellData WeaponTypes uses valueList:WeaponFlags", () => {
+      expect(STAT_TYPE_METADATA.SpellData.fieldCombobox["WeaponTypes"]).toBe('valueList:WeaponFlags');
+    });
+
+    it("StatusData Sheathing uses valueList:StatusSheathing", () => {
+      expect(STAT_TYPE_METADATA.StatusData.fieldCombobox["Sheathing"]).toBe('valueList:StatusSheathing');
     });
 
     it("Armor InventoryTab equals INVENTORY_TAB_VALUES", () => {

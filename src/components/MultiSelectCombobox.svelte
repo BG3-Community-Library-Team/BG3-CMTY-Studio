@@ -359,6 +359,10 @@
     font-size: 0.8125rem;
     color: var(--th-input-text);
   }
+  /* Prevent the global input[type="text"] min-height from doubling the trigger height */
+  .combobox-trigger input[type="text"] {
+    min-height: 0;
+  }
   .combobox-trigger:focus-within {
     border-color: rgb(14 165 233);
     outline: none;

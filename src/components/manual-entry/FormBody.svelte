@@ -88,7 +88,9 @@
   function isGateMet(key: string): boolean {
     const gate = fieldGating[key];
     if (!gate) return true;
-    return evaluateGate(gate, { [gate.trigger]: getFieldValue(gate.trigger) });
+    // Fall back to inherited parent value when the field is not explicitly set
+    const triggerValue = getFieldValue(gate.trigger) || parentFields?.[gate.trigger] || '';
+    return evaluateGate(gate, { [gate.trigger]: triggerValue });
   }
 
   /** Determine whether a field should be rendered. */
@@ -122,6 +124,10 @@
 
   // activeSubIdx is now a bindable prop (see Props interface above); no local $state needed.
 
+  // Lazily rendered subsection tabs: render a tab once it's been visited, then keep in DOM.
+  let renderedSubIdxs = $state(new Set<number>([0]));
+  $effect(() => { renderedSubIdxs = new Set([...renderedSubIdxs, activeSubIdx]); });
+
   function isSubsectionVisible(sub: LayoutSubsection): boolean {
     if (sub.component) return false;
     const hasVisibleRowItems = sub.rows.some(row => row.items.some(item => shouldShowField(item.key)));
@@ -132,6 +138,18 @@
     const hasOtherContent = !!(sub.stringKeys?.length || sub.tagKeys?.length || sub.inlineChildGroups?.length);
     const hasFlagGroupContent = sub.flagGroupKeys?.some(k => shouldShowField(k)) ?? false;
     return hasVisibleRowItems || hasVisibleCardItems || hasOtherContent || hasFlagGroupContent;
+  }
+
+  /** Whether an inner card's showWhen gate is met (or has no gate). */
+  function isCardVisible(card: LayoutInnerCard): boolean {
+    if (!card.showWhen) return true;
+    // Fall back to inherited parent value when field is not explicitly set
+    const triggerValue = getFieldValue(card.showWhen.trigger) || parentFields?.[card.showWhen.trigger] || '';
+    const met = evaluateGate(card.showWhen, { [card.showWhen.trigger]: triggerValue });
+    if (met) return true;
+    if (uiStore.showAllStatsFields) return true;
+    // Still show if any field in the card has a value
+    return card.rows.some(row => row.items.some(item => item.type === 'field' && getFieldValue(item.key).trim() !== ''));
   }
 </script>
 
@@ -375,6 +393,7 @@
         <div class="inner-cards-columns">
           <div class="inner-cards-col">
             {#each col1Cards as card}
+              {#if isCardVisible(card)}
               <FormSectionCard
                 title={card.title}
                 id="section-inner-{card.title.toLowerCase().replace(/\s+/g, '-')}"
@@ -382,10 +401,12 @@
               >
                 {@render renderCardRows(card.rows)}
               </FormSectionCard>
+              {/if}
             {/each}
           </div>
           <div class="inner-cards-col">
             {#each col2Cards as card}
+              {#if isCardVisible(card)}
               <FormSectionCard
                 title={card.title}
                 id="section-inner-{card.title.toLowerCase().replace(/\s+/g, '-')}"
@@ -393,12 +414,14 @@
               >
                 {@render renderCardRows(card.rows)}
               </FormSectionCard>
+              {/if}
             {/each}
           </div>
         </div>
       {:else}
         <div class="inner-cards-row">
           {#each mainCards as card}
+            {#if isCardVisible(card)}
             <div class="inner-card-col" style={card.width ? `flex: 1 1 ${card.width}; max-width: ${card.width}` : 'flex: 1; min-width: 0'}>
               <FormSectionCard
                 title={card.title}
@@ -408,11 +431,13 @@
                 {@render renderCardRows(card.rows)}
               </FormSectionCard>
             </div>
+            {/if}
           {/each}
         </div>
       {/if}
     {/if}
     {#each fullRowCards as card}
+      {#if isCardVisible(card)}
       <FormSectionCard
         title={card.title}
         id="section-inner-{card.title.toLowerCase().replace(/\s+/g, '-')}"
@@ -421,9 +446,10 @@
         {#if card.columnGroups}
           {@render renderColumnGroups(card.columnGroups)}
         {:else}
-          {@render renderCardRows(card.rows, 2)}
+          {@render renderCardRows(card.rows, card.maxFieldColumns ?? 2)}
         {/if}
       </FormSectionCard>
+      {/if}
     {/each}
   {/if}
   {#if sub.stringKeys}
@@ -539,6 +565,7 @@
             role="tabpanel"
             aria-hidden={i !== clampedIdx}
           >
+            {#if i === clampedIdx || renderedSubIdxs.has(i)}
             {#if sub.headerBooleans}
               <div class="subsection-header-booleans">
                 {#each sub.headerBooleans as bKey}
@@ -559,6 +586,7 @@
               </div>
             {/if}
             {@render renderSubBody(sub)}
+            {/if}
           </div>
         {/each}
       </div>

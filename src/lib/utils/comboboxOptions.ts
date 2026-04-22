@@ -90,6 +90,27 @@ export function sortComboboxOptions(opts: ComboboxOption[]): ComboboxOption[] {
   });
 }
 
+// ---- Section name → vanilla store key mapping --------------------------------
+
+/**
+ * Maps from section descriptor names (used in fieldCombobox and scanResult.section)
+ * to the corresponding key in modStore.vanilla (which uses LSX region_ids).
+ * Only needed when section name ≠ region_id.
+ */
+const SECTION_VANILLA_KEY_MAP: Record<string, string> = {
+  TooltipExtras: "TooltipExtraTexts",
+};
+
+/**
+ * Sections whose entries use a `Text` (TranslatedString) attribute as a loca handle.
+ * For these sections, the text_handle should be propagated and used as a display name
+ * fallback when the Name field is absent or UUID-like.
+ */
+const TEXT_HANDLE_SECTIONS = new Set([
+  "TooltipExtras",
+  "TooltipUpcastDescriptions",
+]);
+
 // ---- Generic section option builder ----------------------------------------
 
 export interface BuildSectionOptionsArgs {
@@ -111,16 +132,37 @@ export function buildSectionOptions(args: BuildSectionOptionsArgs): ComboboxOpti
   const { vanillaEntries, sectionName, nodeFilter, scanResult, additionalModResults, additionalModPaths, lookupFn } = args;
   const optMap = new Map<string, ComboboxOption>();
 
+  const useTextHandle = TEXT_HANDLE_SECTIONS.has(sectionName);
+
+  /** Resolve display name, with Text loca fallback for sections like TooltipExtras. */
+  function resolveLabel(displayName: string, uuid: string, textHandle?: string): string {
+    let dn = resolveDisplayName(displayName, sectionName, lookupFn);
+    // For text-handle sections: if dn is UUID-like (no useful Name), try loca text
+    if (useTextHandle && /^[0-9a-f]{8}-[0-9a-f]{4}/i.test(dn) && textHandle) {
+      const locaText = lookupFn?.(textHandle);
+      if (locaText && locaText !== textHandle) dn = locaText;
+    }
+    return dn;
+  }
+
+  /** Extract loca handle from a raw Text attribute value ("handle;version" format). */
+  function extractLocaHandle(rawText: string | undefined): string | undefined {
+    if (!rawText) return undefined;
+    const handle = rawText.split(';')[0];
+    return handle || undefined;
+  }
+
   // 1) Vanilla entries
   for (const e of vanillaEntries) {
     if (nodeFilter && e.node_id && e.node_id !== nodeFilter) continue;
-    const dn = resolveDisplayName(e.display_name, sectionName, lookupFn);
+    const textHandle = e.text_handle;
+    const dn = resolveLabel(e.display_name, e.uuid, textHandle);
     optMap.set(e.uuid, {
       value: e.uuid,
       label: formatComboboxLabel("Vanilla", dn, e.uuid),
       _source: "Vanilla",
       _displayName: dn,
-      ...(e.text_handle ? { _locaHandle: e.text_handle } : {}),
+      ...(textHandle ? { _locaHandle: textHandle } : {}),
     });
   }
 
@@ -131,12 +173,15 @@ export function buildSectionOptions(args: BuildSectionOptionsArgs): ComboboxOpti
     if (sec) {
       for (const e of sec.entries) {
         if (nodeFilter && e.node_id && e.node_id !== nodeFilter) continue;
-        const dn = resolveDisplayName(e.display_name, sectionName, lookupFn);
+        const rawText = useTextHandle ? e.raw_attributes?.["Text"] : undefined;
+        const textHandle = extractLocaHandle(rawText);
+        const dn = resolveLabel(e.display_name, e.uuid, textHandle);
         optMap.set(e.uuid, {
           value: e.uuid,
           label: formatComboboxLabel(modName, dn, e.uuid),
           _source: modName,
           _displayName: dn,
+          ...(textHandle ? { _locaHandle: textHandle } : {}),
         });
       }
     }
@@ -151,12 +196,15 @@ export function buildSectionOptions(args: BuildSectionOptionsArgs): ComboboxOpti
       for (const e of sec.entries) {
         if (nodeFilter && e.node_id && e.node_id !== nodeFilter) continue;
         if (!optMap.has(e.uuid)) {
-          const dn = resolveDisplayName(e.display_name, sectionName, lookupFn);
+          const rawText = useTextHandle ? e.raw_attributes?.["Text"] : undefined;
+          const textHandle = extractLocaHandle(rawText);
+          const dn = resolveLabel(e.display_name, e.uuid, textHandle);
           optMap.set(e.uuid, {
             value: e.uuid,
             label: formatComboboxLabel(modName, dn, e.uuid),
             _source: modName,
             _displayName: dn,
+            ...(textHandle ? { _locaHandle: textHandle } : {}),
           });
         }
       }
@@ -196,8 +244,10 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
     const parts = suffix.split(":");
     const sectionName = parts[0];
     const nodeIdFilter = parts[1];
+    // Map section name to vanilla store key (region_id). Differs when section name ≠ region_id.
+    const vanillaKey = SECTION_VANILLA_KEY_MAP[sectionName] ?? sectionName;
     return buildSectionOptions({
-      vanillaEntries: ctx.vanilla[sectionName] ?? [],
+      vanillaEntries: ctx.vanilla[vanillaKey] ?? [],
       sectionName,
       nodeFilter: nodeIdFilter,
       scanResult: ctx.scanResult,

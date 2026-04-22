@@ -30,6 +30,8 @@ export const EAGER_REGION_IDS: ReadonlySet<string> = new Set([
   "Gods", "Tags", "Voices", "Visuals", "FeatDescriptions", "RootTemplates",
   "Levelmaps", "EquipmentTypes", "Shapeshift", "Flags", "ErrorDescriptions",
   "MultiEffectInfos", "Factions", "Spell", "Status",
+  // Tooltip reference sections used by SpellData/PassiveData comboboxes
+  "TooltipExtraTexts", "TooltipUpcastDescriptions",
 ]);
 
 /** Synthetic categories that require dedicated backend commands (not a simple region query). */

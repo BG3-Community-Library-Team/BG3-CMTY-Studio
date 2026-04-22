@@ -846,6 +846,25 @@ select:disabled {
   cursor: not-allowed;
   opacity: 1;
 }
+/* Balance theme: disabled inputs use light grey so they're readable on the light content background */
+:root.balance main .form-input:disabled,
+:root.balance main input[type="text"]:disabled,
+:root.balance main input[type="number"]:disabled,
+:root.balance main select:disabled {
+  background-color: #e8ecef !important;
+  color: #6c757d !important;
+  border-color: #ced4da !important;
+}
+/* Balance theme: inherit-readonly divs use light background (they have hardcoded dark in LayoutCell.svelte) */
+:root.balance main .inheritance-readonly {
+  background-color: rgba(220, 225, 230, 0.9) !important;
+  color: #1e293b !important;
+  border-color: rgba(14, 165, 233, 0.3) !important;
+}
+:root.balance main .inheritance-token {
+  background: rgba(200, 210, 220, 0.85) !important;
+  color: #1e293b !important;
+}
 
 /* Global themed scrollbars — applied to all scrollable containers */
 * { scrollbar-width: thin; scrollbar-color: var(--th-scroll-thumb, #4b5563) transparent; }

@@ -47,15 +47,20 @@
       }
     }
 
+    // Prefer the section whose heading is closest to the top of the intersection zone (~15% viewport).
+    // This allows col-2 subsections (e.g. Forking) to become active when their heading is near the top,
+    // even if a col-1 sibling section heading is still faintly above it.
+    const threshold = window.innerHeight * 0.15;
     let best: string | undefined;
-    let bestTop = Infinity;
+    let bestScore = Infinity;
     for (const id of visibleSet) {
       if (parentsWithVisibleChildren.has(id)) continue;
       const el = scope.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
       if (el) {
         const top = el.getBoundingClientRect().top;
-        if (top < bestTop) {
-          bestTop = top;
+        const score = Math.abs(top - threshold);
+        if (score < bestScore) {
+          bestScore = score;
           best = id;
         }
       }
@@ -65,7 +70,7 @@
 
   /** Show nav when enough sections or when any section has children (level groups) */
   let showNav = $derived(
-    sections.length >= 4 || sections.some(s => (s.children?.length ?? 0) > 0)
+    sections.length >= 3 || sections.some(s => (s.children?.length ?? 0) > 0)
   );
 
   $effect(() => {

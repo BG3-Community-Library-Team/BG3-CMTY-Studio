@@ -157,7 +157,8 @@
   {@const parentValue = hasParentValue ? parentFields[item.key] : ''}
   {@const overrideEnabled = hasExplicitValue || localOverrideEnabled}
   {@const effectiveFieldValue = hasExplicitValue ? fieldValue : (overrideEnabled && hasParentValue ? parentValue : fieldValue)}
-  {@const displayTokens = getDisplayTokens(parentValue)}
+  {@const isMultiField = caps.fieldCombobox?.[item.key]?.startsWith('multi') ?? false}
+  {@const displayTokens = isMultiField ? getDisplayTokens(parentValue) : []}
   {@const showInheritedValue = inheritanceStatus === 'inherited' && hasParentValue && !overrideEnabled}
   {@const showOverrideToggle = inheritanceStatus !== null && hasParentValue}
   {@const showOverrideBadge = showOverrideToggle && overrideEnabled && !showInheritedValue}
@@ -253,7 +254,7 @@
               disabled={true}
               onchange={() => {}}
             />
-          {:else if displayTokens.length > 1}
+          {:else if displayTokens.length > 0}
             <div class="inheritance-readonly inheritance-readonly-multiline inheritance-token-list">
               {#each displayTokens as token}
                 <span class="inheritance-token">{token}</span>
@@ -275,6 +276,7 @@
               textOnlyPrefixes={['text:', '$']}
               displayValueOnly={true}
               locaResolver={resolveLocaText}
+              hideLocaPreview={true}
               onchange={(v) => handleLocaChange(item.key, v)}
             />
           </div>
@@ -329,7 +331,7 @@
             value={effectiveFieldValue}
             disabled={fieldDisabled}
             onchange={(v) => setFieldValue(item.key, v)}
-            showOverride={showOverrideToggle}
+            showOverride={showOverrideToggle && !localSyncLocked}
             overrideEnabled={overrideEnabled}
             onOverrideToggle={() => handleOverrideToggle(!overrideEnabled)}
             showSync={!!syncSourceKey && !showInheritedValue}
@@ -383,9 +385,10 @@
         </label>
       {/if}
     </div>
-    {#if showInheritedValue && isLoca && parentValue}
-      {@const locaPreviewText = resolveLocaText?.(parentValue)}
-      {#if locaPreviewText && locaPreviewText !== parentValue}
+    {#if isLoca && (effectiveFieldValue || (showInheritedValue && parentValue))}
+      {@const locaHandle = showInheritedValue ? parentValue : effectiveFieldValue}
+      {@const locaPreviewText = resolveLocaText?.(locaHandle)}
+      {#if locaPreviewText && locaPreviewText !== locaHandle}
         <details class="loca-inherited-details">
           <summary class="text-xs text-[var(--th-text-400)] cursor-pointer hover:text-[var(--th-text-200)] px-2 py-1 select-none">Preview localized text</summary>
           <div class="px-2 pb-1.5 pt-0.5 text-xs text-[var(--th-text-200)] whitespace-pre-wrap break-words">{locaPreviewText}</div>
@@ -507,6 +510,13 @@
     word-break: break-word;
   }
 
+  /* Token lists (multiStatic/multiSection fields) should size to content, not inherit 4.5rem */
+  .inheritance-token-list {
+    min-height: 2.25rem;
+    white-space: normal;
+    word-break: normal;
+  }
+
   .inheritance-readonly-color {
     justify-content: flex-start;
   }
@@ -572,6 +582,7 @@
   .inheritance-token-list {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.375rem;
   }
 

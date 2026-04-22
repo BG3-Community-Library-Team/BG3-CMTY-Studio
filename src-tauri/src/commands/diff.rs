@@ -159,7 +159,13 @@ pub fn diff_stats(
                 changes: vec![],
                 node_id: mod_entry.entry_type.clone(),
                 region_id: String::new(),
-                raw_attributes: mod_entry.data.clone(),
+                raw_attributes: {
+                    let mut attrs = mod_entry.data.clone();
+                    if let Some(ref parent) = mod_entry.parent {
+                        attrs.insert("Using".to_string(), parent.clone());
+                    }
+                    attrs
+                },
                 raw_attribute_types: HashMap::new(),
                 raw_children: HashMap::new(),
                 commented: false,
@@ -204,7 +210,13 @@ pub fn diff_stats(
                 changes,
                 node_id: mod_entry.entry_type.clone(),
                 region_id: String::new(),
-                raw_attributes: mod_entry.data.clone(),
+                raw_attributes: {
+                    let mut attrs = mod_entry.data.clone();
+                    if let Some(ref parent) = mod_entry.parent {
+                        attrs.insert("Using".to_string(), parent.clone());
+                    }
+                    attrs
+                },
                 raw_attribute_types: HashMap::new(),
                 raw_children: HashMap::new(),
                 commented: false,

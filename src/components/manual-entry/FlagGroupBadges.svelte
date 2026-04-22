@@ -2,6 +2,7 @@
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
+  import Check from "@lucide/svelte/icons/check";
 
   interface BoolFlagDef {
     key: string;
@@ -73,14 +74,28 @@
     )
   );
 
-  /** Active bool flag defs (value equals onValue) */
+  /** Active bool flag defs — any explicitly-set value (on OR off) */
   const activeBoolFlags = $derived(
-    (boolFlagDefs ?? []).filter(d => getFieldValue(d.key) === d.onValue)
+    (boolFlagDefs ?? []).filter(d => {
+      const v = getFieldValue(d.key);
+      return v === d.onValue || v === d.offValue;
+    })
   );
 
   function toggleBoolFlag(def: BoolFlagDef) {
     const isOn = getFieldValue(def.key) === def.onValue;
     setFieldValue(def.key, isOn ? def.offValue : def.onValue);
+    showDropdown = false;
+  }
+
+  /** True when the field has been explicitly overridden with an empty string ("None" selected). */
+  function isNoneSelected(key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(childFields, key) && getFieldValue(key) === '';
+  }
+
+  /** Override the field to an empty string, clearing all flags for that section. */
+  function selectNone(fieldKey: string) {
+    setFieldValue(fieldKey, '');
     showDropdown = false;
   }
 
@@ -95,15 +110,20 @@
     return val ? val.split(';').map(s => s.trim()).filter(Boolean) : [];
   }
 
-  type ActiveBadge = { fieldKey: string; value: string; colorIdx: number; removable: boolean };
+  type ActiveBadge = { fieldKey: string; value: string; colorIdx: number; removable: boolean; isNone?: boolean };
 
   const activeBadges = $derived.by((): ActiveBadge[] => {
     const badges: ActiveBadge[] = [];
     for (let i = 0; i < fieldKeys.length; i++) {
       const key = fieldKeys[i];
       const inherited = isFieldInherited(key);
-      for (const flag of getEffectiveFlags(key)) {
-        badges.push({ fieldKey: key, value: flag, colorIdx: i, removable: !inherited });
+      if (isNoneSelected(key)) {
+        // Explicitly cleared — show a "None" placeholder badge
+        badges.push({ fieldKey: key, value: 'None', colorIdx: i, removable: true, isNone: true });
+      } else {
+        for (const flag of getEffectiveFlags(key)) {
+          badges.push({ fieldKey: key, value: flag, colorIdx: i, removable: !inherited });
+        }
       }
     }
     return badges;
@@ -164,16 +184,16 @@
     {#each activeBadges as badge}
       {@const color = FIELD_COLORS[badge.colorIdx % FIELD_COLORS.length]}
       <span
-        class="flag-badge"
-        style="background: {color.bg}; color: {color.text}; border: 1px solid {color.border};"
+        class="flag-badge {badge.isNone ? 'flag-badge-none' : ''}"
+        style="background: {badge.isNone ? 'transparent' : color.bg}; color: {badge.isNone ? 'var(--th-text-500)' : color.text}; border: 1px solid {badge.isNone ? 'rgba(113,113,122,0.3)' : color.border};"
       >
         {badge.value}
         {#if badge.removable}
           <button
             type="button"
             class="flag-badge-remove"
-            aria-label="Remove {badge.value}"
-            onclick={() => removeFlag(badge.fieldKey, badge.value)}
+            aria-label="{badge.isNone ? 'Clear None override' : 'Remove ' + badge.value}"
+            onclick={() => badge.isNone ? onUnsetField?.(badge.fieldKey) : removeFlag(badge.fieldKey, badge.value)}
           >
             <X size={9} />
           </button>
@@ -186,16 +206,31 @@
     {/if}
 
     {#each activeBoolFlags as def}
+      {@const isOn = getFieldValue(def.key) === def.onValue}
       <span
         class="flag-badge"
         style="background: {BOOL_COLOR.bg}; color: {BOOL_COLOR.text}; border: 1px solid {BOOL_COLOR.border};"
       >
+        <button
+          type="button"
+          class="flag-badge-toggle"
+          aria-label="Toggle {def.label} (currently {isOn ? 'true' : 'false'})"
+          onclick={() => setFieldValue(def.key, isOn ? def.offValue : def.onValue)}
+          title="Click to set {isOn ? 'false' : 'true'}"
+        >
+          {#if isOn}
+            <Check size={9} />
+          {:else}
+            <X size={9} style="opacity: 0.5" />
+          {/if}
+        </button>
+        <span class="flag-badge-separator"></span>
         {def.label}
         <button
           type="button"
           class="flag-badge-remove"
           aria-label="Remove {def.label}"
-          onclick={() => setFieldValue(def.key, def.offValue)}
+          onclick={() => setFieldValue(def.key, '')}
         >
           <X size={9} />
         </button>
@@ -255,6 +290,18 @@
             <p class="px-3 pb-2 text-[10px] italic" style="color: {color.text}; opacity: 0.6;">Using inherited value</p>
           {:else if availableOpts.length > 0}
             <div class="grid grid-cols-2 gap-1 px-2 pb-1.5">
+              {#if !isNoneSelected(fieldKey)}
+                <!-- None option: clears all flags for this section -->
+                <button
+                  type="button"
+                  class="rounded-full border px-2 py-0.5 text-[10px] font-medium truncate hover:opacity-80 focus:outline-none transition-opacity col-span-2"
+                  style="background: transparent; color: var(--th-text-500); border-color: rgba(113,113,122,0.4); font-style: italic;"
+                  onclick={() => selectNone(fieldKey)}
+                  title="Set {fieldKey} to empty (None)"
+                >
+                  None
+                </button>
+              {/if}
               {#each availableOpts as opt}
                 <button
                   type="button"
@@ -269,6 +316,19 @@
             </div>
           {:else}
             <!-- Free-text input for fields with no predefined options -->
+            {#if !isNoneSelected(fieldKey)}
+              <div class="px-2 pb-0.5">
+                <button
+                  type="button"
+                  class="rounded-full border px-2 py-0.5 text-[10px] font-medium w-full truncate hover:opacity-80 focus:outline-none transition-opacity"
+                  style="background: transparent; color: var(--th-text-500); border-color: rgba(113,113,122,0.4); font-style: italic;"
+                  onclick={() => selectNone(fieldKey)}
+                  title="Set {fieldKey} to empty (None)"
+                >
+                  None
+                </button>
+              </div>
+            {/if}
             <div class="flag-freetext">
               <input
                 type="text"
@@ -298,18 +358,20 @@
             <span class="text-[9px] font-semibold uppercase tracking-wider" style="color: {BOOL_COLOR.text};">Other</span>
           </div>
           <div class="grid grid-cols-2 gap-1 px-2 pb-1.5">
-            {#each boolFlagDefs as def}
-              {@const isOn = getFieldValue(def.key) === def.onValue}
+            {#each boolFlagDefs.filter(d => getFieldValue(d.key) !== d.onValue && getFieldValue(d.key) !== d.offValue) as def}
               <button
                 type="button"
-                class="rounded-full border px-2 py-0.5 text-[10px] font-medium text-left truncate focus:outline-none transition-opacity"
-                style="background: {isOn ? BOOL_COLOR.bg : 'transparent'}; color: {BOOL_COLOR.text}; border-color: {isOn ? BOOL_COLOR.border : 'rgba(113,113,122,0.2)'}; opacity: {isOn ? 1 : 0.55};"
+                class="rounded-full border px-2 py-0.5 text-[10px] font-medium text-left truncate hover:opacity-80 focus:outline-none transition-opacity"
+                style="background: transparent; color: {BOOL_COLOR.text}; border-color: rgba(113,113,122,0.3);"
                 onclick={() => toggleBoolFlag(def)}
-                title="{def.label} ({isOn ? 'on' : 'off'})"
+                title={def.label}
               >
                 {def.label}
               </button>
             {/each}
+            {#if boolFlagDefs.filter(d => getFieldValue(d.key) !== d.onValue && getFieldValue(d.key) !== d.offValue).length === 0}
+              <p class="col-span-2 px-1 pb-2 text-[10px] italic" style="color: {BOOL_COLOR.text}; opacity: 0.6;">All flags active</p>
+            {/if}
           </div>
         {/if}
       </div>
@@ -329,6 +391,11 @@
     white-space: nowrap;
   }
 
+  .flag-badge-none {
+    font-style: italic;
+    opacity: 0.75;
+  }
+
   .flag-badge-remove {
     display: inline-flex;
     align-items: center;
@@ -341,6 +408,27 @@
     color: inherit;
   }
   .flag-badge-remove:hover { opacity: 1; }
+
+  .flag-badge-toggle {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.85;
+    transition: opacity 0.15s;
+    cursor: pointer;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+  }
+  .flag-badge-toggle:hover { opacity: 1; }
+
+  .flag-badge-separator {
+    width: 1px;
+    height: 0.75em;
+    background: currentColor;
+    opacity: 0.3;
+    flex-shrink: 0;
+  }
 
   .flag-add-btn {
     display: inline-flex;

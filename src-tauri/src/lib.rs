@@ -256,6 +256,8 @@ async fn cmd_list_available_sections(app: tauri::AppHandle) -> Result<Vec<Sectio
 
 /// Query entries for any section by region_id. Unified replacement for
 /// cmd_get_vanilla_entries + cmd_get_entries_by_folder.
+/// Aggregates from ref_base first, then merges in any additional entries from
+/// ref_honor (Honor Mode data) and ref_mods (additional loaded mods), deduped by UUID.
 #[tauri::command]
 async fn cmd_query_section_entries(
     app: tauri::AppHandle,
@@ -266,9 +268,24 @@ async fn cmd_query_section_entries(
     blocking(move || {
         let db_paths = db_manager::get_db_paths(&app)
             .map_err(|e| format!("DB paths: {e}"))?;
-        let entries = reference_db::queries::query_section_entries(
-            &db_paths.base, &region_id, limit, offset,
+        let mut entries = reference_db::queries::query_section_entries(
+            &db_paths.base, &region_id, None, None,
         )?;
+
+        // Merge additional entries from ref_honor (Honor Mode) and ref_mods
+        let mut seen_uuids: std::collections::HashSet<String> = entries.iter().map(|e| e.uuid.clone()).collect();
+        for extra_db in [&db_paths.honor, &db_paths.mods] {
+            if extra_db.is_file() {
+                if let Ok(extra) = reference_db::queries::query_section_entries(extra_db, &region_id, None, None) {
+                    for e in extra {
+                        if seen_uuids.insert(e.uuid.clone()) {
+                            entries.push(e);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(PaginatedResponse::from_vec(entries, offset, limit))
     }).await
 }

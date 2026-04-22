@@ -474,6 +474,14 @@
             fields = [...fields, { key, value: _rawAttrs?.[key] ?? "" }];
           }
         }
+        // Stats entries: initialize Using from raw_attributes (not in schema columns)
+        // raw_attributes.Using is set by diff_stats when the entry has a parent
+        if (baseCaps.isSpell && _statsEntryType && !existingFieldKeys.has('Using')) {
+          const usingVal = (_rawAttrs?.['Using'] as string | undefined) ?? '';
+          if (usingVal) {
+            fields = [...fields, { key: 'Using', value: usingVal }];
+          }
+        }
       }
       if (effectiveCaps.booleanKeys) {
         const existingBoolKeys = new Set(booleans.map(b => b.key));

@@ -153,7 +153,7 @@
       {/each}
     </div>
   {/if}
-  {#if showOverride || !disabled}
+  {#if showOverride || !disabled || showSync}
     <div class="cost-actions">
       {#if showOverride}
         <label
@@ -170,7 +170,7 @@
           <Pencil size={11} />
         </label>
       {/if}
-      {#if showSync && !disabled}
+      {#if showSync}
         <button
           type="button"
           class="cost-meta-btn cost-sync-btn {syncLocked ? 'cost-sync-active' : ''}"

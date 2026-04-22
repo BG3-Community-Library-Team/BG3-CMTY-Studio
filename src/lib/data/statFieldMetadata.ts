@@ -19,6 +19,21 @@ export interface StatFieldCardDef {
    */
   customRows?: (string | null)[][];
   /**
+   * CSS grid-template-columns for each customRow (parallel array).
+   * Use undefined for equal columns on a specific row.
+   */
+  customRowTemplates?: Array<string | undefined>;
+  /**
+   * Maximum number of columns when rendering field rows in this card.
+   * Overrides the default cap (2) used by fullRow cards.
+   */
+  maxFieldColumns?: number;
+  /**
+   * Gate condition: hide this card when the condition is not met
+   * (still shown if any field in the card has a value, or showAllStatsFields is on).
+   */
+  showWhen?: FieldGate;
+  /**
    * Render fields as independent vertical column stacks (no cross-row alignment).
    * Each inner array is one column's list of field keys.
    * When set, `customRows` and `fieldsPerRow` are ignored for layout.
@@ -100,7 +115,8 @@ export interface FieldGate {
     | { type: 'equals'; value: string }
     | { type: 'includes'; value: string }
     | { type: 'notEmpty' }
-    | { type: 'notEquals'; value: string };
+    | { type: 'notEquals'; value: string }
+    | { type: 'in'; values: string[] };
 }
 
 export function evaluateGate(gate: FieldGate, formData: Record<string, string>): boolean {
@@ -114,6 +130,8 @@ export function evaluateGate(gate: FieldGate, formData: Record<string, string>):
       return triggerValue.split(';').includes(gate.condition.value);
     case 'notEmpty':
       return triggerValue.trim() !== '';
+    case 'in':
+      return gate.condition.values.includes(triggerValue);
   }
 }
 
@@ -182,22 +200,28 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
         fields: [
           "SpellType", "SpellSchool", "Level",
           "SpellActionType", "Cooldown", "PowerLevel",
-          "CooldownType", "MemoryCost",
+          "MemoryCost",
+          "SpellStyleGroup", "SpellCategory",
           "UseCosts", "TooltipUseCosts", "HitCosts", "DualWieldingUseCosts", "RitualCosts",
           "Requirements", "RequirementConditions", "RequirementEvents",
         ],
-        customRows: [
-          ["SpellType", "SpellSchool", "Level"],
-          ["SpellActionType", "Cooldown", "PowerLevel"],
-          [null, "CooldownType", "MemoryCost"],
-        ],
-        customRowTemplates: [
-          "1fr 1fr 8rem",
-          "1fr 1fr 8rem",
-          "1fr 1fr 8rem",
-        ],
-        maxFieldColumns: 3,
         innerCards: [
+          {
+            title: "Stats Data",
+            fullRow: true,
+            collapsed: false,
+            fields: ["SpellType", "SpellSchool", "Level", "SpellActionType", "Cooldown", "PowerLevel", "SpellStyleGroup", "SpellCategory", "MemoryCost"],
+            customRows: [
+              ["SpellType", "SpellSchool", "Level"],
+              ["SpellActionType", "Cooldown", "PowerLevel"],
+              ["SpellStyleGroup", "SpellCategory", "MemoryCost"],
+            ],
+            customRowTemplates: [
+              "1fr 1fr 8rem",
+              "1fr 1fr 8rem",
+              "1fr 1fr 8rem",
+            ],
+          },
           {
             title: "Costs",
             fullRow: true,
@@ -228,38 +252,64 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
         fields: [
           "TargetRadius", "AreaRadius", "AmountOfTargets",
           "TargetCeiling", "TargetFloor", "MaximumTargets",
-          "MaxDistance", "HitRadius", "StrikeCount", "MaximumTotalTargetHP",
+          "MaxDistance", "HitRadius", "MaximumTotalTargetHP", "PreviewCursor",
+          "CastTargetHitDelay", "ExplodeRadius",
           "TargetConditions", "CycleConditions", "ForkingConditions",
+          "ExtraProjectileTargetConditions",
+          "AoEConditions", "OriginTargetConditions", "ThrowableTargetConditions",
           "MaxForkCount", "ForkLevels", "ForkChance",
-          "Height", "Angle", "Range", "Base",
-          "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay",
-          "ProjectileCount", "Trajectories", "PreviewCursor",
-          "TargetProjectiles",
+          "Shape", "Base", "Range", "FrontOffset", "Angle",
+          "Height", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay",
+          "ProjectileCount", "Trajectories", "StrikeCount", "TargetProjectiles",
+          "ThrowOrigin", "ThrowableSpellProperties", "ThrowableSpellRoll", "ThrowableSpellSuccess",
         ],
         innerCards: [
           {
             title: "Targeting",
             col: 1,
-            fields: ["TargetRadius", "AreaRadius", "AmountOfTargets", "TargetCeiling", "TargetFloor", "MaximumTargets", "MaxDistance", "HitRadius", "StrikeCount", "MaximumTotalTargetHP"],
-            fieldsPerRow: 1,
+            fields: ["TargetRadius", "AreaRadius", "AmountOfTargets", "TargetCeiling", "TargetFloor", "MaximumTargets", "MaxDistance", "HitRadius", "MaximumTotalTargetHP", "PreviewCursor", "CastTargetHitDelay", "ExplodeRadius"],
+            fieldsPerRow: 2,
+            navRowLabel: "Targeting & Conditions",
+          },
+          {
+            title: "Forking",
+            col: 1,
+            fields: ["MaxForkCount", "ForkLevels", "ForkChance"],
+            fieldsPerRow: 3,
+            showWhen: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
           },
           {
             title: "Conditions",
             col: 2,
-            fields: ["TargetConditions", "CycleConditions", "ForkingConditions"],
+            fields: ["TargetConditions", "CycleConditions", "ForkingConditions", "ExtraProjectileTargetConditions", "AoEConditions", "OriginTargetConditions", "ThrowableTargetConditions"],
             fieldsPerRow: 1,
+            navRowLabel: "Targeting & Conditions",
           },
           {
-            title: "Forking",
-            col: 2,
-            fields: ["MaxForkCount", "ForkLevels", "ForkChance"],
+            title: "Zone",
+            fullRow: true,
+            collapsed: false,
+            fields: ["Shape", "Base", "Range", "FrontOffset", "Angle"],
             fieldsPerRow: 3,
+            maxFieldColumns: 3,
+            showWhen: { trigger: 'SpellType', condition: { type: 'equals', value: 'Zone' } },
           },
           {
             title: "Projectiles",
             fullRow: true,
-            fields: ["Height", "Angle", "Range", "Base", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay", "ProjectileCount", "Trajectories", "PreviewCursor", "TargetProjectiles"],
-            fieldsPerRow: 2,
+            fields: ["Height", "Angle", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay", "ProjectileCount", "Trajectories", "StrikeCount", "TargetProjectiles"],
+            fieldsPerRow: 3,
+            maxFieldColumns: 3,
+            showWhen: { trigger: 'SpellType', condition: { type: 'in', values: ['Projectile', 'ProjectileStrike'] } },
+          },
+          {
+            title: "Throwing",
+            fullRow: true,
+            collapsed: false,
+            fields: ["ThrowOrigin", "ThrowableSpellProperties", "ThrowableSpellRoll", "ThrowableSpellSuccess"],
+            fieldsPerRow: 3,
+            maxFieldColumns: 3,
+            showWhen: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
           },
         ],
       },
@@ -267,13 +317,13 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
         title: "Mechanics",
         fields: [
           "SpellRoll", "SpellSuccess", "SpellFail", "SpellProperties",
-          "Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension",
+          "Damage", "DamageType", "Damage Range", "ToHitBonus", "DeathType", "HitExtension",
         ],
         innerCards: [
           {
             title: "Damage",
-            fields: ["Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension"],
-            fieldsPerRow: 2,
+            fields: ["Damage", "DamageType", "Damage Range", "ToHitBonus", "DeathType", "HitExtension"],
+            fieldsPerRow: 3,
           },
           {
             title: "Properties",
@@ -302,13 +352,14 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           "WeaponTypes", "Sheathing", "CastTextEvent", "AlternativeCastTextEvents",
           "OnlyHit1Target", "StopAtFirstContact", "Autocast",
           "IgnoreTeleport", "TeleportSelf", "TeleportSurface",
+          "PreviewStrikeHits", "Shuffle",
         ],
         flagGroupKeys: ["SpellFlags", "AIFlags", "LineOfSightFlags", "CinematicArenaFlags"],
-        boolFlagKeys: ["OnlyHit1Target", "StopAtFirstContact", "Autocast", "IgnoreTeleport", "TeleportSelf", "TeleportSurface"],
+        boolFlagKeys: ["OnlyHit1Target", "StopAtFirstContact", "Autocast", "IgnoreTeleport", "TeleportSelf", "TeleportSurface", "PreviewStrikeHits", "Shuffle"],
       },
       {
         title: "Animation",
-        fields: ["SpellAnimation", "DualWieldingSpellAnimation", "HitAnimationType", "SpellAnimationIntentType"],
+        fields: ["SpellAnimation", "DualWieldingSpellAnimation", "HitAnimationType", "SpellAnimationIntentType", "SpellAnimationType"],
       },
       {
         title: "Audio",
@@ -337,18 +388,21 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       AIFlags: "multiStatic:CanNotUse,IgnoreVisionBlock,LosBlockCheck,CannotTargetSelf,StandGroundRange",
       SpellType: 'static:Zone,Projectile,Target,Rush,Shout,Teleportation,Throw,ProjectileStrike,Wall',
       SpellSchool: 'static:Evocation,Abjuration,Necromancy,Divination,Enchantment,Illusion,Conjuration,Transmutation,None',
+      SpellStyleGroup: 'static:,Class,Intent,Class_Intent',
+      SpellCategory: 'valueList:SpellCategoryFlags',
       VerbalIntent: 'static:Damage,Heal,Buff,Debuff,Control,Utility,None',
-      SpellAnimationIntentType: 'static:Aggressive,Passive,Bonus',
+      SpellAnimationIntentType: 'valueList:SpellAnimationIntentType',
       DamageType: DAMAGE_TYPES,
-      Cooldown: COOLDOWN_VALUES,
-      CooldownType: 'static:GroupCooldown,IndividualCooldown,None',
+      Cooldown: 'valueList:CooldownType',
       HitAnimationType: 'static:PhysicalDamage,MagicalDamage_External,MagicalDamage_Internal,None',
-      Sheathing: 'static:Melee,Ranged,None',
+      Sheathing: 'valueList:SpellSheathing',
       SpellActionType: 'static:None,Bonus,Reaction,Main',
-      PreviewCursor: 'static:Cast,Melee,Ranged,Throw,Cone,AOE',
+      PreviewCursor: 'valueList:CursorMode',
       ExtraDescription: 'loca:',
       ShortDescription: 'loca:',
+      Shape: 'static:,Cone,Square',
       TooltipSpellDCAbilities: 'multiStatic:Strength,Dexterity,Constitution,Intelligence,Wisdom,Charisma',
+      TooltipAttackSave: 'multiStatic:,Strength,Dexterity,Constitution,Intelligence,Wisdom,Charisma,MeleeUnarmedAttack,RangedWeaponAttack,MeleeWeaponAttack,MeleeSpellAttack,RangedSpellAttack',
       TooltipOnMiss: 'section:TooltipExtras',
       TooltipOnSave: 'section:TooltipExtras',
       TooltipPermanentWarnings: 'section:TooltipExtras',
@@ -356,6 +410,10 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       Trajectories: 'multiSection:RootTemplates',
       LineOfSightFlags: 'multiStatic:HasBlocker,HasFog,MainCharacter,TargetUnder,SourceUnder,Cast',
       CinematicArenaFlags: 'multiStatic:ActivateCinematicArenaOnCast,DisableCinematicArenaOnCast',
+      RequirementEvents: 'multiStatic:None,OnTurn,OnSpellCast,OnAttack,OnAttacked,OnApply,OnRemove,OnApplyAndTurn,OnDamage,OnEquip,OnUnequip,OnHeal,OnObscurityChanged,UNUSED1,OnSurfaceEnter,OnStatusApplied,OnStatusRemoved,OnMove,OnCombatEnded,OnRemovePerformanceRequest,OnLockpickingSucceeded,OnSourceDeath,OnSourceStatusApplied,OnFactionChanged,OnEntityPickUp,OnEntityDrop,OnEntityDrag,OnLockpickingFinished,OnDisarmingFinished',
+      SpellAnimationType: 'valueList:SpellAnimationType',
+      DeathType: 'valueList:Death Type',
+      WeaponTypes: 'valueList:WeaponFlags',
     },
     fieldExpressionType: {
       SpellRoll: 'roll',
@@ -365,6 +423,13 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       TargetConditions: 'condition',
       CycleConditions: 'condition',
       ForkingConditions: 'condition',
+      ExtraProjectileTargetConditions: 'condition',
+      AoEConditions: 'condition',
+      OriginTargetConditions: 'condition',
+      ThrowableTargetConditions: 'condition',
+      ThrowableSpellRoll: 'roll',
+      ThrowableSpellProperties: 'effect',
+      ThrowableSpellSuccess: 'effect',
       DescriptionParams: 'display',
       ExtraDescriptionParams: 'display',
       ShortDescriptionParams: 'display',
@@ -385,6 +450,8 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       IgnoreTeleport: { offValue: 'No', onValue: 'Yes' },
       TeleportSelf: { offValue: 'No', onValue: 'Yes' },
       TeleportSurface: { offValue: 'No', onValue: 'Yes' },
+      PreviewStrikeHits: { offValue: 'No', onValue: 'Yes' },
+      Shuffle: { offValue: 'No', onValue: 'Yes' },
     },
     fieldSyncMap: {
       TooltipUseCosts: 'UseCosts',
@@ -403,6 +470,13 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       TeleportSelf: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
       TeleportSurface: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
       IgnoreTeleport: { trigger: 'SpellType', condition: { type: 'equals', value: 'Teleportation' } },
+      ThrowOrigin: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
+      ThrowableSpellProperties: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
+      ThrowableSpellRoll: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
+      ThrowableSpellSuccess: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
+      ForkingConditions: { trigger: 'SpellType', condition: { type: 'equals', value: 'Projectile' } },
+      ExtraProjectileTargetConditions: { trigger: 'SpellType', condition: { type: 'in', values: ['Projectile', 'ProjectileStrike'] } },
+      ThrowableTargetConditions: { trigger: 'SpellType', condition: { type: 'equals', value: 'Throw' } },
       ContainerSpells: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsLinkedSpellContainer' } },
       ConcentrationSpellID: { trigger: 'SpellFlags', condition: { type: 'includes', value: 'IsConcentration' } },
       CooldownType: { trigger: 'Cooldown', condition: { type: 'notEquals', value: 'None' } },
@@ -502,6 +576,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           "StatusEffectOverride",
           "StillAnimationType",
           "StillAnimationPriority",
+          "Sheathing",
         ],
       },
       {
@@ -523,6 +598,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       FormatColor: 'static:White,Orange,Red,Green,Blue,Purple,Yellow',
       StillAnimationType: 'static:Dazed,Idle,Prone,Sleeping,Sitting,None',
       StillAnimationPriority: 'static:Low,Medium,High',
+      Sheathing: 'valueList:StatusSheathing',
     },
     fieldExpressionType: {
       Boosts: 'effect',

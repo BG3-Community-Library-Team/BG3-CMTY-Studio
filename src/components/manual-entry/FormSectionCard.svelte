@@ -21,6 +21,10 @@
     headerActions?: Snippet;
     children: Snippet;
   } = $props();
+
+  // Render body lazily: only mount when first opened, then keep in DOM on collapse
+  let wasOpened = $state(open);
+  $effect(() => { if (open) wasOpened = true; });
 </script>
 
 <details class="form-section-card" bind:open id={id} style={accentColor ? `border-top: 3px solid ${accentColor}` : ''}>
@@ -42,7 +46,9 @@
     {/if}
   </summary>
   <div class="card-body">
-    {@render children()}
+    {#if open || wasOpened}
+      {@render children()}
+    {/if}
   </div>
 </details>
 
