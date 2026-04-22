@@ -688,7 +688,7 @@
     };
     const map = new Map<string, ComboboxOption[]>();
     for (const [fk, desc] of Object.entries(fc)) {
-      if (desc.startsWith('section:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+      if (desc.startsWith('section:') || desc.startsWith('multiSection:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
     }
     return map;
   });
@@ -879,7 +879,7 @@
   function fieldComboboxOptions(fieldKey: string): ComboboxOption[] {
     const descriptor = caps.fieldCombobox?.[fieldKey];
     if (!descriptor) return [];
-    if (descriptor.startsWith('section:')) return _cbSection.get(fieldKey) ?? [];
+    if (descriptor.startsWith('section:') || descriptor.startsWith('multiSection:')) return _cbSection.get(fieldKey) ?? [];
     if (descriptor.startsWith('folder:') || descriptor.startsWith('progressionTable:') || descriptor.startsWith('voiceTable:'))
       return _cbVanillaOnly.get(fieldKey) ?? [];
     if (descriptor.startsWith('valueList:')) return _cbValueList.get(fieldKey) ?? [];
@@ -1079,22 +1079,41 @@
         const clampedIdx = Math.min(activeStatsTabIdx, tabbedSubs.length - 1);
         const activeSub = tabbedSubs[clampedIdx];
         if (activeSub?.innerCards) {
+          const seen = new Set<string>();
           for (const card of activeSub.innerCards) {
-            sections.push({
-              id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
-              label: card.title,
-            });
+            if (card.navRowLabel) {
+              if (!seen.has(card.navRowLabel)) {
+                seen.add(card.navRowLabel);
+                // Use first card's id as the scroll target
+                sections.push({
+                  id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
+                  label: card.navRowLabel,
+                });
+              }
+            } else {
+              sections.push({
+                id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
+                label: card.title,
+              });
+            }
           }
         }
       } else {
         // Single subsection (accordion): show the subsection itself
         for (const sub of tabbedSubs) {
           const id = `section-sub-${sub.title.toLowerCase().replace(/\s+/g, '-')}`;
-          const children = sub.innerCards?.map(card => ({
-          id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`,
-          label: card.title,
-        }));
-        sections.push({ id, label: sub.title, children });
+          const seen = new Set<string>();
+          const children = sub.innerCards?.flatMap(card => {
+            if (card.navRowLabel) {
+              if (!seen.has(card.navRowLabel)) {
+                seen.add(card.navRowLabel);
+                return [{ id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`, label: card.navRowLabel }];
+              }
+              return [];
+            }
+            return [{ id: `section-inner-${card.title.toLowerCase().replace(/\s+/g, '-')}`, label: card.title }];
+          });
+          sections.push({ id, label: sub.title, children });
         }
       }
     }

@@ -51,6 +51,13 @@ export interface LayoutInnerCard {
   fullRow?: boolean;
   /** Column placement for multi-column stacked card layouts (1 = left, 2 = right) */
   col?: 1 | 2;
+  /**
+   * Render fields as independent vertical column stacks (no cross-row alignment).
+   * Each inner array is one column's fields. When set, `rows` is empty and ignored.
+   */
+  columnGroups?: LayoutField[][];
+  /** Override nav label (used to combine paired side-by-side cards into one FormNav entry) */
+  navRowLabel?: string;
 }
 
 export interface LayoutSubsection {
@@ -98,6 +105,11 @@ export interface LayoutSubsection {
    * These fields are excluded from normal row layout.
    */
   flagGroupKeys?: string[];
+  /**
+   * Boolean field keys rendered as toggleable badges inside the FlagGroupBadges component.
+   * Uses fieldBoolToggle metadata for on/off values.
+   */
+  boolFlagKeys?: string[];
 }
 
 export interface FormLayout {

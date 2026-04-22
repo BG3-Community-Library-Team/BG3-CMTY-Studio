@@ -18,6 +18,14 @@ export interface StatFieldCardDef {
    * Use null for an empty grid spacer cell.
    */
   customRows?: (string | null)[][];
+  /**
+   * Render fields as independent vertical column stacks (no cross-row alignment).
+   * Each inner array is one column's list of field keys.
+   * When set, `customRows` and `fieldsPerRow` are ignored for layout.
+   */
+  columnGroups?: string[][];
+  /** Override the card's label in the FormNav (used to combine paired cards into one nav entry) */
+  navRowLabel?: string;
 }
 
 export interface StatFieldGroup {
@@ -46,6 +54,12 @@ export interface StatFieldGroup {
    * These fields are excluded from normal row layout within this group.
    */
   flagGroupKeys?: string[];
+  /**
+   * Boolean field keys rendered as toggleable badges inside the FlagGroupBadges component.
+   * These fields use standard get/setFieldValue but render as on/off flag badges
+   * grouped under an "Other" category in the dropdown.
+   */
+  boolFlagKeys?: string[];
 }
 
 export type ExpressionType = 
@@ -135,11 +149,13 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
             title: "Identity",
             fields: ["DisplayName", "Icon", "Description", "ExtraDescription", "ShortDescription"],
             width: "60%",
+            navRowLabel: "Identity & Parameters",
           },
           {
             title: "Description Parameters",
             fields: ["DescriptionParams", "ExtraDescriptionParams", "ShortDescriptionParams"],
             width: "40%",
+            navRowLabel: "Identity & Parameters",
           },
           {
             title: "Tooltips",
@@ -151,13 +167,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
               "TooltipPermanentWarnings", "TooltipUpcastDescription",
             ],
             fullRow: true,
-            collapsed: true,
-            customRows: [
-              ["TooltipDamageList", "TooltipStatusApply"],
-              ["TooltipUpcastDescriptionParams", null],
-              ["TooltipAttackSave", "TooltipSpellDCAbilities"],
-              ["TooltipOnMiss", "TooltipOnSave"],
-              ["TooltipPermanentWarnings", "TooltipUpcastDescription"],
+            collapsed: false,
+            columnGroups: [
+              // Left: combobox/enum reference fields
+              ["TooltipAttackSave", "TooltipSpellDCAbilities", "TooltipOnMiss", "TooltipOnSave", "TooltipPermanentWarnings", "TooltipUpcastDescription"],
+              // Right: display expression fields
+              ["TooltipDamageList", "TooltipStatusApply", "TooltipUpcastDescriptionParams"],
             ],
           },
         ],
@@ -169,6 +184,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           "SpellActionType", "Cooldown", "PowerLevel",
           "CooldownType", "MemoryCost",
           "UseCosts", "TooltipUseCosts", "HitCosts", "DualWieldingUseCosts", "RitualCosts",
+          "Requirements", "RequirementConditions", "RequirementEvents",
         ],
         customRows: [
           ["SpellType", "SpellSchool", "Level"],
@@ -185,12 +201,24 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           {
             title: "Costs",
             fullRow: true,
-            collapsed: true,
+            collapsed: false,
             fields: ["UseCosts", "TooltipUseCosts", "RitualCosts", "HitCosts", "DualWieldingUseCosts"],
             customRows: [
               ["UseCosts", "TooltipUseCosts"],
               ["RitualCosts", "HitCosts"],
               ["DualWieldingUseCosts", null],
+            ],
+          },
+          {
+            title: "Requirements",
+            fullRow: true,
+            collapsed: false,
+            fields: ["Requirements", "RequirementConditions", "RequirementEvents"],
+            columnGroups: [
+              // Left: field + event
+              ["Requirements", "RequirementEvents"],
+              // Right: condition expression
+              ["RequirementConditions"],
             ],
           },
         ],
@@ -206,13 +234,19 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           "Height", "Angle", "Range", "Base",
           "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay",
           "ProjectileCount", "Trajectories", "PreviewCursor",
-          "TargetGroundEffect", "TargetHitEffect", "TargetProjectiles",
+          "TargetProjectiles",
         ],
         innerCards: [
           {
             title: "Targeting",
             col: 1,
             fields: ["TargetRadius", "AreaRadius", "AmountOfTargets", "TargetCeiling", "TargetFloor", "MaximumTargets", "MaxDistance", "HitRadius", "StrikeCount", "MaximumTotalTargetHP"],
+            fieldsPerRow: 1,
+          },
+          {
+            title: "Conditions",
+            col: 2,
+            fields: ["TargetConditions", "CycleConditions", "ForkingConditions"],
             fieldsPerRow: 1,
           },
           {
@@ -224,14 +258,8 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
           {
             title: "Projectiles",
             fullRow: true,
-            fields: ["Height", "Angle", "Range", "Base", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay", "ProjectileCount", "Trajectories", "PreviewCursor", "TargetGroundEffect", "TargetHitEffect", "TargetProjectiles"],
-            fieldsPerRow: 1,
-          },
-          {
-            title: "Conditions",
-            col: 2,
-            fields: ["TargetConditions", "CycleConditions", "ForkingConditions"],
-            fieldsPerRow: 1,
+            fields: ["Height", "Angle", "Range", "Base", "ProjectileType", "ProjectileTerrainOffset", "ProjectileDelay", "ProjectileCount", "Trajectories", "PreviewCursor", "TargetProjectiles"],
+            fieldsPerRow: 2,
           },
         ],
       },
@@ -240,21 +268,12 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
         fields: [
           "SpellRoll", "SpellSuccess", "SpellFail", "SpellProperties",
           "Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension",
-          "OnlyHit1Target", "StopAtFirstContact", "Autocast",
-          "IgnoreTeleport", "TeleportSelf", "TeleportSurface",
         ],
         innerCards: [
           {
             title: "Damage",
-            col: 1,
             fields: ["Damage", "DamageType", "DamageRange", "ToHitBonus", "DeathType", "HitExtension"],
-            fieldsPerRow: 1,
-          },
-          {
-            title: "Flags",
-            col: 2,
-            fields: ["OnlyHit1Target", "StopAtFirstContact", "Autocast", "IgnoreTeleport", "TeleportSelf", "TeleportSurface"],
-            fieldsPerRow: 1,
+            fieldsPerRow: 2,
           },
           {
             title: "Properties",
@@ -281,8 +300,11 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
         fields: [
           "SpellFlags", "AIFlags", "LineOfSightFlags", "CinematicArenaFlags",
           "WeaponTypes", "Sheathing", "CastTextEvent", "AlternativeCastTextEvents",
+          "OnlyHit1Target", "StopAtFirstContact", "Autocast",
+          "IgnoreTeleport", "TeleportSelf", "TeleportSurface",
         ],
         flagGroupKeys: ["SpellFlags", "AIFlags", "LineOfSightFlags", "CinematicArenaFlags"],
+        boolFlagKeys: ["OnlyHit1Target", "StopAtFirstContact", "Autocast", "IgnoreTeleport", "TeleportSelf", "TeleportSurface"],
       },
       {
         title: "Animation",
@@ -294,15 +316,11 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
       },
       {
         title: "VFX",
-        fields: ["SpellEffect", "CastEffect", "PrepareEffect", "HitEffect", "TargetEffect", "PreviewEffect", "PositionEffect", "BeamEffect", "DisappearEffect", "ImpactEffect"],
+        fields: ["SpellEffect", "CastEffect", "PrepareEffect", "HitEffect", "TargetEffect", "PreviewEffect", "PositionEffect", "BeamEffect", "DisappearEffect", "ImpactEffect", "TargetGroundEffect", "TargetHitEffect"],
       },
       {
         title: "Surface",
         fields: ["SurfaceRadius", "SurfaceGrowInterval", "SurfaceGrowStep", "SurfaceLifetime", "SurfaceType"],
-      },
-      {
-        title: "Requirements",
-        fields: ["Requirements", "RequirementConditions", "RequirementEvents"],
       },
       {
         title: "Inheritance",

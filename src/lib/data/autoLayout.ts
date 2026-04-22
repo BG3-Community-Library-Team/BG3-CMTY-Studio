@@ -234,7 +234,7 @@ export function autoLayoutFromMetadata(
       rows = [];
     } else if (group.flagGroupKeys) {
       // Rows contain only the non-flag fields; flag fields render via FlagGroupBadges
-      const flagSet = new Set(group.flagGroupKeys);
+      const flagSet = new Set([...(group.flagGroupKeys ?? []), ...(group.boolFlagKeys ?? [])]);
       const nonFlagFields = group.fields.filter(f => !flagSet.has(f));
       rows = chunkRows(nonFlagFields, 3);
     } else {
@@ -248,19 +248,29 @@ export function autoLayoutFromMetadata(
     if (group.collapsed) sub.collapsed = true;
     if (group.maxFieldColumns) sub.maxFieldColumns = group.maxFieldColumns;
     if (group.flagGroupKeys) sub.flagGroupKeys = group.flagGroupKeys;
+    if (group.boolFlagKeys) sub.boolFlagKeys = group.boolFlagKeys;
     if (group.innerCards) {
-      sub.innerCards = group.innerCards.map((card) => ({
-        title: card.title,
-        width: card.width,
-        collapsed: card.collapsed,
-        fullRow: card.fullRow,
-        col: card.col,
-        rows: card.customRows
-          ? card.customRows.map(rowFields => ({
-              items: rowFields.map(k => k === null ? spacerItem() : fieldItem(k)),
-            }))
-          : chunkRows(card.fields, card.fieldsPerRow ?? 1),
-      }));
+      sub.innerCards = group.innerCards.map((card) => {
+        const layoutCard: import('./formLayouts.js').LayoutInnerCard = {
+          title: card.title,
+          width: card.width,
+          collapsed: card.collapsed,
+          fullRow: card.fullRow,
+          col: card.col,
+          navRowLabel: card.navRowLabel,
+          rows: card.columnGroups
+            ? []
+            : card.customRows
+              ? card.customRows.map(rowFields => ({
+                  items: rowFields.map(k => k === null ? spacerItem() : fieldItem(k)),
+                }))
+              : chunkRows(card.fields, card.fieldsPerRow ?? 1),
+        };
+        if (card.columnGroups) {
+          layoutCard.columnGroups = card.columnGroups.map(group => group.map(k => fieldItem(k)));
+        }
+        return layoutCard;
+      });
     }
     subsections.push(sub);
   }

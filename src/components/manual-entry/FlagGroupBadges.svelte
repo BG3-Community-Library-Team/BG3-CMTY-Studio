@@ -3,6 +3,13 @@
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
 
+  interface BoolFlagDef {
+    key: string;
+    label: string;
+    onValue: string;
+    offValue: string;
+  }
+
   interface Props {
     fieldKeys: string[];
     fieldComboboxOptions: (key: string) => ComboboxOption[];
@@ -10,6 +17,9 @@
     setFieldValue: (key: string, val: string) => void;
     parentFields?: Record<string, string>;
     childFields?: Record<string, string>;
+    onUnsetField?: (key: string) => void;
+    /** Boolean fields rendered as on/off badges under an "Other" category */
+    boolFlagDefs?: BoolFlagDef[];
   }
 
   let {
@@ -19,7 +29,11 @@
     setFieldValue,
     parentFields = {},
     childFields = {},
+    onUnsetField,
+    boolFlagDefs = [],
   }: Props = $props();
+
+  const BOOL_COLOR = { bg: 'rgba(113,113,122,0.15)', text: '#a1a1aa', border: 'rgba(113,113,122,0.3)' }; // zinc
 
   // Per-field colors indexed by position in fieldKeys
   const FIELD_COLORS = [
@@ -52,8 +66,23 @@
     fieldKeys.every(k =>
       Object.prototype.hasOwnProperty.call(parentFields, k) &&
       !Object.prototype.hasOwnProperty.call(childFields, k)
+    ) &&
+    (boolFlagDefs ?? []).every(d =>
+      !Object.prototype.hasOwnProperty.call(parentFields, d.key) ||
+      Object.prototype.hasOwnProperty.call(childFields, d.key)
     )
   );
+
+  /** Active bool flag defs (value equals onValue) */
+  const activeBoolFlags = $derived(
+    (boolFlagDefs ?? []).filter(d => getFieldValue(d.key) === d.onValue)
+  );
+
+  function toggleBoolFlag(def: BoolFlagDef) {
+    const isOn = getFieldValue(def.key) === def.onValue;
+    setFieldValue(def.key, isOn ? def.offValue : def.onValue);
+    showDropdown = false;
+  }
 
   /** Get the effective flag values for a field (child if exists, else parent). */
   function getEffectiveFlags(key: string): string[] {
@@ -152,11 +181,28 @@
       </span>
     {/each}
 
-    {#if activeBadges.length === 0}
+    {#if activeBadges.length === 0 && activeBoolFlags.length === 0}
       <span class="text-[11px] text-[var(--th-text-600)] italic">No flags set</span>
     {/if}
 
-    {#if !allFieldsInherited}
+    {#each activeBoolFlags as def}
+      <span
+        class="flag-badge"
+        style="background: {BOOL_COLOR.bg}; color: {BOOL_COLOR.text}; border: 1px solid {BOOL_COLOR.border};"
+      >
+        {def.label}
+        <button
+          type="button"
+          class="flag-badge-remove"
+          aria-label="Remove {def.label}"
+          onclick={() => setFieldValue(def.key, def.offValue)}
+        >
+          <X size={9} />
+        </button>
+      </span>
+    {/each}
+
+    {#if !allFieldsInherited || boolFlagDefs.length > 0}
       <button
         type="button"
         bind:this={addBtnRef}
@@ -172,36 +218,55 @@
   <!-- Dropdown portal -->
   {#if showDropdown}
     <div
-      class="flag-dropdown"
+      class="fixed z-[9999] w-64 rounded-md border border-[var(--th-border-600)] bg-[var(--th-bg-800)] shadow-lg overflow-hidden"
       style="top: {dropdownPos.top}px; left: {dropdownPos.left}px;"
       bind:this={dropdownRef}
     >
-      {#each fieldKeys as fieldKey, i}
-        {@const color = FIELD_COLORS[i % FIELD_COLORS.length]}
-        {@const inherited = isFieldInherited(fieldKey)}
-        {@const availableOpts = inherited ? [] : getAvailableOptions(fieldKey)}
-        <div class="flag-dropdown-category">
-          <div class="flag-dropdown-category-header" style="color: {color.text};">
-            {fieldKey}
-          </div>
-          {#if inherited}
-            <button
-              type="button"
-              class="flag-override-btn"
-              onclick={() => overrideField(fieldKey)}
-            >
-              Override
-            </button>
-          {:else if availableOpts.length > 0}
-            {#each availableOpts as opt}
+      <div class="max-h-96 overflow-y-auto py-1">
+        {#each fieldKeys as fieldKey, i}
+          {@const color = FIELD_COLORS[i % FIELD_COLORS.length]}
+          {@const inherited = isFieldInherited(fieldKey)}
+          {@const availableOpts = inherited ? [] : getAvailableOptions(fieldKey)}
+
+          {#if i > 0}
+            <div class="mx-2 my-1 border-t border-[var(--th-border-700)]"></div>
+          {/if}
+
+          <!-- Category header with override toggle -->
+          <div class="flex items-center justify-between px-3 pt-1.5 pb-1">
+            <span class="text-[9px] font-semibold uppercase tracking-wider" style="color: {color.text};">
+              {fieldKey}
+            </span>
+            {#if Object.prototype.hasOwnProperty.call(parentFields, fieldKey)}
               <button
                 type="button"
-                class="flag-dropdown-option"
-                onclick={() => addFlag(fieldKey, opt.value)}
+                class="override-toggle" class:override-active={!inherited}
+                onclick={() => inherited ? overrideField(fieldKey) : onUnsetField?.(fieldKey)}
+                title="{inherited ? 'Inherited — click to override' : 'Overriding — click to revert'}"
               >
-                {opt.label}
+                <span class="override-track"><span class="override-thumb"></span></span>
+                <span class="override-label">Override</span>
               </button>
-            {/each}
+            {/if}
+          </div>
+
+          <!-- Options -->
+          {#if inherited}
+            <p class="px-3 pb-2 text-[10px] italic" style="color: {color.text}; opacity: 0.6;">Using inherited value</p>
+          {:else if availableOpts.length > 0}
+            <div class="grid grid-cols-2 gap-1 px-2 pb-1.5">
+              {#each availableOpts as opt}
+                <button
+                  type="button"
+                  class="rounded-full border px-2 py-0.5 text-[10px] font-medium truncate hover:opacity-80 focus:outline-none transition-opacity"
+                  style="background: {color.bg}; color: {color.text}; border-color: {color.border};"
+                  onclick={() => addFlag(fieldKey, opt.value)}
+                  title={opt.label}
+                >
+                  {opt.label}
+                </button>
+              {/each}
+            </div>
           {:else}
             <!-- Free-text input for fields with no predefined options -->
             <div class="flag-freetext">
@@ -222,8 +287,32 @@
               </button>
             </div>
           {/if}
-        </div>
-      {/each}
+        {/each}
+
+        {#if boolFlagDefs.length > 0}
+          {#if fieldKeys.length > 0}
+            <div class="mx-2 my-1 border-t border-[var(--th-border-700)]"></div>
+          {/if}
+          <!-- Other: boolean flags -->
+          <div class="flex items-center justify-between px-3 pt-1.5 pb-1">
+            <span class="text-[9px] font-semibold uppercase tracking-wider" style="color: {BOOL_COLOR.text};">Other</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1 px-2 pb-1.5">
+            {#each boolFlagDefs as def}
+              {@const isOn = getFieldValue(def.key) === def.onValue}
+              <button
+                type="button"
+                class="rounded-full border px-2 py-0.5 text-[10px] font-medium text-left truncate focus:outline-none transition-opacity"
+                style="background: {isOn ? BOOL_COLOR.bg : 'transparent'}; color: {BOOL_COLOR.text}; border-color: {isOn ? BOOL_COLOR.border : 'rgba(113,113,122,0.2)'}; opacity: {isOn ? 1 : 0.55};"
+                onclick={() => toggleBoolFlag(def)}
+                title="{def.label} ({isOn ? 'on' : 'off'})"
+              >
+                {def.label}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
@@ -271,70 +360,45 @@
     border-color: var(--th-border-300, #71717a);
   }
 
-  .flag-dropdown {
-    position: fixed;
-    z-index: 100;
-    background: var(--th-bg-800, #27272a);
-    border: 1px solid var(--th-border-600, #3f3f46);
-    border-radius: 0.5rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    min-width: 200px;
-    max-height: 380px;
-    overflow-y: auto;
-    padding: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .flag-dropdown-category { display: flex; flex-direction: column; gap: 0.125rem; }
-
-  .flag-dropdown-category-header {
-    font-size: 0.625rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 0.1rem 0.25rem 0.25rem;
-    border-bottom: 1px solid var(--th-border-700, #3f3f46);
-    margin-bottom: 0.125rem;
-  }
-
-  .flag-dropdown-option {
-    display: block;
-    width: 100%;
-    text-align: left;
-    font-size: 0.6875rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 0.25rem;
+  .override-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     background: none;
     border: none;
-    color: var(--th-text-300, #d4d4d8);
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
-  }
-  .flag-dropdown-option:hover {
-    background: var(--th-bg-700, #3f3f46);
-    color: var(--th-text-100, #f4f4f5);
-  }
-
-  .flag-override-btn {
-    display: block;
-    width: 100%;
-    text-align: left;
-    font-size: 0.6875rem;
-    padding: 0.2rem 0.4rem;
+    padding: 0.15rem 0.25rem;
     border-radius: 0.25rem;
-    border: 1px solid var(--th-border-500, #52525b);
-    background: none;
-    color: var(--th-text-400, #a1a1aa);
-    cursor: pointer;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    color: var(--th-text-500, #71717a);
+    transition: color 0.15s;
   }
-  .flag-override-btn:hover {
-    background: var(--th-bg-700, #3f3f46);
-    color: var(--th-text-200, #e4e4e7);
-    border-color: var(--th-border-400, #71717a);
+  .override-toggle:hover { color: var(--th-text-300, #d4d4d8); }
+  .override-toggle.override-active { color: var(--th-accent-400, #60a5fa); }
+
+  .override-label { font-size: 0.625rem; }
+
+  .override-track {
+    width: 1.5rem;
+    height: 0.875rem;
+    border-radius: 9999px;
+    background: var(--th-bg-600, #52525b);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.15s;
   }
+  .override-active .override-track { background: var(--th-accent-500, #3b82f6); }
+
+  .override-thumb {
+    position: absolute;
+    top: 0.125rem;
+    left: 0.125rem;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.15s;
+  }
+  .override-active .override-thumb { transform: translateX(0.625rem); }
 
   .flag-freetext {
     display: flex;

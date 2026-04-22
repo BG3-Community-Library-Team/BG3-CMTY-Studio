@@ -17,6 +17,7 @@
     nonRemovable = [] as string[],
     displayTransform,
     rawTextToggle = false,
+    disabled = false,
     onchange,
   }: {
     label?: string;
@@ -27,6 +28,7 @@
     nonRemovable?: string[];
     displayTransform?: (value: string) => string;
     rawTextToggle?: boolean;
+    disabled?: boolean;
     onchange: (values: string[]) => void;
   } = $props();
 
@@ -217,11 +219,12 @@
   aria-haspopup="listbox"
   aria-owns={listboxId}
   aria-controls={listboxId}
+  aria-disabled={disabled}
 >
   <!-- Selected chips + input — styled like a dropdown -->
   <div
-    class="combobox-trigger flex items-center gap-1 cursor-text pr-6 {isOpen ? 'combobox-trigger-open' : ''}"
-    onclick={() => { isOpen = !isOpen; inputEl?.focus(); }}
+    class="combobox-trigger flex items-center gap-1 cursor-text pr-6 {isOpen ? 'combobox-trigger-open' : ''} {disabled ? 'combobox-trigger-disabled' : ''}"
+    onclick={() => { if (disabled) return; isOpen = !isOpen; inputEl?.focus(); }}
     role="presentation"
   >
     <div class="flex items-center gap-1 flex-wrap flex-1 min-w-0">
@@ -236,7 +239,7 @@
           <span class="shrink-0 w-3 h-3 rounded-sm border border-white/20" style="background-color: {color}"></span>
         {/if}
         <span class="truncate" title={baseDisplay}>{display}</span>
-        {#if !isFixed}
+        {#if !isFixed && !disabled}
           <button
             type="button"
             class="text-sky-300 hover:text-sky-100 p-0.5 leading-none"
@@ -253,16 +256,17 @@
       class="flex-1 min-w-16 bg-transparent border-none outline-none text-xs text-zinc-100 dark:text-zinc-100 placeholder:text-zinc-500 p-0"
       {placeholder}
       bind:value={searchText}
-      onfocus={() => { isOpen = true; activeIndex = -1; }}
-      onkeydown={handleKeydown}
-      onpaste={handlePaste}
+      onfocus={() => { if (!disabled) { isOpen = true; activeIndex = -1; } }}
+      onkeydown={disabled ? undefined : handleKeydown}
+      onpaste={disabled ? undefined : handlePaste}
+      readonly={disabled}
       role="searchbox"
       aria-label={label || "Search values"}
       aria-activedescendant={activeIndex >= 0 ? `${optionIdPrefix}-${activeIndex}` : undefined}
     />
     </div>
-    <!-- Clear all button (visible when there are selections) -->
-    {#if selected.length > 0}
+    <!-- Clear all button (visible when there are selections and not disabled) -->
+    {#if selected.length > 0 && !disabled}
       <button
         type="button"
         class="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 text-xs px-1"
@@ -347,7 +351,7 @@
   .combobox-trigger {
     position: relative;
     box-sizing: border-box;
-    min-height: 2rem;
+    min-height: 2.25rem;
     background-color: var(--th-input-bg);
     border: 1px solid var(--th-input-border);
     border-radius: 0.25rem;
@@ -366,5 +370,10 @@
   .combobox-trigger-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
+  }
+  .combobox-trigger-disabled {
+    opacity: 0.65;
+    cursor: default;
+    pointer-events: none;
   }
 </style>

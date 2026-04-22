@@ -77,8 +77,8 @@ describe("STAT_TYPE_METADATA", () => {
     });
   }
 
-  it("SpellData has 12 groups", () => {
-    expect(STAT_TYPE_METADATA.SpellData.groups).toHaveLength(12);
+  it("SpellData has 11 groups", () => {
+    expect(STAT_TYPE_METADATA.SpellData.groups).toHaveLength(11);
   });
 
   it("PassiveData has 8 groups", () => {

@@ -137,7 +137,10 @@
     if (!localSyncLocked) return;
     const syncKey = statType ? STAT_TYPE_METADATA[statType]?.fieldSyncMap?.[item.key] : undefined;
     if (!syncKey) return;
-    const sourceValue = getFieldValue(syncKey);
+    // Use parentValue if existing (inherited field), otherwise get current field value
+    const hasSyncSourceParent = Object.prototype.hasOwnProperty.call(parentFields, syncKey);
+    const sourceValue = hasSyncSourceParent ? parentFields[syncKey] : getFieldValue(syncKey);
+    if (!sourceValue) return; // Don't sync if source is empty
     if (getFieldValue(item.key) !== sourceValue) {
       setFieldValue(item.key, sourceValue);
     }
@@ -225,8 +228,7 @@
       {/if}
     </label>
 
-    <div class:inheritance-field-shell={showOverrideToggle} class:cost-override-shell={showOverrideToggle && expressionType === 'cost'}>
-      <div class:inheritance-field-main={showOverrideToggle}>
+    <div class:inheritance-field-shell={showOverrideToggle && expressionType !== 'cost'}>      <div class:inheritance-field-main={showOverrideToggle && expressionType !== 'cost'}>
         {#if showInheritedValue}
           {#if item.colorField}
             <div class="inheritance-readonly inheritance-readonly-color">
@@ -236,7 +238,21 @@
           {:else if isLoca}
             <div class="inheritance-readonly inheritance-readonly-loca">{parentValue}</div>
           {:else if expressionType === 'cost'}
-            <CostFieldGroup value={parentValue} disabled={true} />
+            <CostFieldGroup
+              value={parentValue}
+              disabled={true}
+              showOverride={showOverrideToggle}
+              overrideEnabled={false}
+              onOverrideToggle={() => handleOverrideToggle(true)}
+            />
+          {:else if caps.fieldCombobox?.[item.key]?.startsWith('multiSection:')}
+            <MultiSelectCombobox
+              options={fieldComboboxOptions(item.key)}
+              selected={parentValue ? parentValue.split(';').map((v) => v.trim()).filter(Boolean) : []}
+              placeholder=""
+              disabled={true}
+              onchange={() => {}}
+            />
           {:else if displayTokens.length > 1}
             <div class="inheritance-readonly inheritance-readonly-multiline inheritance-token-list">
               {#each displayTokens as token}
@@ -294,6 +310,7 @@
                 options={fieldComboboxOptions(item.key)}
                 selected={effectiveFieldValue ? effectiveFieldValue.split(';').map((value) => value.trim()).filter(Boolean) : []}
                 placeholder={comboPlaceholder}
+                disabled={fieldDisabled}
                 onchange={(vals) => setFieldValue(item.key, vals.join(';'))}
               />
             {:else}
@@ -312,6 +329,13 @@
             value={effectiveFieldValue}
             disabled={fieldDisabled}
             onchange={(v) => setFieldValue(item.key, v)}
+            showOverride={showOverrideToggle}
+            overrideEnabled={overrideEnabled}
+            onOverrideToggle={() => handleOverrideToggle(!overrideEnabled)}
+            showSync={!!syncSourceKey && !showInheritedValue}
+            syncLocked={localSyncLocked}
+            syncSourceKey={syncSourceKey ?? ''}
+            onSyncToggle={() => { localSyncLocked = !localSyncLocked; }}
           />
         {:else if expressionType}
           <InlineCodeEditor
@@ -345,7 +369,7 @@
         {/if}
       </div>
 
-      {#if showOverrideToggle}
+      {#if showOverrideToggle && expressionType !== 'cost'}
         <label class="inheritance-toggle" data-active={overrideEnabled ? 'true' : 'false'}
           use:tooltip={overrideEnabled ? 'Override active — uncheck to revert to inherited value' : 'Override inherited value'}
         >
@@ -368,7 +392,7 @@
         </details>
       {/if}
     {/if}
-    {#if syncSourceKey}
+    {#if syncSourceKey && !showInheritedValue && expressionType !== 'cost'}
       <div class="flex items-center gap-2 mt-0.5">
         <button
           type="button"
@@ -474,10 +498,7 @@
     color: var(--th-text-200, #e4e4e7);
   }
 
-  .inheritance-readonly-loca {
-    min-height: 2rem;
-    height: 2rem;
-  }
+  /* .inheritance-readonly-loca — no size override; inherits min-height: 2.25rem from .inheritance-readonly */
 
   .inheritance-readonly-multiline {
     align-items: flex-start;
@@ -494,11 +515,12 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    align-self: stretch;
+    align-self: start;
     border: 1px solid var(--th-input-border);
     border-left: none;
     border-radius: 0 0.25rem 0.25rem 0;
     padding: 0 0.4rem;
+    min-height: 2.25rem;
     min-width: fit-content;
     color: var(--th-text-400);
     background: var(--th-bg-800, rgba(39, 39, 42, 0.7));
@@ -523,24 +545,6 @@
   .inheritance-field-shell > .inheritance-field-main .inheritance-readonly {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-  }
-
-  .cost-override-shell {
-    /* Keep 2-column grid (toggle stays on right); toggle uses align-self: start to avoid growing */
-  }
-
-  .cost-override-shell .inheritance-toggle {
-    align-self: start;
-    border-left: 1px solid var(--th-input-border);
-    border-radius: 0.25rem;
-    width: fit-content;
-  }
-
-  .cost-override-shell > .inheritance-field-main :global(.combobox-trigger),
-  .cost-override-shell > .inheritance-field-main .form-input,
-  .cost-override-shell > .inheritance-field-main .inheritance-readonly {
-    border-top-right-radius: 0.25rem;
-    border-bottom-right-radius: 0.25rem;
   }
 
   .inheritance-status-badge,

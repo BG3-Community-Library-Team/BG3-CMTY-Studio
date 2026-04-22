@@ -1,6 +1,10 @@
 <script lang="ts">
   import Plus from '@lucide/svelte/icons/plus';
   import Trash2 from '@lucide/svelte/icons/trash-2';
+  import Pencil from '@lucide/svelte/icons/pencil';
+  import Link2 from '@lucide/svelte/icons/link-2';
+  import Link2Off from '@lucide/svelte/icons/link-2-off';
+  import { tooltip } from '../../lib/actions/tooltip.js';
   import SingleSelectCombobox from '../SingleSelectCombobox.svelte';
   import {
     listCostResourceOptions,
@@ -15,9 +19,18 @@
     value: string;
     onchange?: (value: string) => void;
     disabled?: boolean;
+    /** Override toggle: when set, renders a pencil button inline with the Add Cost action */
+    showOverride?: boolean;
+    overrideEnabled?: boolean;
+    onOverrideToggle?: () => void;
+    /** Sync toggle: when set, renders a link button inline with the Add Cost action */
+    showSync?: boolean;
+    syncLocked?: boolean;
+    syncSourceKey?: string;
+    onSyncToggle?: () => void;
   }
 
-  let { value, onchange, disabled = false }: Props = $props();
+  let { value, onchange, disabled = false, showOverride = false, overrideEnabled = false, onOverrideToggle, showSync = false, syncLocked = false, syncSourceKey = '', onSyncToggle }: Props = $props();
 
   let entries = $state<CostFieldEntry[]>([]);
   let options = $state<CostResourceOption[]>([]);
@@ -90,14 +103,9 @@
 </script>
 
 <div class="cost-field-group" class:cost-field-group-disabled={disabled}>
-  {#if entries.length === 0 && !disabled}
-    <button type="button" class="cost-add-btn" onclick={addEntry}>
-      <Plus size={14} />
-      <span>Add Cost</span>
-    </button>
-  {:else if entries.length === 0 && disabled}
+  {#if entries.length === 0 && disabled}
     <div class="cost-empty-inherited">No costs set</div>
-  {:else}
+  {:else if entries.length > 0}
     <div class="cost-entry-list">
       {#each entries as entry, index}
         <div class="cost-entry-row">
@@ -144,12 +152,46 @@
         </div>
       {/each}
     </div>
-    {#if !disabled}
-      <button type="button" class="cost-add-btn" onclick={addEntry}>
-        <Plus size={14} />
-        <span>Add Cost</span>
-      </button>
-    {/if}
+  {/if}
+  {#if showOverride || !disabled}
+    <div class="cost-actions">
+      {#if showOverride}
+        <label
+          class="cost-meta-btn cost-override-btn"
+          data-active={overrideEnabled ? 'true' : 'false'}
+          use:tooltip={overrideEnabled ? 'Override active — uncheck to revert to inherited value' : 'Override inherited value'}
+        >
+          <input
+            type="checkbox"
+            checked={overrideEnabled}
+            aria-label="Enable override"
+            onchange={() => onOverrideToggle?.()}
+          />
+          <Pencil size={11} />
+        </label>
+      {/if}
+      {#if showSync && !disabled}
+        <button
+          type="button"
+          class="cost-meta-btn cost-sync-btn {syncLocked ? 'cost-sync-active' : ''}"
+          onclick={() => onSyncToggle?.()}
+          use:tooltip={syncLocked ? `Auto-synced from ${syncSourceKey} — click to unlock` : `Click to auto-sync from ${syncSourceKey}`}
+          aria-label={syncLocked ? 'Sync locked' : 'Sync unlocked'}
+        >
+          {#if syncLocked}
+            <Link2 size={11} />
+          {:else}
+            <Link2Off size={11} />
+          {/if}
+        </button>
+      {/if}
+      {#if !disabled}
+        <button type="button" class="cost-add-btn" onclick={addEntry}>
+          <Plus size={14} />
+          <span>Add Cost</span>
+        </button>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -218,6 +260,46 @@
     color: var(--th-text-200);
     border-color: var(--th-accent-500, #38bdf8);
     background: transparent;
+  }
+
+  .cost-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .cost-meta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    border: 1px solid var(--th-input-border);
+    border-radius: 0.25rem;
+    padding: 0.1875rem 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.6875rem;
+    color: var(--th-text-400);
+    background: var(--th-bg-800, rgba(39, 39, 42, 0.7));
+    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+    white-space: nowrap;
+  }
+
+  .cost-meta-btn:hover {
+    color: var(--th-text-200);
+    border-color: rgba(56, 189, 248, 0.4);
+  }
+
+  .cost-override-btn[data-active="true"],
+  .cost-sync-active {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: var(--th-text-sky-300, #7dd3fc);
+    background: rgba(14, 165, 233, 0.12);
+  }
+
+  .cost-override-btn input {
+    margin: 0;
+    accent-color: var(--th-accent-500, #38bdf8);
   }
 
   .cost-remove-btn {

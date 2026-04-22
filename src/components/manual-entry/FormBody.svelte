@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { FormLayout, LayoutRow, LayoutSubsection, LayoutInnerCard } from "../../lib/data/formLayouts.js";
+  import type { FormLayout, LayoutRow, LayoutSubsection, LayoutInnerCard, LayoutField } from "../../lib/data/formLayouts.js";
   import type { SectionCapabilities } from "../../lib/data/sectionCaps.js";
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { StringItem, ChildItem } from "../../lib/utils/fieldCodec.js";
-  import { evaluateGate, type FieldGate } from "../../lib/data/statFieldMetadata.js";
+  import { evaluateGate, STAT_TYPE_METADATA, type FieldGate } from "../../lib/data/statFieldMetadata.js";
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import InheritanceBanner from "../InheritanceBanner.svelte";
   import X from "@lucide/svelte/icons/x";
@@ -126,7 +126,8 @@
     if (sub.component) return false;
     const hasVisibleRowItems = sub.rows.some(row => row.items.some(item => shouldShowField(item.key)));
     const hasVisibleCardItems = sub.innerCards?.some(card =>
-      card.rows.some(row => row.items.some(item => shouldShowField(item.key)))
+      card.rows.some(row => row.items.some(item => shouldShowField(item.key))) ||
+      (card.columnGroups?.some(group => group.some(item => shouldShowField(item.key))) ?? false)
     ) ?? false;
     const hasOtherContent = !!(sub.stringKeys?.length || sub.tagKeys?.length || sub.inlineChildGroups?.length);
     const hasFlagGroupContent = sub.flagGroupKeys?.some(k => shouldShowField(k)) ?? false;
@@ -249,6 +250,23 @@
 
 <!-- Named subsections — rendered as a tabbed drawer when multiple are visible -->
 
+{#snippet renderColumnGroups(groups: LayoutField[][])}
+<div class="column-groups-layout">
+    {#each groups as group}
+      <div class="column-group">
+        {#each group as item}
+          {#if shouldShowField(item.key)}
+            {@const gateState = getFieldGateState(item.key)}
+            <div class={gateState === 'warn' ? 'ring-1 ring-yellow-500/50 rounded-md' : gateState === 'dim' ? 'opacity-40' : ''}>
+              <LayoutCell {item} {caps} {getFieldValue} {setFieldValue} {getBoolValue} {setBoolValue} {fieldComboboxOptions} {resolveLocaText} {generateUuid} {statType} {parentFields} {childFields} />
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
 {#snippet renderCardRows(rows: LayoutRow[], maxCols?: number)}
   <div class="space-y-2">
     {#each rows as row}
@@ -289,14 +307,19 @@
 {/snippet}
 
 {#snippet renderSubBody(sub: LayoutSubsection)}
-  {#if sub.flagGroupKeys?.length}
+  {#if sub.flagGroupKeys?.length || sub.boolFlagKeys?.length}
+    {@const boolFlagDefs = (sub.boolFlagKeys ?? []).map(key => {
+      const toggle = statType ? STAT_TYPE_METADATA[statType]?.fieldBoolToggle?.[key] : undefined;
+      return { key, label: key, onValue: toggle?.onValue ?? '1', offValue: toggle?.offValue ?? '0' };
+    })}
     <FormSectionCard
       title="Flags"
       id="section-inner-flag-group"
       open={true}
     >
       <FlagGroupBadges
-        fieldKeys={sub.flagGroupKeys}
+        fieldKeys={sub.flagGroupKeys ?? []}
+        {boolFlagDefs}
         {fieldComboboxOptions}
         {getFieldValue}
         {setFieldValue}
@@ -395,7 +418,11 @@
         id="section-inner-{card.title.toLowerCase().replace(/\s+/g, '-')}"
         open={!card.collapsed}
       >
-        {@render renderCardRows(card.rows, 2)}
+        {#if card.columnGroups}
+          {@render renderColumnGroups(card.columnGroups)}
+        {:else}
+          {@render renderCardRows(card.rows, 2)}
+        {/if}
       </FormSectionCard>
     {/each}
   {/if}
@@ -687,6 +714,21 @@
   }
 
   .inner-cards-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  /* ── Column-groups layout (independent vertical stacks, no cross-row alignment) ── */
+  .column-groups-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+  }
+
+  .column-group {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
