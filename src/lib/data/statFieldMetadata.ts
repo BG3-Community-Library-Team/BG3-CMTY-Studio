@@ -380,6 +380,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:SpellData",
+      Icon: 'iconName:',
       ConcentrationSpellID: "statType:SpellData",
       RootSpellID: "statType:SpellData",
       SpellContainerID: "statType:SpellData",
@@ -526,6 +527,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:PassiveData",
+      Icon: 'iconName:',
       ToggleGroup: "statType:PassiveData",
       Properties: "multiStatic:IsHidden,Highlighted,OncePerTurn,ForceShowInCC,IsToggled,ToggledDefaultAddToHotbar,ToggleForParty",
     },
@@ -590,6 +592,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:StatusData",
+      Icon: 'iconName:',
       StatusPropertyFlags: "multiStatic:DisableOverhead,DisableCombatlog,DisablePortraitIndicator,ForceOverhead,IgnoreResting,DisableImmunityNarration,InitiateCombat,BringIntoCombat,IsChanneled",
       StatusGroups: "multiStatic:SG_Condition,SG_RemoveOnRespec,SG_WeaponCoating,SG_Drunk,SG_Blinded,SG_Charmed,SG_Frightened,SG_Poisoned,SG_Restrained,SG_Stunned,SG_Unconscious,SG_Invisible,SG_Petrified,SG_Paralyzed,SG_Prone,SG_Exhausted,SG_Incapacitated,SG_Silenced,SG_Sleeping,SG_Confused,SG_Madness,SG_Rage",
       StatusType: 'static:BOOST,EFFECT,HEAL,INVISIBLE,POLYMORPHED,DOWNED,FEAR,INCAPACITATED,DEACTIVATED,SNEAKING',
@@ -786,6 +789,7 @@ export const STAT_TYPE_METADATA: Record<string, StatTypeMetadata> = {
     ],
     fieldCombobox: {
       Using: "statType:InterruptData",
+      Icon: 'iconName:',
       InterruptContext: 'static:OnSpellCast,OnPostRoll,OnAttack,OnDamaged,OnAfterAttack,OnHeal,OnStatusApply,OnStatusRemove,OnMoveStart,OnMoveEnd',
       InterruptContextScope: 'static:Self,Nearby,Global',
       InterruptDefaultValue: 'static:Ask,Enabled,Disabled',

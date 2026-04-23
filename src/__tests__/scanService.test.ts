@@ -19,6 +19,9 @@ const mockGetModLocalization = vi.fn().mockResolvedValue({ entries: [], warnings
 const mockGetModStatEntries = vi.fn().mockResolvedValue([]);
 const mockReadExistingConfig = vi.fn().mockResolvedValue("");
 const mockGetEquipmentNames = vi.fn().mockResolvedValue([]);
+const mockGetIconNames = vi.fn().mockResolvedValue([]);
+const mockGetIconAtlasData = vi.fn().mockResolvedValue([]);
+const mockGetStagingIconAtlasData = vi.fn().mockResolvedValue([]);
 const mockListModFiles = vi.fn().mockResolvedValue([]);
 const mockListAvailableSections = vi.fn().mockResolvedValue([]);
 const mockQuerySectionEntries = vi.fn().mockResolvedValue([]);
@@ -26,6 +29,11 @@ const mockQuerySectionEntries = vi.fn().mockResolvedValue([]);
 // Build a default mock that returns empty/null for every exported function
 const noopAsync = () => vi.fn().mockResolvedValue(null);
 const noopAsyncArr = () => vi.fn().mockResolvedValue([]);
+
+vi.mock("../lib/tauri/vanilla-data.js", () => ({
+  getIconAtlasData: (...args: any[]) => mockGetIconAtlasData(...args),
+  getStagingIconAtlasData: (...args: any[]) => mockGetStagingIconAtlasData(...args),
+}));
 
 vi.mock("../lib/stores/projectStore.svelte.js", () => ({
   projectStore: {
@@ -46,6 +54,7 @@ vi.mock("../lib/utils/tauri.js", () => ({
   getModStatEntries: (...args: any[]) => mockGetModStatEntries(...args),
   readExistingConfig: (...args: any[]) => mockReadExistingConfig(...args),
   getEquipmentNames: (...args: any[]) => mockGetEquipmentNames(...args),
+  getIconNames: (...args: any[]) => mockGetIconNames(...args),
   listModFiles: (...args: any[]) => mockListModFiles(...args),
   listAvailableSections: (...args: any[]) => mockListAvailableSections(...args),
   querySectionEntries: (...args: any[]) => mockQuerySectionEntries(...args),

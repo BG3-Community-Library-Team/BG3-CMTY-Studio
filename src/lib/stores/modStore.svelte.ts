@@ -1,6 +1,8 @@
 import type { ScanResult, SectionResult, VanillaEntryInfo } from "../types/index.js";
 import type { StatEntryInfo, ValueListInfo, LocaEntry, ModFileEntry } from "../utils/tauri.js";
 import type { VanillaCategory } from "../data/vanillaRegistry.js";
+import type { IconAtlasEntry } from "../tauri/vanilla-data.js";
+import { invoke } from "@tauri-apps/api/core";
 
 export type { VanillaCategory };
 
@@ -25,6 +27,20 @@ class ModStore {
 
   /** Vanilla equipment set names from Equipment.txt (for ClassEquipment / ClassEquipmentOverride comboboxes). */
   vanillaEquipment: string[] = $state([]);
+
+  /** Vanilla icon MapKey names from all IconUVList tables (for Icon field combobox on stat entries). */
+  vanillaIconNames: string[] = $state([]);
+
+  /**
+   * Resolved icon atlas entries (vanilla + active mod), keyed by MapKey.
+   * Each entry carries pre-computed dds_path + project_dir ready for cmd_convert_dds_to_png.
+   */
+  iconAtlasData: Map<string, IconAtlasEntry> = $state(new Map());
+
+  /** Cache of loaded atlas DDS images: "projectDir|ddsPath" → base64 PNG string. */
+  loadedAtlasImages: Map<string, string> = $state(new Map());
+  /** Internal set of cache keys currently being loaded (prevents concurrent duplicate loads). */
+  #loadingAtlasImages = new Set<string>();
 
   /** All vanilla stat entries (SpellData, PassiveData, Armor, Weapon, Object, etc.) for combobox population. */
   vanillaStatEntries: StatEntryInfo[] = $state([]);
@@ -191,6 +207,10 @@ class ModStore {
     // P-02: single assignment replaces 18 individual clears
     this.vanilla = {};
     this.vanillaEquipment = [];
+    this.vanillaIconNames = [];
+    this.iconAtlasData = new Map();
+    this.loadedAtlasImages = new Map();
+    this.#loadingAtlasImages.clear();
     this.vanillaStatEntries = [];
     this.vanillaStatFieldNames = [];
     this.vanillaValueLists = [];
@@ -223,6 +243,32 @@ class ModStore {
   lookupLocalizedString(handle: string): string | undefined {
     if (!handle) return undefined;
     return this.localizationMap.get(handle.toLowerCase());
+  }
+
+  /**
+   * Lazily load a texture atlas DDS as a base64 PNG and cache it in `loadedAtlasImages`.
+   * `ddsPath` is the relative path to pass to cmd_convert_dds_to_png.
+   * `projectDir` is the base directory that contains `ddsPath`.
+   * Silently no-ops if projectDir is not configured or loading fails.
+   */
+  async loadAtlasImage(ddsPath: string, projectDir: string): Promise<void> {
+    if (!ddsPath || !projectDir) return;
+    const cacheKey = `${projectDir}|${ddsPath}`;
+    if (this.loadedAtlasImages.has(cacheKey)) return;
+    if (this.#loadingAtlasImages.has(cacheKey)) return;
+    this.#loadingAtlasImages.add(cacheKey);
+    try {
+      const base64 = await invoke<string>("cmd_convert_dds_to_png", {
+        path: ddsPath,
+        projectDir,
+      });
+      this.loadedAtlasImages = new Map(this.loadedAtlasImages);
+      this.loadedAtlasImages.set(cacheKey, base64);
+    } catch {
+      // Atlas load failed — no preview available; fail silently.
+    } finally {
+      this.#loadingAtlasImages.delete(cacheKey);
+    }
   }
 }
 

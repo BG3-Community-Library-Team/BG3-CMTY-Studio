@@ -226,6 +226,8 @@ export interface FieldComboboxContext {
   vanillaStatEntries: { name: string; entry_type: string }[];
   modStatEntries: { name: string; entry_type: string }[];
   vanillaEquipment: string[];
+  /** Icon MapKey names from all IconUVList tables. Used by the iconName: descriptor. */
+  vanillaIconNames?: string[];
   lookupFn?: (handle: string) => string | undefined;
   /** User-authored localization entries from the Localization panel. */
   locaValues?: { contentuid: string; text: string }[];
@@ -359,6 +361,32 @@ const DESCRIPTOR_HANDLERS: Record<string, DescriptorHandler> = {
       return { value: e.uuid, label: formatComboboxLabel("Vanilla", dn, e.uuid), _source: "Vanilla", _displayName: dn };
     });
     return sortComboboxOptions(opts);
+  },
+  "iconName": (_suffix, ctx) => {
+    // Icon names (MapKey values from IconUVList) — vanilla first, then mod's own icons
+    const seen = new Set<string>();
+    const opts: ComboboxOption[] = [];
+    for (const name of (ctx.vanillaIconNames ?? [])) {
+      seen.add(name);
+      const label = settingsStore.showModNamePrefix ? `[Vanilla] ${name}` : name;
+      opts.push({ value: name, label, _source: "Vanilla", _displayName: name });
+    }
+    // Mod's own icons from IconUVList section entries
+    const iconSection = ctx.scanResult?.sections.find(s => s.section === 'IconUVList');
+    if (iconSection) {
+      const modLabel = ctx.modName || 'Mod';
+      for (const e of iconSection.entries) {
+        // MapKey is in raw_attributes for DiffEntry; also try extracting from synthetic uuid
+        const mk = e.raw_attributes?.['MapKey'] ||
+          (/^__node_IconUV_([^_].*)__$/.exec(e.uuid)?.[1]);
+        if (mk && !seen.has(mk)) {
+          seen.add(mk);
+          const mkLabel = settingsStore.showModNamePrefix ? `[${modLabel}] ${mk}` : mk;
+          opts.push({ value: mk, label: mkLabel, _source: modLabel, _displayName: mk });
+        }
+      }
+    }
+    return opts;
   },
   "textureFiles": (suffix, ctx) => {
     // suffix = relative path within mod's Public/<ModFolder>/ dir

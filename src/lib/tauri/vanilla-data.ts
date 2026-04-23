@@ -71,6 +71,49 @@ export async function getEquipmentNames(): Promise<string[]> {
   return invoke("cmd_get_equipment_names");
 }
 
+/** Get icon MapKey names from all IconUVList tables in the reference DB. */
+export async function getIconNames(): Promise<string[]> {
+  return invoke("cmd_get_icon_names");
+}
+
+/** UV coordinates + atlas path for a single icon as returned by the reference/staging DB.
+ *  Raw form — atlas_path is relative to the Public/Game/GUI or mod Public/<folder> root. */
+export interface VanillaIconAtlasEntry {
+  map_key: string;
+  /** Path attribute from TextureAtlasPath node, e.g. "Assets/Textures/Icons/Icons_Skills.dds" */
+  atlas_path: string;
+  u1: number;
+  v1: number;
+  u2: number;
+  v2: number;
+}
+
+/**
+ * Resolved icon atlas entry with pre-computed DDS path arguments for cmd_convert_dds_to_png.
+ * Stored in modStore.iconAtlasData after annotation in scanService.
+ */
+export interface IconAtlasEntry {
+  map_key: string;
+  /** Relative path to pass as `path` to cmd_convert_dds_to_png */
+  dds_path: string;
+  /** Directory to pass as `projectDir` to cmd_convert_dds_to_png */
+  project_dir: string;
+  u1: number;
+  v1: number;
+  u2: number;
+  v2: number;
+}
+
+/** Get atlas UV data for all icons from the reference (vanilla) DB. */
+export async function getIconAtlasData(): Promise<VanillaIconAtlasEntry[]> {
+  return invoke("cmd_get_icon_atlas_data");
+}
+
+/** Get atlas UV data for icons defined in the active mod's staging DB. */
+export async function getStagingIconAtlasData(): Promise<VanillaIconAtlasEntry[]> {
+  return invoke("cmd_get_staging_icon_atlas_data");
+}
+
 // ---- ProgressionTable UUIDs ----
 
 /** Get unique ProgressionTableUUIDs from vanilla Progressions, ClassDescriptions, and Races. */

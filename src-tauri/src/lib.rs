@@ -1213,6 +1213,39 @@ async fn cmd_get_equipment_names(app: tauri::AppHandle) -> Result<Vec<String>, A
     }).await
 }
 
+/// Get icon MapKey names from all IconUVList tables in the reference DB.
+/// Used to populate the iconName: combobox descriptor for the Icon field.
+#[tauri::command]
+async fn cmd_get_icon_names(app: tauri::AppHandle) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths: {e}"))?;
+        reference_db::queries::query_icon_names(&db_paths.base)
+    }).await
+}
+
+/// Get atlas UV data for all icons (MapKey → atlas path + UV coords).
+/// Used to enable icon image previews in the Icon field combobox.
+#[tauri::command]
+async fn cmd_get_icon_atlas_data(app: tauri::AppHandle) -> Result<Vec<reference_db::queries::IconAtlasEntry>, AppError> {
+    blocking(move || {
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths: {e}"))?;
+        reference_db::queries::query_icon_atlas_data(&db_paths.base)
+    }).await
+}
+
+/// Get atlas UV data for icons defined in the active mod's staging database.
+/// Used alongside cmd_get_icon_atlas_data to show previews for mod-specific icons.
+#[tauri::command]
+async fn cmd_get_staging_icon_atlas_data(app: tauri::AppHandle) -> Result<Vec<reference_db::queries::IconAtlasEntry>, AppError> {
+    blocking(move || {
+        let db_paths = db_manager::get_db_paths(&app)
+            .map_err(|e| format!("DB paths: {e}"))?;
+        reference_db::queries::query_icon_atlas_data(&db_paths.staging)
+    }).await
+}
+
 /// Get value lists from the reference DB.
 /// Optionally filter by key name; pass empty string to get all lists.
 #[tauri::command]
@@ -2258,6 +2291,9 @@ pub fn run() {
             cmd_get_voice_table_uuids,
             cmd_get_selector_ids,
             cmd_get_equipment_names,
+            cmd_get_icon_names,
+            cmd_get_icon_atlas_data,
+            cmd_get_staging_icon_atlas_data,
             cmd_get_value_lists,
             cmd_get_localization_map,
             cmd_get_mod_localization,

@@ -8,7 +8,8 @@ import { uiStore } from "../stores/uiStore.svelte.js";
 import { migrateLocalStorageProject } from "../utils/migration.js";
 import { m } from "../../paraglide/messages.js";
 import { buildVanillaLoaders, EAGER_REGION_IDS, isSyntheticCategory, type VanillaCategory } from "../data/vanillaRegistry.js";
-import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
+import { scanMod, getStatEntries, getStatFieldNames, getValueLists, getLocalizationMap, getModLocalization, getModStatEntries, readExistingConfig, getEquipmentNames, getIconNames, listModFiles, listAvailableSections, querySectionEntries, recreateStaging, populateStagingFromMod, checkStagingIntegrity } from "../utils/tauri.js";
+import { getIconAtlasData, getStagingIconAtlasData } from "../tauri/vanilla-data.js";
 import { parseExistingConfig } from "../utils/configParser.js";
 import { modSelectionService } from "./modSelectionService.svelte.js";
 import { detectModFolders } from "../tauri/scanning.js";
@@ -155,6 +156,20 @@ export async function loadVanillaData(): Promise<void> {
     { name: "StatFieldNames", promise: tracked("StatFieldNames", getStatFieldNames("")).then(names => { guardedWrite("StatFieldNames", gen, () => { modStore.vanillaStatFieldNames = names; }); }) },
     { name: "ValueLists", promise: tracked("ValueLists", getValueLists("")).then(lists => { guardedWrite("ValueLists", gen, () => { modStore.vanillaValueLists = lists; }); }) },
     { name: "Equipment", promise: tracked("Equipment", getEquipmentNames()).then(names => { guardedWrite("Equipment", gen, () => { modStore.vanillaEquipment = names; }); }) },
+    { name: "IconNames", promise: tracked("IconNames", getIconNames()).then(names => { guardedWrite("IconNames", gen, () => { modStore.vanillaIconNames = names; }); }) },
+    { name: "IconAtlasData", promise: tracked("IconAtlasData", getIconAtlasData()).then(entries => { guardedWrite("IconAtlasData", gen, () => {
+      const vanillaProjectDir = settingsStore.vanillaPath;
+      const newMap = new Map(modStore.iconAtlasData);
+      for (const e of entries) {
+        newMap.set(e.map_key, {
+          map_key: e.map_key,
+          dds_path: `Public/Game/GUI/${e.atlas_path}`,
+          project_dir: vanillaProjectDir,
+          u1: e.u1, v1: e.v1, u2: e.u2, v2: e.v2,
+        });
+      }
+      modStore.iconAtlasData = newMap;
+    }); }) },
     { name: "Localization", promise: tracked("Localization", getLocalizationMap()).then(result => {
       guardedWrite("Localization", gen, () => {
         const map = new Map<string, string>(modStore.localizationMap);
@@ -277,6 +292,33 @@ export async function scanAndImport(modPath: string, extraScanPaths?: string[]):
     modStore.scanDetail = "";
     const modName = modPath.split(/[\\/]/).pop()?.replace(/\.pak$/i, "") ?? "mod";
     await rehydrateStaging(modPath, modName);
+
+    // Load mod's own icon atlas data from staging (for icon preview in form editor)
+    try {
+      const stagingEntries = await getStagingIconAtlasData();
+      if (stagingEntries.length > 0) {
+        const projectDir = modStore.projectPath || modPath;
+        // Compute the mod's Public subdir path (e.g. "MyMod/Public/MyMod") relative to projectDir
+        const mp = modPath.replace(/\\/g, "/");
+        const pp = projectDir.replace(/\\/g, "/");
+        const folder = mp.split("/").pop() ?? "";
+        const modRel = mp.startsWith(pp) ? mp.slice(pp.length).replace(/^\/+/, "") : folder;
+        const modPublicRelDir = modRel ? `${modRel}/Public/${folder}` : `Public/${folder}`;
+        const newMap = new Map(modStore.iconAtlasData);
+        for (const e of stagingEntries) {
+          // Mod entries override vanilla entries of the same name
+          newMap.set(e.map_key, {
+            map_key: e.map_key,
+            dds_path: `${modPublicRelDir}/${e.atlas_path}`,
+            project_dir: projectDir,
+            u1: e.u1, v1: e.v1, u2: e.u2, v2: e.v2,
+          });
+        }
+        modStore.iconAtlasData = newMap;
+      }
+    } catch (e) {
+      console.warn("[scanAndImport] Failed to load staging icon atlas data:", e);
+    }
 
     // Migrate legacy localStorage project data into staging DB (I4/I6)
     modStore.scanPhase = m.scan_phase_migrating();

@@ -7,6 +7,10 @@
   import { getInheritanceFieldStatus } from "../../lib/utils/inheritanceComparison.js";
   import { isContentHandle, parseHandleVersion, autoLocalize } from "../../lib/utils/localizationManager.js";
   import { modStore } from "../../lib/stores/modStore.svelte.js";
+  import { projectStore } from "../../lib/stores/projectStore.svelte.js";
+  import { stagingUpsertRow } from "../../lib/tauri/staging.js";
+  import { scriptRead, scriptWrite } from "../../lib/tauri/scripts.js";
+  import { generateLocalizationXml } from "../../lib/tauri/loca.js";
   import { STAT_TYPE_METADATA } from "../../lib/data/statFieldMetadata.js";
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -16,6 +20,7 @@
   import MultiSelectCombobox from "../MultiSelectCombobox.svelte";
   import InlineCodeEditor from "./InlineCodeEditor.svelte";
   import CostFieldGroup from "./CostFieldGroup.svelte";
+  import IconAtlasPreview from "../IconAtlasPreview.svelte";
 
   interface Props {
     item: LayoutField;
@@ -52,6 +57,38 @@
   let localOverrideEnabled = $state(false);
   let localSyncLocked = $state(false);
 
+  /** Persist a new or updated auto-loca entry to both the staging DB and to
+   *  `Localization/English/english.xml` on disk so the entry survives re-scans. */
+  async function persistAutoLocaEntry(handle: string, version: number, text: string): Promise<void> {
+    const modPath = modStore.selectedModPath;
+    const stagingDbPath = projectStore.stagingDbPath;
+    if (!modPath || !stagingDbPath) return;
+
+    try {
+      // Upsert into staging DB for immediate in-session combobox reactivity.
+      await stagingUpsertRow(stagingDbPath, "loca__english", {
+        contentuid: handle,
+        text,
+        version: String(version),
+      }, true);
+    } catch (e) {
+      console.warn("[auto-loca] Failed to upsert into staging DB:", e);
+    }
+
+    try {
+      // Merge with any existing english.xml (creates the file if it doesn't exist).
+      const locaFilePath = "Localization/English/english.xml";
+      const existing = await scriptRead(modPath, locaFilePath);
+      const xml = await generateLocalizationXml(
+        [{ contentuid: handle, version, text }],
+        existing ?? undefined,
+      );
+      await scriptWrite(modPath, locaFilePath, xml);
+    } catch (e) {
+      console.warn("[auto-loca] Failed to write english.xml:", e);
+    }
+  }
+
   function handleLocaChange(fieldKey: string, inputValue: string) {
     if (!inputValue) return;
 
@@ -83,11 +120,16 @@
       modStore.autoLocaEntries,
     );
 
+    const version = modStore.autoLocaEntries.get(handle)?.version ?? 1;
+
     const updated = new Map(modStore.localizationMap);
     updated.set(handle, inputValue);
     modStore.localizationMap = updated;
 
     setFieldValue(fieldKey, fieldValue);
+
+    // Persist to staging DB + english.xml (fire-and-forget; errors are non-fatal).
+    void persistAutoLocaEntry(handle, version, inputValue);
   }
 
   function jumpToReference(targetSection: string, uuid: string) {
@@ -169,6 +211,7 @@
   {@const badgeText = ft === 'string' || ft === 'str' ? 'Text' : ft === 'int' ? 'Number' : ft === 'float' ? 'Decimal' : (ft === 'string (UUID)' || ft === 'guid' || ft === 'uuid') ? 'UUID' : ft ?? ''}
   {@const comboPlaceholder = badgeText ? `${badgeText} — Search…` : 'Search…'}
   {@const isLoca = caps.fieldCombobox?.[item.key]?.startsWith('loca:')}
+  {@const isIconName = caps.fieldCombobox?.[item.key]?.startsWith('iconName:')}
   {@const expressionType = statType ? STAT_TYPE_METADATA[statType]?.fieldExpressionType?.[item.key] : undefined}
   {@const boolToggleDef = statType ? STAT_TYPE_METADATA[statType]?.fieldBoolToggle?.[item.key] : undefined}
   {@const syncSourceKey = statType ? STAT_TYPE_METADATA[statType]?.fieldSyncMap?.[item.key] : undefined}
@@ -320,8 +363,9 @@
                 options={fieldComboboxOptions(item.key)}
                 value={effectiveFieldValue}
                 placeholder={comboPlaceholder}
-                maxDisplayed={0}
+                maxDisplayed={isIconName ? 50 : 0}
                 disabled={fieldDisabled}
+                showAtlasIcon={isIconName}
                 onchange={(v) => setFieldValue(item.key, v)}
               />
             {/if}
@@ -394,6 +438,12 @@
           <div class="px-2 pb-1.5 pt-0.5 text-xs text-[var(--th-text-200)] whitespace-pre-wrap break-words">{locaPreviewText}</div>
         </details>
       {/if}
+    {/if}
+    {#if isIconName && !showInheritedValue && effectiveFieldValue}
+      <div class="icon-field-preview-block">
+        <IconAtlasPreview iconName={effectiveFieldValue} size="lg" />
+        <span class="icon-preview-name">{effectiveFieldValue}</span>
+      </div>
     {/if}
     {#if syncSourceKey && !showInheritedValue && expressionType !== 'cost'}
       <div class="flex items-center gap-2 mt-0.5">
@@ -626,6 +676,25 @@
     border: 1px solid var(--th-input-border, rgba(63, 63, 70, 0.5));
     border-radius: 0.25rem;
     margin-top: 0.125rem;
+  }
+
+  .icon-field-preview-block {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    margin-top: 0.125rem;
+    background-color: var(--th-bg-800, rgba(39, 39, 42, 0.6));
+    border: 1px solid var(--th-input-border, rgba(63, 63, 70, 0.5));
+    border-radius: 0.25rem;
+  }
+
+  .icon-preview-name {
+    font-size: 0.75rem;
+    color: var(--th-text-400);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .color-picker-swatch {

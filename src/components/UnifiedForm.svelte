@@ -883,6 +883,30 @@
     return map;
   });
 
+  /** iconName: — depends on vanilla icon names + mod's own IconUVList entries */
+  let _cbIconName = $derived.by(() => {
+    const fc = caps.fieldCombobox;
+    if (!fc) return new Map<string, ComboboxOption[]>();
+    const ctx: FieldComboboxContext = {
+      caps,
+      vanilla: {},
+      scanResult: modStore.scanResult,
+      additionalModResults: [],
+      additionalModPaths: [],
+      vanillaValueLists: [],
+      vanillaStatEntries: [],
+      modStatEntries: [],
+      vanillaEquipment: [],
+      vanillaIconNames: modStore.vanillaIconNames,
+      modName: modStore.scanResult?.mod_meta?.name,
+    };
+    const map = new Map<string, ComboboxOption[]>();
+    for (const [fk, desc] of Object.entries(fc)) {
+      if (desc.startsWith('iconName:')) map.set(fk, _getFieldComboboxOptions(fk, ctx));
+    }
+    return map;
+  });
+
   /** Dispatching accessor — routes to the correct per-type derivation. */
   function fieldComboboxOptions(fieldKey: string): ComboboxOption[] {
     const descriptor = caps.fieldCombobox?.[fieldKey];
@@ -897,6 +921,7 @@
     if (descriptor.startsWith('statType:')) return _cbStatType.get(fieldKey) ?? [];
     if (descriptor.startsWith('equipment:')) return _cbEquipment.get(fieldKey) ?? [];
     if (descriptor.startsWith('loca:')) return _cbLoca.get(fieldKey) ?? [];
+    if (descriptor.startsWith('iconName:')) return _cbIconName.get(fieldKey) ?? [];
     return [];
   }
 

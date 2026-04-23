@@ -4,6 +4,7 @@
   import type { ComboboxOption } from "../../lib/utils/comboboxOptions.js";
   import type { StringItem, ChildItem } from "../../lib/utils/fieldCodec.js";
   import { evaluateGate, STAT_TYPE_METADATA, type FieldGate } from "../../lib/data/statFieldMetadata.js";
+  import { untrack } from "svelte";
   import { uiStore } from "../../lib/stores/uiStore.svelte.js";
   import InheritanceBanner from "../InheritanceBanner.svelte";
   import X from "@lucide/svelte/icons/x";
@@ -126,7 +127,10 @@
 
   // Lazily rendered subsection tabs: render a tab once it's been visited, then keep in DOM.
   let renderedSubIdxs = $state(new Set<number>([0]));
-  $effect(() => { renderedSubIdxs = new Set([...renderedSubIdxs, activeSubIdx]); });
+  $effect(() => {
+    const idx = activeSubIdx; // track activeSubIdx
+    renderedSubIdxs = untrack(() => new Set([...renderedSubIdxs, idx]));
+  });
 
   function isSubsectionVisible(sub: LayoutSubsection): boolean {
     if (sub.component) return false;

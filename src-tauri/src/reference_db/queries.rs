@@ -1043,6 +1043,224 @@ pub fn db_has_equipment_data(db_path: &Path) -> bool {
 }
 
 /// Query equipment names from the reference DB.
+/// Query all icon MapKey names from IconUVList tables in the reference DB.
+///
+/// Iterates every `IconUVList` table discovered during schema build, collects
+/// `MapKey` values, de-duplicates, and returns them sorted.  Used to populate
+/// the `iconName:` combobox descriptor for the Icon field on stat entries.
+pub fn query_icon_names(db_path: &Path) -> Result<Vec<String>, String> {
+    let conn = open_ro(db_path)?;
+
+    // Find all IconUVList tables (one per Icons_*.lsx file)
+    let mut stmt = conn
+        .prepare(
+            "SELECT table_name FROM _table_meta \
+             WHERE region_id = 'IconUVList' AND source_type = 'lsx' AND row_count > 0 \
+             ORDER BY table_name",
+        )
+        .map_err(|e| format!("Prepare icon table lookup: {e}"))?;
+
+    let table_names: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| format!("Query icon tables: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if table_names.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for tn in &table_names {
+        validate_table_name(tn)?;
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    let mut results = Vec::new();
+
+    for table_name in &table_names {
+        let columns = table_columns(&conn, table_name)?;
+        // IconUV tables use MapKey as primary key
+        if !columns.iter().any(|c| c.name == "MapKey") {
+            continue;
+        }
+
+        let sql = format!(
+            "SELECT \"MapKey\" FROM \"{table_name}\" \
+             WHERE \"MapKey\" IS NOT NULL AND \"MapKey\" != '' \
+             ORDER BY \"MapKey\""
+        );
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare {table_name}: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Query {table_name}: {e}"))?;
+
+        for row in rows {
+            let mk = row.map_err(|e| format!("Row: {e}"))?;
+            if seen.insert(mk.clone()) {
+                results.push(mk);
+            }
+        }
+    }
+
+    results.sort();
+    Ok(results)
+}
+
+/// Per-icon atlas data: MapKey + atlas DDS path + UV coordinates (0..1 normalised).
+#[derive(serde::Serialize)]
+pub struct IconAtlasEntry {
+    pub map_key: String,
+    /// Path attr from TextureAtlasPath node, e.g. "Assets/Textures/Icons/Icons_Skills.dds"
+    pub atlas_path: String,
+    pub u1: f64,
+    pub v1: f64,
+    pub u2: f64,
+    pub v2: f64,
+}
+
+/// Query atlas UV data for all icons in the reference DB.
+///
+/// Joins every `IconUVList` table (MapKey, U1, V1, U2, V2, _file_id) with the
+/// `TextureAtlasInfo` table that carries the `Path` attribute, matched via the
+/// shared `_file_id` column (both regions come from the same source `.lsx` file).
+pub fn query_icon_atlas_data(db_path: &Path) -> Result<Vec<IconAtlasEntry>, String> {
+    let conn = open_ro(db_path)?;
+
+    // 1. Collect all IconUVList tables.
+    let mut stmt = conn
+        .prepare(
+            "SELECT table_name FROM _table_meta \
+             WHERE region_id = 'IconUVList' AND source_type = 'lsx' AND row_count > 0 \
+             ORDER BY table_name",
+        )
+        .map_err(|e| format!("Prepare icon table lookup: {e}"))?;
+    let uv_tables: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| format!("Query icon tables: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if uv_tables.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // 2. Find TextureAtlasInfo tables that have both _file_id and Path columns
+    //    (these are the TextureAtlasPath node tables).
+    let mut stmt2 = conn
+        .prepare(
+            "SELECT table_name FROM _table_meta \
+             WHERE region_id = 'TextureAtlasInfo' AND source_type = 'lsx' AND row_count > 0 \
+             ORDER BY table_name",
+        )
+        .map_err(|e| format!("Prepare atlas info table lookup: {e}"))?;
+    let info_tables: Vec<String> = stmt2
+        .query_map([], |row| row.get(0))
+        .map_err(|e| format!("Query atlas info tables: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Build: _file_id → atlas_path
+    let mut file_to_path: std::collections::HashMap<i64, String> =
+        std::collections::HashMap::new();
+    for tn in &info_tables {
+        if validate_table_name(tn).is_err() {
+            continue;
+        }
+        let cols = table_columns(&conn, tn).unwrap_or_default();
+        // Only tables that have both the _file_id tracking col and a Path column are useful.
+        let has_file_id = cols.iter().any(|c| c.name == "_file_id");
+        let has_path = cols.iter().any(|c| c.name == "Path");
+        if !has_file_id || !has_path {
+            continue;
+        }
+        let sql = format!(
+            "SELECT _file_id, \"Path\" FROM \"{tn}\" \
+             WHERE \"Path\" IS NOT NULL AND \"Path\" != '' AND _file_id IS NOT NULL"
+        );
+        if let Ok(mut s) = conn.prepare(&sql) {
+            if let Ok(rows) = s.query_map([], |row| {
+                let fid: i64 = row.get(0)?;
+                let path: String = row.get(1)?;
+                Ok((fid, path))
+            }) {
+                for row in rows.flatten() {
+                    file_to_path.entry(row.0).or_insert(row.1);
+                }
+            }
+        }
+    }
+
+    if file_to_path.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // 3. For each IconUVList table, collect MapKey + UV + atlas path.
+    let mut seen = std::collections::HashSet::new();
+    let mut results: Vec<IconAtlasEntry> = Vec::new();
+
+    for table_name in &uv_tables {
+        if validate_table_name(table_name).is_err() {
+            continue;
+        }
+        let cols = match table_columns(&conn, table_name) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let has = |name: &str| cols.iter().any(|c| c.name == name);
+        // Need all UV columns and _file_id to join with atlas path table.
+        if !has("MapKey") || !has("U1") || !has("V1") || !has("U2") || !has("V2") || !has("_file_id") {
+            continue;
+        }
+
+        let sql = format!(
+            "SELECT \"MapKey\", \"U1\", \"V1\", \"U2\", \"V2\", _file_id \
+             FROM \"{table_name}\" \
+             WHERE \"MapKey\" IS NOT NULL AND \"MapKey\" != ''"
+        );
+        let mut stmt = match conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let rows = match stmt.query_map([], |row| {
+            let map_key: String = row.get(0)?;
+            // UV values are stored as REAL; fall back to 0.0 on null/type mismatch.
+            let u1: f64 = row.get::<_, f64>(1).unwrap_or(0.0);
+            let v1: f64 = row.get::<_, f64>(2).unwrap_or(0.0);
+            let u2: f64 = row.get::<_, f64>(3).unwrap_or(0.0);
+            let v2: f64 = row.get::<_, f64>(4).unwrap_or(0.0);
+            let file_id: i64 = row.get::<_, i64>(5).unwrap_or(0);
+            Ok((map_key, u1, v1, u2, v2, file_id))
+        }) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        for row in rows.flatten() {
+            let (map_key, u1, v1, u2, v2, file_id) = row;
+            if map_key.is_empty() || !seen.insert(map_key.clone()) {
+                continue;
+            }
+            let atlas_path = match file_to_path.get(&file_id) {
+                Some(p) => p.clone(),
+                None => continue, // No atlas path found for this file — skip.
+            };
+            results.push(IconAtlasEntry {
+                map_key,
+                atlas_path,
+                u1,
+                v1,
+                u2,
+                v2,
+            });
+        }
+    }
+
+    results.sort_by(|a, b| a.map_key.cmp(&b.map_key));
+    Ok(results)
+}
+
 pub fn query_equipment_names(db_path: &Path) -> Result<Vec<String>, String> {
     let conn = open_ro(db_path)?;
 

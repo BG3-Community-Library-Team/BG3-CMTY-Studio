@@ -4,6 +4,7 @@
    * Visually styled like MultiSelectCombobox but allows only one selection.
    */
   import X from "@lucide/svelte/icons/x";
+  import IconAtlasPreview from "./IconAtlasPreview.svelte";
   import Check from "@lucide/svelte/icons/check";
   import { handleComboboxKeydown } from "../lib/utils/comboboxKeyNav.js";
   import { isContentHandle, parseHandleVersion } from "../lib/utils/localizationManager.js";
@@ -23,6 +24,7 @@
     onchange,
     warnClass = "",
     disabled = false,
+    showAtlasIcon = false,
   }: {
     label?: string;
     options: { value: string; label: string }[];
@@ -46,6 +48,8 @@
     warnClass?: string;
     /** When true, the combobox is non-interactive */
     disabled?: boolean;
+    /** When true, renders a texture atlas icon preview before the selected value and each option */
+    showAtlasIcon?: boolean;
   } = $props();
 
   let searchText = $state("");
@@ -225,6 +229,9 @@
     onclick={disabled ? undefined : () => { searchText = value; isSearching = true; isOpen = requirePrefix ? prefixMet : !isOpen; inputEl?.focus(); }}
     role="presentation"
   >
+    {#if showAtlasIcon && value && !isSearching}
+      <IconAtlasPreview iconName={value} size="sm" />
+    {/if}
     {#if isSearching || !value}
       <input
         bind:this={inputEl}
@@ -289,7 +296,13 @@
               aria-selected={isSelected}
             >
               {#if isSelected}
-                <Check size={12} class="text-sky-400" />
+                <Check size={12} class="text-sky-400 shrink-0" />
+              {:else if showAtlasIcon}
+                <!-- reserve space so text aligns with selected item's check -->
+                <span class="w-3 shrink-0"></span>
+              {/if}
+              {#if showAtlasIcon}
+                <IconAtlasPreview iconName={opt.value} size="sm" />
               {/if}
               <span class="truncate">{opt.label}</span>
             </button>
