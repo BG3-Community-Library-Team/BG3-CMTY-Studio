@@ -92,22 +92,29 @@
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(xml, "text/xml");
-      const parserError = doc.querySelector("parsererror");
-      if (parserError) return false;
 
-      const contentList = doc.querySelector("contentList");
-      if (!contentList) return false;
+      // In text/xml mode, DOMParser creates a <parsererror> root on failure.
+      // Use documentElement instead of querySelector to avoid CSS-selector
+      // quirks in Chromium/WebView2's strict XML mode.
+      const root = doc.documentElement;
+      if (!root) return false;
+      if (root.tagName === "parsererror" || root.tagName.toLowerCase().includes("parseerror")) return false;
+      if (root.tagName !== "contentList") return false;
 
-      dateAttr = contentList.getAttribute("date") ?? formatDate(new Date());
+      dateAttr = root.getAttribute("date") ?? formatDate(new Date());
 
-      const contentNodes = contentList.querySelectorAll("content");
+      // getElementsByTagName is namespace-agnostic and correctly finds all
+      // <content> children regardless of xmlns:* declarations on the root
+      // (a common pattern in real-world BG3 mod loca files).
+      const contentNodes = root.getElementsByTagName("content");
       const parsed: ContentEntry[] = [];
-      for (const node of contentNodes) {
+      for (let i = 0; i < contentNodes.length; i++) {
+        const node = contentNodes[i];
         const contentuid = node.getAttribute("contentuid") ?? "";
         const versionStr = node.getAttribute("version") ?? "1";
         const version = parseInt(versionStr, 10);
-        // Trim surrounding whitespace to handle indented XML formats where
-        // quick_xml or other writers may inject newlines inside content elements.
+        // Trim surrounding whitespace — some writers inject newlines inside
+        // content elements.
         const text = (node.textContent ?? "").trim();
         parsed.push({
           id: crypto.randomUUID(),
@@ -136,7 +143,9 @@
   // ── Load content on mount / filePath change ──
   $effect(() => {
     const path = filePath;
-    const modPath = modStore.selectedModPath;
+    // Use projectPath when set (same convention as ScriptEditorPanel): file paths
+    // stored in tabs are relative to projectPath when a project folder is open.
+    const modPath = modStore.projectPath || modStore.selectedModPath;
     if (!path || !modPath) {
       error = m.loca_editor_no_mod();
       isLoading = false;
@@ -176,7 +185,7 @@
 
   // ── Save to disk ──
   async function saveForm() {
-    const modPath = modStore.selectedModPath;
+    const modPath = modStore.projectPath || modStore.selectedModPath;
     if (!modPath) return;
     if (duplicates.size > 0 && !rawMode) {
       toastStore.error(m.loca_editor_save_failed_title(), m.loca_editor_duplicate_error());
