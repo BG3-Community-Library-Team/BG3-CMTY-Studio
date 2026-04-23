@@ -809,44 +809,45 @@ fn cmd_generate_localization_xml(
     write_loca_xml(&all)
 }
 
+/// Escape XML special characters into a String buffer.
+/// Handles the five predefined XML entities: & < > " '
+fn xml_escape_into_loca(buf: &mut String, s: &str) {
+    for ch in s.chars() {
+        match ch {
+            '&' => buf.push_str("&amp;"),
+            '<' => buf.push_str("&lt;"),
+            '>' => buf.push_str("&gt;"),
+            '"' => buf.push_str("&quot;"),
+            '\'' => buf.push_str("&apos;"),
+            _ => buf.push(ch),
+        }
+    }
+}
+
 /// Write localization entries as BG3-format XML.
+///
+/// Uses manual string building (same approach as `render_content_list` in loca_handler.rs)
+/// to guarantee a well-known output format with correctly inline text content.
+/// The quick_xml indented writer was intentionally avoided here because its
+/// newline injection can place indent characters inside `<content>` text nodes,
+/// causing DOMParser to return whitespace-only `textContent` for all entries.
 fn write_loca_xml(entries: &[(String, u32, String)]) -> Result<String, AppError> {
-    use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-    use quick_xml::Writer;
-    use std::io::Cursor;
-
-    let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
-
-    writer
-        .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-        .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
-
-    let content_list = BytesStart::new("contentList");
-    writer
-        .write_event(Event::Start(content_list))
-        .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
+    let mut out = String::with_capacity(entries.len() * 120 + 80);
+    out.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    out.push_str("<contentList>\n");
 
     for (uid, ver, text) in entries {
-        let mut elem = BytesStart::new("content");
-        elem.push_attribute(("contentuid", uid.as_str()));
-        elem.push_attribute(("version", ver.to_string().as_str()));
-        writer
-            .write_event(Event::Start(elem))
-            .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
-        writer
-            .write_event(Event::Text(BytesText::new(text)))
-            .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
-        writer
-            .write_event(Event::End(BytesEnd::new("content")))
-            .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
+        out.push_str("  <content contentuid=\"");
+        xml_escape_into_loca(&mut out, uid);
+        out.push_str("\" version=\"");
+        out.push_str(&ver.to_string());
+        out.push_str("\">");
+        xml_escape_into_loca(&mut out, text);
+        out.push_str("</content>\n");
     }
 
-    writer
-        .write_event(Event::End(BytesEnd::new("contentList")))
-        .map_err(|e| AppError::io_error(format!("XML write error: {e}")))?;
-
-    let result = writer.into_inner().into_inner();
-    String::from_utf8(result).map_err(|e| AppError::internal(format!("UTF-8 error: {e}")))
+    out.push_str("</contentList>\n");
+    Ok(out)
 }
 
 /// Read localization files from the unpacked vanilla Localization directory.

@@ -106,7 +106,9 @@
         const contentuid = node.getAttribute("contentuid") ?? "";
         const versionStr = node.getAttribute("version") ?? "1";
         const version = parseInt(versionStr, 10);
-        const text = node.textContent ?? "";
+        // Trim surrounding whitespace to handle indented XML formats where
+        // quick_xml or other writers may inject newlines inside content elements.
+        const text = (node.textContent ?? "").trim();
         parsed.push({
           id: crypto.randomUUID(),
           contentuid,
