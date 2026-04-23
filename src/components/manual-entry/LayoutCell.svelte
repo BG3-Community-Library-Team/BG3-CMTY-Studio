@@ -77,7 +77,8 @@
 
     try {
       // Merge with any existing english.xml (creates the file if it doesn't exist).
-      const locaFilePath = "Localization/English/english.xml";
+      const modFolder = modStore.modFolder || modPath.split(/[\\/]/).pop() || "";
+      const locaFilePath = `Mods/${modFolder}/Localization/English/english.xml`;
       const existing = await scriptRead(modPath, locaFilePath);
       const xml = await generateLocalizationXml(
         [{ contentuid: handle, version, text }],
