@@ -20,7 +20,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-quick-xml = "0.39"
+quick-xml = "0.42"
 regex = "1"
 flate2 = "1"
 lz4_flex = "0.13"
