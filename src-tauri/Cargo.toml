@@ -47,6 +47,10 @@ image_dds = { version = "0.7", default-features = false, features = ["ddsfile", 
 sha2 = "0.10"
 thiserror = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+tauri-plugin-log = "2"
+log = "0.4.34"
+strum = {version = "0.28.0", features = ["derive"] }
+strum_macros = "0.28.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
