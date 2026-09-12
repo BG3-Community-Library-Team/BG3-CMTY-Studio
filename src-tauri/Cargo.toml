@@ -24,7 +24,7 @@ quick-xml = "0.39"
 regex = "1"
 flate2 = "1"
 lz4_flex = "0.13"
-rusqlite = { version = "0.39", features = ["bundled", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 crossbeam-channel = "0.5"
 rmp-serde = "1"
 walkdir = "2"
