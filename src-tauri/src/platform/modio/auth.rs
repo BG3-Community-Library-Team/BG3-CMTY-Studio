@@ -38,11 +38,13 @@ pub struct ModioUserProfile {
 
 // ── Response wrappers (mod.io envelope) ─────────────────────────────
 
-#[derive(Deserialize)]
-struct EmailRequestResponse {
-    #[allow(dead_code)]
-    message: String,
-}
+// not sure if this is needed?
+
+// #[derive(Deserialize)]
+// struct EmailRequestResponse {
+//     #[allow(dead_code)]
+//     message: String,
+// }
 
 #[derive(Deserialize)]
 struct EmailExchangeResponse {
@@ -104,10 +106,9 @@ pub async fn email_exchange(
         .map_err(|e| PlatformError::HttpError(format!("Email exchange failed: {e}")))?;
 
     if resp.status().is_success() {
-        let body: EmailExchangeResponse = resp
-            .json()
-            .await
-            .map_err(|e| PlatformError::HttpError(format!("Failed to parse token response: {e}")))?;
+        let body: EmailExchangeResponse = resp.json().await.map_err(|e| {
+            PlatformError::HttpError(format!("Failed to parse token response: {e}"))
+        })?;
         Ok(body.access_token)
     } else {
         Err(extract_api_error(resp).await)
