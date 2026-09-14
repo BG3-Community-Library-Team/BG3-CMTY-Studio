@@ -3,4 +3,4 @@
 /**
  * A single entry parsed from a Stats .txt file (Spell_*.txt, Status_*.txt).
  */
-export type StatsEntry = { name: string, entry_type: string, parent: string | null, data: { [key in string]?: string }, };
+export type StatsEntry = { name: string, entry_type: string, parent: string | null, data: { [key in string]: string }, };

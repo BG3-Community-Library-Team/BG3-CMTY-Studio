@@ -287,6 +287,87 @@ describe("SettingsStore", () => {
       store.setGameDataPath("/game/Data");
       expect(store.gameDataPath).toBe("/game/Data");
     });
+
+    it("setLarianUserDataPath updates and persists to localStorage", async () => {
+      const store = await freshStore();
+      store.setLarianUserDataPath("/prefix/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3");
+      store.persistNow();
+      const saved = JSON.parse(localStorage.getItem("bg3-cmty-studio-settings")!);
+      expect(saved.larianUserDataPath).toContain("steamuser");
+    });
+
+    it("persists path settings to localStorage", async () => {
+      const store = await freshStore();
+      store.setGameDataPath("/game/Data");
+      store.setVanillaPath("/vanilla");
+      store.persistNow();
+      const saved = JSON.parse(localStorage.getItem("bg3-cmty-studio-settings")!);
+      expect(saved.gameDataPath).toBe("/game/Data");
+      expect(saved.vanillaPath).toBe("/vanilla");
+    });
+  });
+
+  // ── Keychain path migration ───────────────────────────────────────
+
+  describe("keychain path migration", () => {
+    afterEach(() => {
+      vi.doUnmock("../lib/tauri/secure-storage.js");
+      vi.unstubAllGlobals();
+    });
+
+    /** Load a fresh store running "in Tauri" with a mocked keychain. */
+    async function storeWithKeychain(values: Record<string, string>, fail = false) {
+      const deleted: string[] = [];
+      vi.doMock("../lib/tauri/secure-storage.js", () => ({
+        getSecureSetting: vi.fn(async (key: string) => {
+          if (fail) throw { kind: "CredentialStoreUnavailable", message: "no provider" };
+          return values[key] ?? "";
+        }),
+        deleteSecureSetting: vi.fn(async (key: string) => { deleted.push(key); }),
+      }));
+      vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+      return { store: await freshStore(), deleted };
+    }
+
+    it("moves keychain paths into localStorage and deletes the entries", async () => {
+      const { store, deleted } = await storeWithKeychain({
+        gameDataPath: JSON.stringify("/steam/Data"),
+        lastProjectPath: JSON.stringify("/mods/MyMod"),
+      });
+      await store.migrateKeyringPaths();
+
+      expect(store.gameDataPath).toBe("/steam/Data");
+      expect(store.lastProjectPath).toBe("/mods/MyMod");
+      expect(deleted.sort()).toEqual(["gameDataPath", "lastProjectPath"]);
+      const saved = JSON.parse(localStorage.getItem("bg3-cmty-studio-settings")!);
+      expect(saved.gameDataPath).toBe("/steam/Data");
+      expect(saved.pathsMigratedFromKeyring).toBe(true);
+    });
+
+    it("keeps a newer value already in localStorage", async () => {
+      localStorage.setItem("bg3-cmty-studio-settings", JSON.stringify({ gameDataPath: "/new/Data" }));
+      const { store, deleted } = await storeWithKeychain({ gameDataPath: JSON.stringify("/old/Data") });
+      await store.migrateKeyringPaths();
+
+      expect(store.gameDataPath).toBe("/new/Data");
+      expect(deleted).toEqual(["gameDataPath"]);
+    });
+
+    it("skips keychain errors and only runs once", async () => {
+      const spy = mockConsoleWarn();
+      const { store } = await storeWithKeychain({}, true);
+      await store.migrateKeyringPaths();
+
+      expect(store.pathsMigratedFromKeyring).toBe(true);
+      expectConsoleCalled(spy, "Keychain path migration");
+      spy.mockRestore();
+    });
+
+    it("does nothing outside Tauri", async () => {
+      const store = await freshStore();
+      await store.migrateKeyringPaths();
+      expect(store.pathsMigratedFromKeyring).toBe(false);
+    });
   });
 
   // ── Array restoration from localStorage ───────────────────────────

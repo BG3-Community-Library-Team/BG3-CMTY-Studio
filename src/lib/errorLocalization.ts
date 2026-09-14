@@ -18,6 +18,11 @@ const errorMessages: Record<string, (ctx: Record<string, string>) => string> = {
   mod_dir_not_found: (ctx) => `Mod directory not found: ${ctx.path ?? "unknown"}`,
 };
 
+/** Whether an IPC error means the OS credential store (keyring / Secret Service) can't be used. */
+export function isCredentialStoreUnavailable(e: unknown): boolean {
+  return !!e && typeof e === "object" && (e as Partial<AppError>).kind === "CredentialStoreUnavailable";
+}
+
 /** Resolve an AppError to a user-facing localized string.
  *  Falls back to the raw message for unmapped keys. */
 export function localizeError(err: AppError): string {

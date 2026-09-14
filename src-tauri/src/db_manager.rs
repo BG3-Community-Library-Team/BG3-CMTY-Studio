@@ -201,7 +201,7 @@ fn copy_bundled_db(
 
     Err(format!(
         "Bundled schema DB '{}' not found. Checked:\n  {}\n  {}\n\
-         Run `cargo run --release --bin generate_schema` to create them.",
+         Run `npm run build:schema` to create them.",
         name,
         resource_path.display(),
         dev_path.display(),

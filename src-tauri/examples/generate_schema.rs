@@ -5,8 +5,11 @@
 //! applied and the discovered schema stored as a MessagePack blob, then copies
 //! for each DB target.
 //!
+//! Kept as a Cargo example (not a `[[bin]]`) so Tauri doesn't ship it in release packages.
+//!
 //! Usage:
-//!   cargo run --release --bin generate_schema [-- [<game_data_dir>] [<output_dir>]]
+//!   npm run build:schema
+//!   cargo run --release --example generate_schema [-- [<game_data_dir>] [<output_dir>]]
 //!
 //! Defaults:
 //!   game_data_dir: BG3_GAME_DATA from .env or environment variable

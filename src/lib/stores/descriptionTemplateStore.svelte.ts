@@ -78,7 +78,7 @@ const BUILTIN_TEMPLATES: DescriptionTemplate[] = [
 ## Installation
 ### Manual
 1. Download the main file
-2. Extract the .pak file to \`%LocalAppData%/Larian Studios/Baldur's Gate 3/Mods\`
+2. Extract the .pak file to the BG3 Mods folder (\`%LocalAppData%/Larian Studios/Baldur's Gate 3/Mods\` on Windows)
 3. Add to modsettings.lsx or use a mod manager
 
 ### Mod Manager

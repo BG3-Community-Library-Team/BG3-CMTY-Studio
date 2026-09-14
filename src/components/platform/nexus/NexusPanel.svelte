@@ -17,7 +17,8 @@
   import { platformUploadStore } from "../../../lib/stores/platformUploadStore.svelte.js";
   import { toastStore } from "../../../lib/stores/toastStore.svelte.js";
   import { modStore } from "../../../lib/stores/modStore.svelte.js";
-  import { localizeError, type AppError } from "../../../lib/errorLocalization.js";
+  import { localizeError, isCredentialStoreUnavailable, type AppError } from "../../../lib/errorLocalization.js";
+  import CredentialStoreNotice from "../CredentialStoreNotice.svelte";
   import { getPrefersReducedMotion } from "../../../lib/stores/motion.svelte.js";
   import { nexusPackageAndUpload, nexusUploadFile, nexusSetApiKey, nexusSetFileDependencies, nexusGetFileVersions, nexusGetAllModFiles, nexusResolveMod } from "../../../lib/tauri/nexus.js";
   import type { NexusFileVersion } from "../../../lib/tauri/nexus.js";
@@ -131,14 +132,21 @@
     }
   });
 
+  let popoverKeyError: string | null = $state(null);
+  /** Bumped when saving fails because the OS credential store is unavailable. */
+  let credentialCheck = $state(0);
+
   async function popoverSaveKey() {
     if (!connectionApiKeyInput.trim()) return;
+    popoverKeyError = null;
     try {
       await nexusSetApiKey(connectionApiKeyInput.trim());
       connectionApiKeyInput = "";
       await nexusStore.checkApiKey();
-    } catch {
-      // handled by store
+    } catch (e) {
+      if (isCredentialStoreUnavailable(e)) credentialCheck++;
+      const message = (e as { message?: unknown } | null)?.message;
+      popoverKeyError = typeof message === "string" ? message : String(e);
     }
   }
 
@@ -614,6 +622,10 @@
             <div class="flex flex-col gap-1.5 px-3 py-2">
               <input type="password" class="w-full rounded border border-[var(--th-border-700)] bg-[var(--th-bg-900)] px-2 py-1 text-[10px] text-[var(--th-text-200)] placeholder:text-[var(--th-text-500)] focus:outline-none focus:ring-1 focus:ring-[var(--th-accent,#0ea5e9)]" placeholder={m.nexus_api_key_placeholder()} bind:value={connectionApiKeyInput} onkeydown={(e) => { if (e.key === "Enter") popoverSaveKey(); }} />
               <button type="button" class="rounded bg-[var(--th-accent,#0ea5e9)] px-2 py-1 text-[10px] font-medium text-white hover:brightness-110 disabled:opacity-50" onclick={popoverSaveKey} disabled={!connectionApiKeyInput.trim()}>{m.nexus_save_button()}</button>
+              {#if popoverKeyError}
+                <p class="text-[10px] text-red-400 break-words" role="alert">{popoverKeyError}</p>
+              {/if}
+              <CredentialStoreNotice compact refreshKey={credentialCheck} />
               <a href="https://www.nexusmods.com/users/myaccount?tab=api+access" target="_blank" rel="noopener noreferrer" class="text-[10px] text-[var(--th-accent,#0ea5e9)] hover:underline">{m.nexus_api_key_link()}</a>
             </div>
           {/if}

@@ -11,6 +11,7 @@
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import LogOut from "@lucide/svelte/icons/log-out";
+  import CredentialStoreNotice from "../CredentialStoreNotice.svelte";
 
   let tokenInput = $state("");
   let userIdInput = $state("");
@@ -29,6 +30,9 @@
       : m.modio_status_disconnected()
   );
 
+  /** Bumped after a failed save so the credential store notice re-checks availability. */
+  let credentialCheck = $state(0);
+
   async function handleSaveToken() {
     const raw = tokenInput.trim();
     const rawUserId = userIdInput.trim();
@@ -44,6 +48,7 @@
       tokenInput = "";
       userIdInput = "";
     } catch {
+      credentialCheck++;
       toastStore.error(m.modio_auth_error_title(), modioStore.connectionError ?? m.modio_error_invalid_token());
     } finally {
       isSaving = false;
@@ -115,6 +120,8 @@
   {:else}
     <!-- Disconnected State -->
     <div class="space-y-3">
+      <CredentialStoreNotice refreshKey={credentialCheck} />
+
       <p class="text-xs text-[var(--th-text-400)]">
         {m.modio_token_hint()}
       </p>

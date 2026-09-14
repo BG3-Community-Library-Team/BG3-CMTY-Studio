@@ -3,4 +3,4 @@
 /**
  * Classifies the kind of error for programmatic frontend handling.
  */
-export type ErrorKind = "NotFound" | "InvalidInput" | "IoError" | "ParseError" | "CacheError" | "SecurityViolation" | "TaskPanicked" | "Timeout" | "Internal";
+export type ErrorKind = "NotFound" | "InvalidInput" | "IoError" | "ParseError" | "CacheError" | "SecurityViolation" | "TaskPanicked" | "Timeout" | "CredentialStoreUnavailable" | "Internal";

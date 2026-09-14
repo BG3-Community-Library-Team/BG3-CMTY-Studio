@@ -8,6 +8,9 @@ use crate::error::{AppError, ErrorKind};
 #[serde(tag = "type")]
 pub enum PlatformError {
     KeyringError(String),
+    /// The OS credential store can't be used at all: no Secret Service
+    /// provider on Linux, or the store is locked or refused access.
+    CredentialStoreUnavailable(String),
     HttpError(String),
     ApiError { status: u16, message: String },
     RateLimited { retry_after_secs: u64 },
@@ -22,6 +25,9 @@ impl std::fmt::Display for PlatformError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KeyringError(msg) => write!(f, "Keyring error: {msg}"),
+            Self::CredentialStoreUnavailable(msg) => {
+                write!(f, "Credential store unavailable: {msg}")
+            }
             Self::HttpError(msg) => write!(f, "HTTP error: {msg}"),
             Self::ApiError { status, message } => {
                 write!(f, "API error (HTTP {status}): {message}")
@@ -48,6 +54,11 @@ impl From<PlatformError> for AppError {
                 message: format!("Keyring error: {msg}"),
                 context: None,
             },
+            PlatformError::CredentialStoreUnavailable(msg) => {
+                AppError::credential_store_unavailable(format!(
+                    "Credential store unavailable: {msg}"
+                ))
+            }
             PlatformError::HttpError(msg) => AppError {
                 kind: ErrorKind::Internal,
                 message: format!("HTTP error: {msg}"),

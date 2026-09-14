@@ -20,6 +20,7 @@ import {
   readModMeta,
   listLoadOrderPaks,
   getActiveModFolders,
+  getLarianUserDataDir,
   getModStatEntries,
   getDbPaths,
   populateModsDb,
@@ -374,8 +375,8 @@ class ModImportService {
   }
 
   /**
-   * Import all .pak files from the BG3 Mods directory
-   * (%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods).
+   * Import the active .pak files from the Mods folder of the BG3 user data
+   * folder (LocalAppData on Windows; Proton prefix or native build on Linux).
    */
   async importFromLoadOrder(showDuplicatePrompt: DuplicatePromptFn): Promise<void> {
     this.isImportingLoadOrder = true;
@@ -383,7 +384,16 @@ class ModImportService {
     dataOperationStore.startOperation("mod-import");
     dataOperationStore.phase = m.import_scanning_mods_dir();
     try {
-      const paks = await listLoadOrderPaks();
+      const lookup = {
+        gameDataPath: settingsStore.gameDataPath,
+        userDataOverride: settingsStore.larianUserDataPath,
+      };
+      if (!(await getLarianUserDataDir(lookup))) {
+        this.loadOrderStatus = m.import_user_data_dir_not_found();
+        return;
+      }
+
+      const paks = await listLoadOrderPaks(lookup);
       if (paks.length === 0) {
         this.loadOrderStatus = m.import_no_pak_files_load_order();
         return;
@@ -391,7 +401,7 @@ class ModImportService {
 
       let activeFolders: Set<string> | null = null;
       try {
-        const folders = await getActiveModFolders();
+        const folders = await getActiveModFolders(lookup);
         if (folders.length > 0) {
           activeFolders = new Set(folders.map(f => f.toLowerCase()));
         }

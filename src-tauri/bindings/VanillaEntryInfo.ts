@@ -16,4 +16,9 @@ color: string | null,
 /**
  * Optional parent GUID (e.g. ParentGuid for Race entries).
  */
-parent_guid: string | null, };
+parent_guid: string | null, 
+/**
+ * Optional loca handle from a `Text` (TranslatedString) attribute.
+ * Present for TooltipExtraTexts, TooltipUpcastDescriptions, etc.
+ */
+text_handle: string | null, };

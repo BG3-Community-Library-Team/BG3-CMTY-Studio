@@ -49,8 +49,7 @@ html {
    not on the titlebar, hamburger menu, or status bar.
    =================================================================== */
 
-/* The root app container fills edge-to-edge. No rounded corners, no
-   border, no box-shadow — identical to frameless apps like VS Code. */
+/* The root app container fills edge-to-edge with no border or box-shadow. */
 .app-frame {
   border-radius: 0;
   overflow: hidden;
@@ -61,6 +60,17 @@ html {
   border-radius: 0;
   border: none;
   box-shadow: none;
+}
+
+/* Linux: the frameless window is transparent (tauri.linux.conf.json), so the frame
+   draws the rounded window corners itself, matching Windows. `platform-linux` is set
+   in index.html before first paint. Corners stay square when maximized. */
+html.platform-linux,
+html.platform-linux body {
+  background: transparent;
+}
+html.platform-linux .app-frame:not(.maximized) {
+  border-radius: 8px;
 }
 
 /* ===================================================================

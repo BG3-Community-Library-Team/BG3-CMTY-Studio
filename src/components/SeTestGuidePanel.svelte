@@ -9,6 +9,8 @@
   import Copy from "@lucide/svelte/icons/copy";
   import Check from "@lucide/svelte/icons/check";
   import ExternalLink from "@lucide/svelte/icons/external-link";
+  import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
+  import { getLarianUserDataDir } from "../lib/tauri/detection.js";
 
   interface Props {
     modName?: string;
@@ -17,6 +19,19 @@
   }
 
   let { modName = "MyMod", modFolder = "MyModFolder", modUuid = "00000000-0000-0000-0000-000000000000" }: Props = $props();
+
+  /** Script Extender log folder inside the resolved BG3 user data folder. */
+  let seLogsDir: string | null = $state(null);
+
+  $effect(() => {
+    const lookup = { gameDataPath: settingsStore.gameDataPath, userDataOverride: settingsStore.larianUserDataPath };
+    getLarianUserDataDir(lookup)
+      .then((dir) => {
+        const sep = dir?.path.includes("\\") ? "\\" : "/";
+        seLogsDir = dir ? `${dir.path}${sep}Script Extender Logs${sep}` : null;
+      })
+      .catch(() => { seLogsDir = null; });
+  });
 
   let openSections: Record<string, boolean> = $state({});
   let copiedKey: string | null = $state(null);
@@ -276,7 +291,11 @@ end)`);
           <h4 class="font-medium text-[var(--th-text-primary,var(--th-text-200))] pt-1">Finding logs:</h4>
           <ul class="list-disc list-inside space-y-1 text-xs">
             <li>The SE console window opens automatically when <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))]">CreateConsole</code> is <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))]">true</code></li>
-            <li>Log files are saved to <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))]">%LOCALAPPDATA%/Larian Studios/Baldur's Gate 3/Script Extender Logs/</code></li>
+            {#if seLogsDir}
+              <li>Log files are saved to <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))] break-all">{seLogsDir}</code></li>
+            {:else}
+              <li>Log files are saved to <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))]">%LOCALAPPDATA%/Larian Studios/Baldur's Gate 3/Script Extender Logs/</code> on Windows, or the same folder inside the game's Proton prefix on Linux</li>
+            {/if}
             <li>Filter output by searching for <code class="bg-[var(--th-bg-700)] px-1 rounded text-[var(--th-text-primary,var(--th-text-200))]">[{modName}]</code> in the log</li>
           </ul>
         </div>

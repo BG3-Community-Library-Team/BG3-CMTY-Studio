@@ -5,6 +5,8 @@
 <script lang="ts">
   import { m } from "../../../paraglide/messages.js";
   import { nexusStore } from "../../../lib/stores/nexusStore.svelte.js";
+  import { toastStore } from "../../../lib/stores/toastStore.svelte.js";
+  import { isCredentialStoreUnavailable } from "../../../lib/errorLocalization.js";
   import {
     nexusHasApiKey,
     nexusSetApiKey,
@@ -14,6 +16,7 @@
   import Check from "@lucide/svelte/icons/check";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import ConnectionBadge from "../ConnectionBadge.svelte";
+  import CredentialStoreNotice from "../CredentialStoreNotice.svelte";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Loader2 from "@lucide/svelte/icons/loader-2";
 
@@ -21,6 +24,8 @@
 
   let apiKeyInput = $state("");
   let keyStatus: KeyStatus = $state("none");
+  /** Bumped when a keyring call fails because the credential store is unavailable. */
+  let credentialCheck = $state(0);
 
   // Sync with store's validated state
   $effect(() => {
@@ -33,6 +38,19 @@
   $effect(() => {
     checkKeyStatus();
   });
+
+  /** Returns true (and re-checks the credential store) when `e` means the store is unavailable. */
+  function handleStoreError(e: unknown): boolean {
+    if (!isCredentialStoreUnavailable(e)) return false;
+    credentialCheck++;
+    return true;
+  }
+
+  function errorMessage(e: unknown): string {
+    if (e instanceof Error) return e.message;
+    const message = (e as { message?: unknown } | null)?.message;
+    return typeof message === "string" ? message : String(e);
+  }
 
   async function checkKeyStatus() {
     // If the store already knows the key is valid, trust that
@@ -47,7 +65,8 @@
       } else {
         keyStatus = "none";
       }
-    } catch {
+    } catch (e) {
+      handleStoreError(e);
       keyStatus = "none";
     }
   }
@@ -60,8 +79,13 @@
       apiKeyInput = "";
       // Also update store state
       await nexusStore.checkApiKey();
-    } catch {
-      keyStatus = "invalid";
+    } catch (e) {
+      if (handleStoreError(e)) {
+        keyStatus = "none";
+        toastStore.error(m.credentials_unavailable_title(), errorMessage(e));
+      } else {
+        keyStatus = "invalid";
+      }
     }
   }
 
@@ -71,7 +95,8 @@
       const profile = await nexusValidateApiKey();
       keyStatus = profile ? "valid" : "invalid";
       nexusStore.apiKeyValid = !!profile;
-    } catch {
+    } catch (e) {
+      handleStoreError(e);
       keyStatus = "invalid";
     }
   }
@@ -82,7 +107,11 @@
       keyStatus = "none";
       apiKeyInput = "";
       nexusStore.apiKeyValid = false;
-    } catch { /* ignore */ }
+    } catch (e) {
+      if (handleStoreError(e)) {
+        toastStore.error(m.credentials_unavailable_title(), errorMessage(e));
+      }
+    }
   }
 
   function statusLabel(): string {
@@ -124,6 +153,8 @@
   <!-- Connection Section (always visible) -->
   <div class="space-y-3">
     <h5 class="text-xs font-medium text-[var(--th-text-300)]">{m.nexus_connection_section_label()}</h5>
+
+    <CredentialStoreNotice refreshKey={credentialCheck} />
 
     <!-- Status indicator -->
     <div class="flex items-center gap-1.5">

@@ -43,3 +43,6 @@ export type { StatsEntry } from './StatsEntry';
 export type { ValueListInfo } from './ValueListInfo';
 export type { VanillaEntryInfo } from './VanillaEntryInfo';
 export type { PopulateResult } from './PopulateResult';
+export type { CredentialBackendStatus } from './CredentialBackendStatus';
+export type { ResolvedUserDataDir } from './ResolvedUserDataDir';
+export type { UserDataSource } from './UserDataSource';

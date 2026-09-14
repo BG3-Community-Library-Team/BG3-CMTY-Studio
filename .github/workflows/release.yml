@@ -1,0 +1,104 @@
+name: Release
+
+# Builds every release package on its native runner and uploads each
+# release/<target> folder as a workflow artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  win64:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-node
+      - run: npm run release:win64
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win64
+          path: release/win64
+
+  macOS:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-node
+      - run: npm run release:macOS
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS
+          path: release/macOS
+
+  deb:
+    # Built on the oldest supported Ubuntu so the binary's glibc requirement stays low.
+    # The flatpak and arch jobs repackage this .deb.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-tauri-deps
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-node
+      - run: npm run release:deb
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: release/deb
+
+  flatpak:
+    needs: deb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: release/deb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Flatpak tooling
+        run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+        shell: bash
+      - run: CMTY_DEB="$(ls release/deb/*.deb)" node scripts/release.mjs flatpak
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: release/flatpak
+
+  arch:
+    needs: deb
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 30
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm git nodejs
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: release/deb
+      - name: Build package
+        # makepkg refuses to run as root
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE' && CMTY_DEB=\"\$(ls release/deb/*.deb)\" node scripts/release.mjs arch"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: release/arch

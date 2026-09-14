@@ -72,8 +72,8 @@
 
   // HAM-01: Startup init (migrated from HamburgerMenu.onMount)
   onMount(async () => {
-    // SEC-5: Hydrate sensitive path settings from OS keychain (must complete before restorePersistedMods)
-    await settingsStore.hydrateSecureKeys();
+    // Move path settings from the OS keychain (older versions) to localStorage (must complete before restorePersistedMods)
+    await settingsStore.migrateKeyringPaths();
     // USE-03: Show first-run onboarding modal if no vanilla path configured
     if (!settingsStore.vanillaPath && !settingsStore.gameDataPath && !settingsStore.hasSeenFirstRunModal) {
       showFirstRunModal = true;

@@ -4,4 +4,4 @@
  * A manually-created entry from the form UI.
  * `fields` uses structured keys (e.g. "UUID", "Selector:0:Function", "String:1:Values").
  */
-export type ManualEntry = { section: string, fields: { [key in string]?: string }, comment: string | null, };
+export type ManualEntry = { section: string, fields: { [key in string]: string }, comment: string | null, };

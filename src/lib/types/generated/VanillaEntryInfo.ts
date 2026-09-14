@@ -12,4 +12,13 @@ node_id: string,
  * Optional hex color value (e.g. "#RRGGBBAA") for color swatch display.
  * Present for ColorDefinition, CharacterCreation color entries, etc.
  */
-color: string | null, };
+color: string | null, 
+/**
+ * Optional parent GUID (e.g. ParentGuid for Race entries).
+ */
+parent_guid: string | null, 
+/**
+ * Optional loca handle from a `Text` (TranslatedString) attribute.
+ * Present for TooltipExtraTexts, TooltipUpcastDescriptions, etc.
+ */
+text_handle: string | null, };

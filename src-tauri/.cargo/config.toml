@@ -1,0 +1,4 @@
+[build]
+# Cap parallel compile jobs (including codegen and thin-LTO threads) so the machine
+# stays responsive during builds. Override per build with CARGO_BUILD_JOBS.
+jobs = 8

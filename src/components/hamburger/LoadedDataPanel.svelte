@@ -12,11 +12,12 @@
     resetReferenceDbs,
     detectGameDataPath,
     validateGameDataPath,
+    getLarianUserDataDir,
     openPath,
     populateModsDb,
     removeModFromModsDb,
   } from "../../lib/utils/tauri.js";
-  import type { DbFileStatus } from "../../lib/utils/tauri.js";
+  import type { DbFileStatus, ResolvedUserDataDir, UserDataSource } from "../../lib/utils/tauri.js";
   import { scanAndImport } from "../../lib/services/scanService.js";
   import Folder from "@lucide/svelte/icons/folder";
   import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -93,6 +94,52 @@
       modImportService.gameDataValid = null;
     }
   });
+
+  // Resolve the BG3 user data folder (Mods, PlayerProfiles) used by Import Load Order
+  let resolvedUserData: ResolvedUserDataDir | null = $state(null);
+  $effect(() => {
+    const lookup = { gameDataPath: settingsStore.gameDataPath, userDataOverride: settingsStore.larianUserDataPath };
+    getLarianUserDataDir(lookup)
+      .then((dir) => { resolvedUserData = dir; })
+      .catch((e) => {
+        console.warn("User data folder lookup failed:", e);
+        resolvedUserData = null;
+      });
+  });
+
+  const USER_DATA_SOURCE_LABELS: Record<UserDataSource, () => string> = {
+    Override: m.user_data_source_override,
+    SteamProton: m.user_data_source_steam_proton,
+    WinePrefix: m.user_data_source_wine_prefix,
+    NativeLinux: m.user_data_source_native_linux,
+    LocalAppData: m.user_data_source_local_app_data,
+  };
+
+  /** Shown when auto-detect finds no install. */
+  let autoDetectMessage: string | null = $state(null);
+
+  async function autoDetectGameData() {
+    autoDetectMessage = null;
+    try {
+      const detected = await detectGameDataPath();
+      if (detected) {
+        settingsStore.setGameDataPath(detected);
+        modImportService.gameDataValid = await validateGameDataPath(detected);
+      } else {
+        autoDetectMessage = m.loaded_data_auto_detect_not_found();
+      }
+    } catch (e) {
+      console.warn("Auto-detect failed:", e);
+      autoDetectMessage = m.loaded_data_auto_detect_not_found();
+    }
+  }
+
+  async function pickUserDataPath() {
+    await pickPath(
+      { directory: true, title: m.loaded_data_select_user_data_title() },
+      (p) => settingsStore.setLarianUserDataPath(p),
+    );
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -232,15 +279,7 @@
         {#if !settingsStore.gameDataPath}
           <button
             class="text-xs text-sky-400 hover:text-sky-300 cursor-pointer ml-auto"
-            onclick={async () => {
-              try {
-                const detected = await detectGameDataPath();
-                if (detected) {
-                  settingsStore.setGameDataPath(detected);
-                  modImportService.gameDataValid = await validateGameDataPath(detected);
-                }
-              } catch (e) { console.warn("Auto-detect failed:", e); }
-            }}
+            onclick={autoDetectGameData}
             title={m.loaded_data_auto_detect_tooltip()}
           >{m.loaded_data_auto_detect()}</button>
         {:else if modImportService.gameDataValid === true}
@@ -280,6 +319,61 @@
           </button>
         {/if}
       </div>
+    </fieldset>
+
+    {#if autoDetectMessage && !settingsStore.gameDataPath}
+      <p class="text-xs text-amber-400 -mt-2" role="status">{autoDetectMessage}</p>
+    {/if}
+
+    <!-- BG3 user data folder (Mods, PlayerProfiles) — auto-detected unless overridden -->
+    <fieldset class="space-y-1">
+      <label class="text-xs text-[var(--th-text-400)]" for="user-data-path" title={m.loaded_data_user_data_tooltip()}>{m.loaded_data_user_data_folder()}</label>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <input
+          id="user-data-path"
+          type="text"
+          class="form-input flex-1 min-w-[140px] bg-[var(--th-bg-900)] border border-[var(--th-border-600)] rounded px-2 py-1 text-xs
+                 text-[var(--th-text-200)] placeholder-[var(--th-text-500)] focus:border-sky-500"
+          placeholder={m.loaded_data_user_data_placeholder()}
+          title={m.loaded_data_user_data_tooltip()}
+          value={settingsStore.larianUserDataPath}
+          oninput={(e: Event) => settingsStore.setLarianUserDataPath((e.target as HTMLInputElement).value)}
+        />
+        <button
+          class="browse-btn flex items-center gap-1 px-2 py-1 text-xs rounded bg-[var(--th-bg-700)] text-[var(--th-text-300)] hover:bg-[var(--th-bg-600)] shrink-0"
+          onclick={pickUserDataPath}
+        >
+          <Folder size={12} strokeWidth={2} />
+          {m.common_browse()}
+        </button>
+        {#if settingsStore.larianUserDataPath}
+          <button
+            class="flex items-center px-1.5 py-1 text-xs rounded bg-[var(--th-bg-700)] text-[var(--th-text-400)] hover:bg-[var(--th-bg-600)] hover:text-[var(--th-text-200)] shrink-0"
+            onclick={() => settingsStore.setLarianUserDataPath("")}
+            title={m.loaded_data_user_data_clear()}
+            aria-label={m.loaded_data_user_data_clear()}
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
+        {/if}
+        {#if resolvedUserData}
+          <button
+            class="flex items-center px-1.5 py-1 text-xs rounded bg-[var(--th-bg-700)] text-[var(--th-text-400)] hover:bg-[var(--th-bg-600)] hover:text-[var(--th-text-200)] shrink-0"
+            onclick={() => resolvedUserData && openPath(resolvedUserData.path).catch((e) => console.warn("Open user data folder failed:", e))}
+            title={m.loaded_data_open_user_data_folder()}
+            aria-label={m.loaded_data_open_user_data_folder()}
+          >
+            <ExternalLink size={12} strokeWidth={2} />
+          </button>
+        {/if}
+      </div>
+      {#if resolvedUserData}
+        <p class="text-xs text-[var(--th-text-500)] truncate" title={resolvedUserData.path}>
+          {m.loaded_data_user_data_detected({ source: USER_DATA_SOURCE_LABELS[resolvedUserData.source](), path: resolvedUserData.path })}
+        </p>
+      {:else}
+        <p class="text-xs text-amber-400/80">{m.loaded_data_user_data_not_detected()}</p>
+      {/if}
     </fieldset>
 
     <!-- Action buttons: Populate (75%) + Reset (25%) -->

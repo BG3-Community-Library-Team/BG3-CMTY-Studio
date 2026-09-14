@@ -6,6 +6,8 @@
   import { forgeSetToken, forgeClearToken, forgeAuthStatus } from "../../lib/tauri/git.js";
   import type { ForgeUser, ForgeType } from "../../lib/tauri/git.js";
   import { toastStore } from "../../lib/stores/toastStore.svelte.js";
+  import { isCredentialStoreUnavailable } from "../../lib/errorLocalization.js";
+  import CredentialStoreNotice from "../platform/CredentialStoreNotice.svelte";
   import ExternalLink from "@lucide/svelte/icons/external-link";
   import Check from "@lucide/svelte/icons/check";
   import X from "@lucide/svelte/icons/x";
@@ -42,11 +44,23 @@
     }
   });
 
+  /** Bumped when a token call fails because the OS credential store is unavailable. */
+  let credentialCheck = $state(0);
+
+  /** Message for a failed IPC call; re-checks the credential store when it was the cause. */
+  function handleError(e: unknown): string {
+    if (isCredentialStoreUnavailable(e)) credentialCheck++;
+    if (e instanceof Error) return e.message;
+    const message = (e as { message?: unknown } | null)?.message;
+    return typeof message === "string" ? message : String(e);
+  }
+
   async function checkAuth(acct: ForgeAccount) {
     acct.loading = true;
     try {
       acct.user = await forgeAuthStatus(acct.host, acct.forgeType, acct.apiBase);
-    } catch {
+    } catch (e) {
+      handleError(e);
       acct.user = null;
     } finally {
       acct.loading = false;
@@ -62,7 +76,7 @@
       tokenInputs[acct.host] = "";
       toastStore.success(`Connected to ${acct.host}`);
     } catch (e) {
-      toastStore.error(`Failed to connect to ${acct.host}`, String(e));
+      toastStore.error(`Failed to connect to ${acct.host}`, handleError(e));
     } finally {
       acct.loading = false;
     }
@@ -75,7 +89,7 @@
       acct.user = null;
       toastStore.info(`Disconnected from ${acct.host}`);
     } catch (e) {
-      toastStore.error("Disconnect failed", String(e));
+      toastStore.error("Disconnect failed", handleError(e));
     } finally {
       acct.loading = false;
     }
@@ -99,6 +113,8 @@
 
 <div class="forge-accounts">
   <h4 class="forge-section-title">Remote Accounts</h4>
+
+  <CredentialStoreNotice refreshKey={credentialCheck} />
 
   <div class="forge-selector-row">
     <select

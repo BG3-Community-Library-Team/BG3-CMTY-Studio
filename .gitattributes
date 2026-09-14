@@ -1,1 +1,4 @@
+# Store and check out text files with LF on every OS, so moving a working tree
+# between Windows and Linux doesn't show every file as modified.
+* text=auto eol=lf
 package-lock.json binary

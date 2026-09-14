@@ -7,5 +7,6 @@ runs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+        # gnome-keyring provides a Secret Service for the credential tests (see scripts/ci/test-rust.sh)
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libdbus-1-dev patchelf gnome-keyring
       shell: bash

@@ -38,7 +38,7 @@ uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-keyring = { version = "3", features = ["sync-secret-service", "windows-native", "apple-native"] }
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "windows-native", "apple-native"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
 git2 = { version = "0.20", features = ["vendored-libgit2"], optional = true }
 base64 = "0.22"
@@ -50,6 +50,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+
+# Identifies the Secret Service provider; already pulled in by keyring's sync-secret-service.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "0.9"
 
 [dev-dependencies]
 dotenvy = "0.15"
@@ -64,17 +68,21 @@ tauri-build = { version = "2", features = [] }
 
 [lib]
 name = "bg3_cmty_studio_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "generate_schema"
-path = "src/bin/generate_schema.rs"
+# Desktop only: staticlib/cdylib are only needed for Tauri mobile targets.
+crate-type = ["rlib"]
 
 [[bench]]
 name = "staging"
 harness = false
 
+# Thin LTO optimizes across crates in parallel on all cores; full LTO ("fat",
+# codegen-units = 1) runs its final optimization pass on essentially one core.
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = "symbols"
+
+# Keep full debug info for this crate only; dependencies aren't debugged here,
+# and their debug info made target/debug tens of GB and slowed linking.
+[profile.dev.package."*"]
+debug = false

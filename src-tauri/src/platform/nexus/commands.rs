@@ -40,13 +40,13 @@ pub async fn cmd_nexus_set_api_key(
 
     let key = api_key.trim().to_string();
 
-    // Store in keyring (blocking I/O — run on blocking pool).
+    // Store in keyring (blocking I/O — run on blocking pool). The inner Result keeps the
+    // PlatformError kind (e.g. CredentialStoreUnavailable) instead of flattening it to a string.
     let key_clone = key.clone();
     crate::blocking(move || {
-        credentials::store_credential(NEXUS_SERVICE, NEXUS_USERNAME, &key_clone)
-            .map_err(|e| e.to_string())
+        Ok(credentials::store_credential(NEXUS_SERVICE, NEXUS_USERNAME, &key_clone))
     })
-    .await?;
+    .await??;
 
     // Create and store the client.
     let client = NexusClient::new(&key)?;
@@ -64,10 +64,8 @@ pub async fn cmd_nexus_set_api_key(
 pub async fn cmd_nexus_clear_api_key(
     state: State<'_, NexusState>,
 ) -> Result<(), AppError> {
-    crate::blocking(move || {
-        credentials::delete_credential(NEXUS_SERVICE, NEXUS_USERNAME).map_err(|e| e.to_string())
-    })
-    .await?;
+    crate::blocking(move || Ok(credentials::delete_credential(NEXUS_SERVICE, NEXUS_USERNAME)))
+        .await??;
 
     let mut guard = state
         .client
@@ -81,12 +79,9 @@ pub async fn cmd_nexus_clear_api_key(
 /// Check whether a Nexus API key is stored (does not reveal it).
 #[tauri::command]
 pub async fn cmd_nexus_has_api_key() -> Result<bool, AppError> {
-    crate::blocking(move || {
-        credentials::get_credential(NEXUS_SERVICE, NEXUS_USERNAME)
-            .map(|opt| opt.is_some())
-            .map_err(|e| e.to_string())
-    })
-    .await
+    let stored = crate::blocking(move || Ok(credentials::get_credential(NEXUS_SERVICE, NEXUS_USERNAME)))
+        .await??;
+    Ok(stored.is_some())
 }
 
 /// User profile data returned by the Nexus v1 validate endpoint.

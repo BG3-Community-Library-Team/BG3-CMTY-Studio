@@ -1,5 +1,5 @@
 import type { OutputFormat } from "../types/index.js";
-import { getSecureSetting, setSecureSetting } from "../utils/tauri.js";
+import { getSecureSetting, deleteSecureSetting } from "../tauri/secure-storage.js";
 import { modStore } from "./modStore.svelte.js";
 import { THEME_OPTIONS, DEFAULT_CUSTOM_THEME, type ThemeId, type CustomThemeValues } from "../themes/themeManager.js";
 
@@ -14,6 +14,8 @@ interface StoredSettings {
   defaultFormat: OutputFormat;
   theme: ThemeId;
   gameDataPath: string;
+  /** Larian user data folder (Mods, PlayerProfiles) — empty to auto-detect */
+  larianUserDataPath: string;
   additionalModPaths: string[];
   enableSectionComments: boolean;
   enableEntryComments: boolean;
@@ -43,6 +45,8 @@ interface StoredSettings {
   enableMazzleDocsSupport: boolean;
   /** Whether the user has dismissed the first-run onboarding modal (USE-03) */
   hasSeenFirstRunModal: boolean;
+  /** Whether path settings formerly kept in the OS keychain have been moved to localStorage */
+  pathsMigratedFromKeyring: boolean;
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean;
   /** Path to an IDE Helpers Lua file for supplemental intellisense definitions */
@@ -82,6 +86,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   defaultFormat: "Yaml" as OutputFormat,
   theme: "balance" as ThemeId,
   gameDataPath: "",
+  larianUserDataPath: "",
   additionalModPaths: [],
   enableSectionComments: true,
   enableEntryComments: false,
@@ -99,6 +104,7 @@ const PERSISTED_DEFAULTS: StoredSettings = {
   enableCfIntegration: true,
   enableMazzleDocsSupport: false,
   hasSeenFirstRunModal: false,
+  pathsMigratedFromKeyring: false,
   autoHideTabBar: false,
   ideHelpersPath: "",
   templateFoldersPath: "",
@@ -119,12 +125,8 @@ const PERSISTED_DEFAULTS: StoredSettings = {
 /** All keys that are persisted to localStorage (derived from PERSISTED_DEFAULTS). */
 const PERSISTED_KEYS = Object.keys(PERSISTED_DEFAULTS) as (keyof StoredSettings)[];
 
-/** Keys stored in OS keychain via Tauri secure storage rather than localStorage. */
-const SECURE_KEYS: (keyof StoredSettings)[] = [
-  "vanillaPath", "gameDataPath",
-  "lastProjectPath",
-];
-const SECURE_KEY_SET: ReadonlySet<string> = new Set(SECURE_KEYS);
+/** Path settings that earlier versions stored in the OS keychain. */
+const KEYRING_PATH_KEYS = ["vanillaPath", "gameDataPath", "lastProjectPath"] as const;
 
 /** Whether Tauri IPC is available (false in browser/test environments). */
 function isTauri(): boolean {
@@ -189,6 +191,8 @@ class SettingsStore {
   defaultFormat: OutputFormat = $state(this.#initial.defaultFormat);
   theme: ThemeId = $state(this.#initial.theme);
   gameDataPath: string = $state(this.#initial.gameDataPath);
+  /** Larian user data folder (Mods, PlayerProfiles) — empty to auto-detect */
+  larianUserDataPath: string = $state(this.#initial.larianUserDataPath);
   additionalModPaths: string[] = $state(this.#initial.additionalModPaths);
   enableSectionComments: boolean = $state(this.#initial.enableSectionComments);
   enableEntryComments: boolean = $state(this.#initial.enableEntryComments);
@@ -227,6 +231,9 @@ class SettingsStore {
 
   /** Whether the user has dismissed the first-run onboarding modal (USE-03) */
   hasSeenFirstRunModal: boolean = $state(this.#initial.hasSeenFirstRunModal);
+
+  /** Whether path settings formerly kept in the OS keychain have been moved to localStorage */
+  pathsMigratedFromKeyring: boolean = $state(this.#initial.pathsMigratedFromKeyring);
 
   /** Auto-hide the tab bar when not hovered */
   autoHideTabBar: boolean = $state(this.#initial.autoHideTabBar);
@@ -271,12 +278,10 @@ class SettingsStore {
   /** Whether a saved custom theme exists */
   hasCustomTheme: boolean = $state(localStorage.getItem(CUSTOM_THEME_KEY) !== null);
 
-  /** Persist current values to localStorage (non-sensitive) and OS keychain (sensitive paths). */
+  /** Persist current values to localStorage. */
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
-  #dirtyKeys = new Set<string>();
 
-  #schedulePersist(key: string): void {
-    this.#dirtyKeys.add(key);
+  #schedulePersist(_key: string): void {
     if (this.#persistTimer) clearTimeout(this.#persistTimer);
     this.#persistTimer = setTimeout(() => this.#executePersist(), 500);
   }
@@ -285,22 +290,11 @@ class SettingsStore {
     this.#persistTimer = null;
     const data: Record<string, unknown> = {};
     for (const key of PERSISTED_KEYS) {
-      if (SECURE_KEY_SET.has(key)) continue;
       data[key] = this[key];
     }
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
     } catch (e) { console.warn('Settings persistence failed:', e); }
-
-    if (isTauri()) {
-      for (const key of this.#dirtyKeys) {
-        if (!SECURE_KEY_SET.has(key)) continue;
-        setSecureSetting(key, JSON.stringify(this[key as keyof this])).catch((e: unknown) =>
-          console.warn(`Secure setting '${key}' save failed:`, e)
-        );
-      }
-    }
-    this.#dirtyKeys.clear();
   }
 
   persist(): void {
@@ -315,46 +309,26 @@ class SettingsStore {
   }
 
   /**
-   * Load sensitive path settings from OS keychain. On first run after upgrade,
-   * migrates values from localStorage to the keychain and cleans localStorage.
-   * Call once during app startup (e.g. in App.svelte onMount).
+   * One-time migration: earlier versions kept path settings in the OS keychain.
+   * Moves any stored values into localStorage (without overwriting newer ones)
+   * and deletes the keychain entries. Keychain errors, e.g. no Secret Service
+   * provider on Linux, are logged and skipped. Call once during app startup.
    */
-  async hydrateSecureKeys(): Promise<void> {
-    if (!isTauri()) return;
+  async migrateKeyringPaths(): Promise<void> {
+    if (!isTauri() || this.pathsMigratedFromKeyring) return;
 
-    // ── Migration: move legacy localStorage values to keychain ──
-    try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        let migrated = false;
-        for (const key of SECURE_KEYS) {
-          const val = data[key];
-          if (val === undefined || val === null) continue;
-          // Skip empty defaults (empty string, empty array, empty object)
-          if (val === "") continue;
-          if (Array.isArray(val) && val.length === 0) continue;
-          if (typeof val === "object" && !Array.isArray(val) && Object.keys(val).length === 0) continue;
-          await setSecureSetting(key, JSON.stringify(val));
-          migrated = true;
-        }
-        if (migrated) {
-          // Remove secure keys from localStorage
-          for (const key of SECURE_KEYS) delete data[key];
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
-        }
-      }
-    } catch (e) { console.warn("Secure settings migration failed:", e); }
-
-    // ── Load secure values from keychain ──
-    for (const key of SECURE_KEYS) {
+    for (const key of KEYRING_PATH_KEYS) {
       try {
         const raw = await getSecureSetting(key);
         if (!raw) continue;
         const val = JSON.parse(raw);
-        (this as any)[key] = val;
-      } catch (e) { console.warn(`Secure setting '${key}' load failed:`, e); }
+        if (!this[key] && typeof val === "string") this[key] = val;
+        await deleteSecureSetting(key);
+      } catch (e) { console.warn(`Keychain path migration for '${key}' failed:`, e); }
     }
+
+    this.pathsMigratedFromKeyring = true;
+    this.persistNow();
   }
 
   setVanillaPath(path: string): void {
@@ -443,6 +417,11 @@ class SettingsStore {
   setGameDataPath(path: string): void {
     this.gameDataPath = path;
     this.#schedulePersist("gameDataPath");
+  }
+
+  setLarianUserDataPath(path: string): void {
+    this.larianUserDataPath = path;
+    this.#schedulePersist("larianUserDataPath");
   }
 
   addAdditionalModPath(path: string): void {

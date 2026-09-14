@@ -17,10 +17,28 @@ Just open the application, and you're in business!
 
 ## Developer Prerequisites
 
-- [Node.js](https://nodejs.org/) v20+
-- [Rust](https://www.rust-lang.org/tools/install) (stable, 1.71+)
-- [Tauri CLI](https://v2.tauri.app/start/prerequisites/) prerequisites (WebView2 on Windows)
+- [Node.js](https://nodejs.org/) v24+ (see `.nvmrc`)
+- [Rust](https://www.rust-lang.org/tools/install) via rustup (the toolchain pinned in `rust-toolchain.toml` is installed automatically)
+- [Tauri CLI](https://v2.tauri.app/start/prerequisites/) prerequisites (WebView2 on Windows, WebKitGTK on Linux)
 - Baldur's Gate 3 installed (for game data extraction and integration tests)
+
+### Linux
+
+Install the Tauri system dependencies. On Arch-based distros:
+
+```bash
+sudo pacman -S --needed base-devel webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl dbus
+```
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install build-essential libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libdbus-1-dev patchelf
+```
+
+Saving Nexus Mods, mod.io and Git forge credentials needs a running Secret Service provider: GNOME Keyring, KWallet (Plasma 6, or Plasma 5 with *Use KWallet for the Secret Service interface* enabled) or KeePassXC with *Secret Service Integration* enabled. The rest of the app works without one.
+
+On Linux, `BG3_GAME_DATA` is typically `~/.local/share/Steam/steamapps/common/Baldurs Gate 3/Data`.
 
 ## Developer Setup
 
@@ -77,6 +95,32 @@ npm run tauri:build
 ```
 
 The output binary is in `src-tauri/target/release/`.
+
+### Release packages
+
+Release packages are written to `release/<target>/`:
+
+| Command | Output | Builds on |
+|---------|--------|-----------|
+| `npm run release` | the targets for the current OS | — |
+| `npm run release:win64` | `release/win64/` — portable `bg3-cmty-studio.exe` + `resources/` | Windows, or Linux/macOS with `cargo-xwin` and the `x86_64-pc-windows-msvc` target |
+| `npm run release:macOS` | `release/macOS/` (DMG) | macOS |
+| `npm run release:flatpak` | `release/flatpak/bg3-cmty-studio.flatpak` | Linux with `flatpak-builder` (or `flatpak install --user flathub org.flatpak.Builder`) |
+| `npm run release:deb` | `release/deb/bg3-cmty-studio_<version>_amd64.deb` | Linux |
+| `npm run release:arch` | `release/arch/bg3-cmty-studio-<version>-1-x86_64.pkg.tar.zst` | Arch-based Linux (`makepkg`) |
+| `npm run release:all` | every target the current machine can build; the rest are skipped | — |
+
+The **Release** GitHub workflow (`.github/workflows/release.yml`) builds every target on native runners when a `v*` tag is pushed or when run manually. Use its packages for distribution: the Linux packages are built from a `.deb` compiled on Ubuntu 22.04, so they run on older distros too. A `.deb` built locally on a newer distro requires that distro's glibc version or newer.
+
+### Installing a release
+
+| Platform | Install | Run |
+|----------|---------|-----|
+| Windows | No installation: extract the `win64` folder anywhere (keep `resources/` next to the exe). Needs the WebView2 runtime, which Windows 11 and current Windows 10 include. | `bg3-cmty-studio.exe` |
+| macOS | Open the DMG and drag the app to Applications | Launchpad or Applications |
+| Debian / Ubuntu / Mint | `sudo apt install ./bg3-cmty-studio_<version>_amd64.deb` (dependencies are installed automatically) | App menu: **BG3 CMTY Studio** |
+| Arch / CachyOS / Manjaro | `sudo pacman -U bg3-cmty-studio-<version>-1-x86_64.pkg.tar.zst` (dependencies are installed automatically) | App menu: **BG3 CMTY Studio** |
+| Any distro with Flatpak (SteamOS, Fedora, …) | `flatpak install --user bg3-cmty-studio.flatpak` — the GNOME runtime is downloaded from Flathub automatically | App menu, or `flatpak run com.cmtystudio.editor` |
 
 ## Testing
 
@@ -153,8 +197,8 @@ src-tauri/               Rust backend (Tauri 2)
 │   ├── pak/             .pak archive reader
 │   ├── schema/          Schema types and discovery
 │   ├── serializers/     Output format writers
-│   ├── converters/      Data conversion utilities
-│   └── bin/             Dev tool binaries (generate_schema)
+│   └── converters/      Data conversion utilities
+├── examples/            Dev tools, not shipped (generate_schema: `npm run build:schema`)
 ├── resources/           Pre-built schema .sqlite files (bundled with app)
 ├── tests/               Rust integration tests
 └── bindings/            Generated TypeScript type bindings
@@ -181,7 +225,20 @@ Subdirectories within `CMTYStudio/`:
 | Logs | `logs/` |
 | Databases | `databases/` |
 
-Secure storage (service name: `cmtystudio`) uses the OS credential manager — Windows Credential Manager, macOS Keychain, or Linux Secret Service.
+API keys and tokens (service name: `bg3-cmty-studio`) are kept in the OS credential manager — Windows Credential Manager, macOS Keychain, or a Secret Service provider on Linux (GNOME Keyring, KWallet, KeePassXC, …). Path settings are stored with the other settings, not in the credential manager.
+
+### BG3 user data folder
+
+**Import Load Order** reads `Mods/` and `PlayerProfiles/` from the BG3 user data folder, which is detected automatically:
+
+| Install | Path |
+|---------|------|
+| Windows | `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\` |
+| Linux, Steam with Proton | `<Steam library>/steamapps/compatdata/1086940/pfx/drive_c/users/steamuser/AppData/Local/Larian Studios/Baldur's Gate 3/` |
+| Linux, native build | `$XDG_DATA_HOME/Larian Studios/Baldur's Gate 3/` (defaults to `~/.local/share/...`) |
+| Linux, other Wine setups | `<prefix>/drive_c/users/<user>/AppData/Local/Larian Studios/Baldur's Gate 3/`, derived from the installation folder |
+
+Steam detection covers native, Flatpak and Snap Steam. When several folders exist, the one with the most recently saved `modsettings.lsx` is used. To use a different folder, set **Loaded Data → User Data Folder**.
 
 ## License
 

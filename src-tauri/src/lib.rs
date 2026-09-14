@@ -4,6 +4,7 @@ pub mod converters;
 pub mod db_manager;
 pub mod error;
 pub mod export;
+pub mod game_locator;
 #[cfg(feature = "git-integration")]
 pub mod git;
 pub mod logging;
@@ -1369,32 +1370,24 @@ async fn cmd_rediff_mod(
     .await
 }
 
-/// List all .pak files in the BG3 Mods directory (%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods).
-/// Returns an empty Vec if the directory doesn't exist.
+/// List all .pak files in the BG3 Mods folder of the Larian user data folder
+/// (see [`game_locator::resolve_user_data_dir`]).
+/// Returns an empty Vec if the folder can't be found or doesn't exist.
 #[tauri::command]
-async fn cmd_list_load_order_paks() -> Result<Vec<String>, AppError> {
-    blocking(|| {
-        let local_app_data = dirs::data_local_dir()
-            .ok_or_else(|| "Could not determine LocalAppData directory".to_string())?;
-        let mods_dir = local_app_data
-            .join("Larian Studios")
-            .join("Baldur's Gate 3")
-            .join("Mods");
-        if !mods_dir.exists() {
-            return Ok(Vec::new());
+async fn cmd_list_load_order_paks(
+    game_data_path: Option<String>,
+    user_data_override: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        match game_locator::resolve_user_data_dir(
+            game_data_path.as_deref(),
+            user_data_override.as_deref(),
+        ) {
+            Some(resolved) => {
+                game_locator::load_order::list_mod_paks(std::path::Path::new(&resolved.path))
+            }
+            None => Ok(Vec::new()),
         }
-        let mut paks: Vec<String> = std::fs::read_dir(&mods_dir)
-            .map_err(|e| format!("Failed to read BG3 Mods directory: {e}"))?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("pak"))
-            })
-            .map(|e| e.path().to_string_lossy().into_owned())
-            .collect();
-        paks.sort();
-        Ok(paks)
     })
     .await
 }
@@ -1402,81 +1395,36 @@ async fn cmd_list_load_order_paks() -> Result<Vec<String>, AppError> {
 /// Read modsettings.lsx from BG3 player profiles and return the Folder names of active mods.
 /// Searches all profiles for the most recently modified modsettings.lsx.
 #[tauri::command]
-async fn cmd_get_active_mod_folders() -> Result<Vec<String>, AppError> {
-    blocking(|| {
-        let local_app_data = dirs::data_local_dir()
-            .ok_or_else(|| "Could not determine LocalAppData directory".to_string())?;
-        let profiles_dir = local_app_data
-            .join("Larian Studios")
-            .join("Baldur's Gate 3")
-            .join("PlayerProfiles");
-        if !profiles_dir.exists() {
-            return Ok(Vec::new());
+async fn cmd_get_active_mod_folders(
+    game_data_path: Option<String>,
+    user_data_override: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    blocking(move || {
+        match game_locator::resolve_user_data_dir(
+            game_data_path.as_deref(),
+            user_data_override.as_deref(),
+        ) {
+            Some(resolved) => game_locator::load_order::read_active_mod_folders(
+                std::path::Path::new(&resolved.path),
+            ),
+            None => Ok(Vec::new()),
         }
+    })
+    .await
+}
 
-        // Find the most recently modified modsettings.lsx across all profiles
-        let mut best_file: Option<std::path::PathBuf> = None;
-        let mut best_time: Option<std::time::SystemTime> = None;
-
-        if let Ok(entries) = std::fs::read_dir(&profiles_dir) {
-            for entry in entries.filter_map(|e| e.ok()) {
-                let modsettings = entry.path().join("modsettings.lsx");
-                if modsettings.exists() {
-                    let mtime = modsettings
-                        .metadata()
-                        .and_then(|m| m.modified())
-                        .ok();
-                    if best_time.is_none() || mtime > best_time {
-                        best_file = Some(modsettings);
-                        best_time = mtime;
-                    }
-                }
-            }
-        }
-
-        let modsettings_path = best_file
-            .ok_or_else(|| "No modsettings.lsx found in any BG3 player profile".to_string())?;
-
-        check_file_size(&modsettings_path, MAX_CONFIG_FILE_SIZE)
-            .map_err(|e| format!("modsettings.lsx too large: {e}"))?;
-        let content = std::fs::read_to_string(&modsettings_path)
-            .map_err(|e| format!("Failed to read modsettings.lsx: {e}"))?;
-
-        // Parse the XML to extract Folder attributes from active mod entries
-        let mut folders: Vec<String> = Vec::new();
-
-        // modsettings.lsx has <node id="ModuleShortDesc"> entries under <node id="Mods">
-        // Each has <attribute id="Folder" type="LSString" value="..." />
-        use std::sync::LazyLock;
-        use regex::Regex;
-        static RE_FOLDER: LazyLock<Regex> = LazyLock::new(||
-            Regex::new(r#"<attribute\s+id="Folder"\s+[^>]*value="([^"]+)""#).unwrap()
-        );
-
-        // Find the Mods section and extract folders
-        // The Mods section contains ModuleShortDesc nodes for each active mod
-        let mut in_mods_section = false;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.contains(r#"id="Mods""#) {
-                in_mods_section = true;
-            }
-            if in_mods_section {
-                if let Some(caps) = RE_FOLDER.captures(trimmed) {
-                    let folder = caps[1].to_string();
-                    // Skip the base game modules
-                    if folder != "Gustav" && folder != "GustavDev" {
-                        folders.push(folder);
-                    }
-                }
-                // Stop when we exit the Mods section
-                if trimmed == "</children>" && in_mods_section && !folders.is_empty() {
-                    break;
-                }
-            }
-        }
-
-        Ok(folders)
+/// Resolve the Larian user data folder (Mods, PlayerProfiles, Script Extender logs)
+/// and where it was found. Returns `None` when no candidate exists.
+#[tauri::command]
+async fn cmd_get_larian_user_data_dir(
+    game_data_path: Option<String>,
+    user_data_override: Option<String>,
+) -> Result<Option<game_locator::ResolvedUserDataDir>, AppError> {
+    blocking(move || {
+        Ok(game_locator::resolve_user_data_dir(
+            game_data_path.as_deref(),
+            user_data_override.as_deref(),
+        ))
     })
     .await
 }
@@ -1493,23 +1441,8 @@ async fn cmd_validate_game_data_path(game_data_path: String) -> Result<bool, App
     if !dir.is_dir() {
         return Ok(false);
     }
-    let expected = ["Gustav.pak", "GustavX.pak", "Shared.pak"];
-    // Check given directory first
-    for name in &expected {
-        if dir.join(name).is_file() {
-            return Ok(true);
-        }
-    }
-    // Fallback: check Data/ subfolder (user may have passed the install root)
-    let data_sub = dir.join("Data");
-    if data_sub.is_dir() {
-        for name in &expected {
-            if data_sub.join(name).is_file() {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
+    // Check given directory first, then the Data/ subfolder (user may have passed the install root)
+    Ok(game_locator::contains_vanilla_paks(dir) || game_locator::contains_vanilla_paks(&dir.join("Data")))
 }
 
 /// Open a file or directory path in the native OS file explorer / default application.
@@ -1638,7 +1571,17 @@ async fn cmd_detect_game_data_path() -> Result<Option<String>, AppError> {
 
         Ok(None)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        // Steam libraries (native, Flatpak, Snap); the native build and Proton share the install folder.
+        blocking(|| {
+            Ok(game_locator::HostDirs::from_env()
+                .and_then(|host| game_locator::steam::find_bg3_data_dir(&host))
+                .map(|data| data.to_string_lossy().into_owned()))
+        })
+        .await
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         Ok(None)
     }
@@ -2174,17 +2117,21 @@ async fn cmd_get_secure_setting(key: String) -> Result<String, AppError> {
     }).await
 }
 
+/// Delete a setting from the OS keychain. Used by the frontend's one-time
+/// migration of path settings to localStorage.
 #[tauri::command]
-async fn cmd_set_secure_setting(key: String, value: String) -> Result<(), AppError> {
+async fn cmd_delete_secure_setting(key: String) -> Result<(), AppError> {
     blocking(move || {
-        if value.is_empty() {
-            platform::credentials::delete_credential("settings", &key)
-                .map_err(|e| e.to_string())
-        } else {
-            platform::credentials::store_credential("settings", &key, &value)
-                .map_err(|e| e.to_string())
-        }
+        platform::credentials::delete_credential("settings", &key)
+            .map_err(|e| e.to_string())
     }).await
+}
+
+/// Whether the OS credential store can be used and, on Linux, which
+/// Secret Service provider serves it.
+#[tauri::command]
+async fn cmd_credential_backend_status() -> Result<platform::credentials::CredentialBackendStatus, AppError> {
+    blocking(|| Ok(platform::credentials::backend_status())).await
 }
 
 // ── DDS texture conversion commands ──────────────────────────────────
@@ -2327,7 +2274,9 @@ pub fn run() {
             cmd_list_mod_files,
             cmd_read_mod_file,
             cmd_get_secure_setting,
-            cmd_set_secure_setting,
+            cmd_delete_secure_setting,
+            cmd_credential_backend_status,
+            cmd_get_larian_user_data_dir,
             commands::db::cmd_build_reference_db,
             commands::db::cmd_populate_reference_db,
             commands::db::cmd_populate_honor_db,

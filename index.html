@@ -7,10 +7,16 @@
     <!-- Prevent white flash: apply background immediately before CSS loads -->
     <style>
       html, body { background: #09090b; margin: 0; padding: 0; overflow: hidden; height: 100%; }
+      html.platform-linux, html.platform-linux body { background: transparent; }
       #app { height: 100%; }
     </style>
     <!-- Apply persisted theme class before first paint to avoid FOUC -->
     <script>
+      // Linux app window is transparent (tauri.linux.conf.json) so .app-frame can draw
+      // rounded corners; mark it before first paint (see app.css).
+      if ("__TAURI_INTERNALS__" in window && /Linux/.test(navigator.userAgent)) {
+        document.documentElement.classList.add("platform-linux");
+      }
       try {
         const raw = localStorage.getItem("bg3-cmty-studio-settings");
         if (raw) {

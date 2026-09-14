@@ -1,5 +1,7 @@
 # === Build outputs ===
 dist/
+release/
+.flatpak-builder/
 src-tauri/target/
 src-tauri/gen/
 src/paraglide/

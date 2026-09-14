@@ -19,6 +19,8 @@ pub enum ErrorKind {
     SecurityViolation,
     TaskPanicked,
     Timeout,
+    /// The OS credential store (keyring / Secret Service) can't be used.
+    CredentialStoreUnavailable,
     Internal,
 }
 
@@ -67,6 +69,10 @@ impl AppError {
 
     pub fn timeout(message: impl Into<String>) -> Self {
         Self { kind: ErrorKind::Timeout, message: message.into(), context: None }
+    }
+
+    pub fn credential_store_unavailable(message: impl Into<String>) -> Self {
+        Self { kind: ErrorKind::CredentialStoreUnavailable, message: message.into(), context: None }
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
